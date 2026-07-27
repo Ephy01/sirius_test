@@ -1,0 +1,9 @@
+{
+  "name": "sirius-dice-chess",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frontend prototype for a branching Dice & Chess assessment mission",
+  "scripts": {
+    "check": "node --check app.js"
+  }
+}

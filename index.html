@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Интерактивный прототип миссии Dice &amp; Chess для платформы интеллектуальных отборов"
+    />
+    <meta name="theme-color" content="#07131f" />
+    <title>Сириус · Миссия Dice &amp; Chess</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="star-field" aria-hidden="true"></div>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Сириус — к списку миссий">
+          <span class="brand-mark" aria-hidden="true">
+            <span class="brand-orbit"></span>
+            <span class="brand-core"></span>
+          </span>
+          <span>
+            <strong>СИРИУС</strong>
+            <small>интеллектуальные миссии</small>
+          </span>
+        </a>
+
+        <div class="topbar-context" id="missionContext" hidden>
+          <span class="context-divider" aria-hidden="true"></span>
+          <span class="context-name">Dice &amp; Chess</span>
+          <span class="live-badge"><i aria-hidden="true"></i> Миссия активна</span>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="session-time" id="sessionTime" hidden>
+            <span class="session-time-label">В миссии</span>
+            <time datetime="PT0M0S">00:00</time>
+          </div>
+          <button class="icon-button" id="soundToggle" type="button" aria-label="Выключить звук">
+            <span aria-hidden="true">◖))</span>
+          </button>
+          <button class="profile-button" type="button" aria-label="Профиль участника">
+            <span class="avatar">АК</span>
+            <span class="profile-copy">
+              <strong>Алексей К.</strong>
+              <small>участник</small>
+            </span>
+            <span aria-hidden="true">⌄</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="briefing-view" id="briefingView" aria-labelledby="briefingTitle">
+          <div class="briefing-copy">
+            <div class="section-kicker"><span></span> МИССИЯ 01 · ДОСТУПНА</div>
+            <h1 id="briefingTitle">Dice <em>&amp;</em> Chess</h1>
+            <p class="briefing-lead">
+              Исследуйте мир, где шахматные фигуры появляются по броску кубиков.
+              Замечайте закономерности, считайте вероятности и выбирайте ход.
+            </p>
+
+            <div class="mission-facts" aria-label="Параметры миссии">
+              <div class="mission-fact">
+                <span class="fact-icon" aria-hidden="true">◷</span>
+                <span><strong>20–25 минут</strong><small>без жёсткого таймера</small></span>
+              </div>
+              <div class="mission-fact">
+                <span class="fact-icon" aria-hidden="true">⑧</span>
+                <span><strong>8 эпизодов</strong><small>маршрут меняется по ходу</small></span>
+              </div>
+              <div class="mission-fact">
+                <span class="fact-icon" aria-hidden="true">✦</span>
+                <span><strong>ИИ по желанию</strong><small>можно решать самостоятельно</small></span>
+              </div>
+            </div>
+
+            <button class="primary-button start-button" id="startMission" type="button">
+              Начать миссию
+              <span aria-hidden="true">→</span>
+            </button>
+
+            <p class="privacy-note">
+              <span aria-hidden="true">◎</span>
+              Платформа сохраняет ответы и действия внутри миссии, чтобы преподаватели
+              могли увидеть процесс решения.
+            </p>
+          </div>
+
+          <div class="briefing-visual" aria-hidden="true">
+            <div class="orbit orbit-large"></div>
+            <div class="orbit orbit-small"></div>
+            <div class="visual-label label-one">ВЕРОЯТНОСТЬ</div>
+            <div class="visual-label label-two">СТРАТЕГИЯ</div>
+            <div class="visual-label label-three">ЛОГИКА</div>
+
+            <div class="hero-board">
+              <div class="hero-board-grid">
+                <span>♜</span><span></span><span>♝</span><span>♛</span>
+                <span></span><span>♟</span><span>♟</span><span></span>
+                <span></span><span>♞</span><span></span><span>♟</span>
+                <span>♙</span><span></span><span>♘</span><span></span>
+              </div>
+              <div class="hero-die die-one">
+                <span>♕</span>
+                <i></i><i></i><i></i>
+              </div>
+              <div class="hero-die die-two">
+                <span>♘</span>
+                <i></i><i></i><i></i>
+              </div>
+            </div>
+
+            <div class="signal-card">
+              <span class="signal-icon">⌁</span>
+              <span><strong>Маршрут строится</strong><small>по вашим решениям</small></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="mission-view" id="missionView" hidden aria-labelledby="taskTitle">
+          <div class="route-bar">
+            <div class="route-copy">
+              <span class="route-label">МАРШРУТ МИССИИ</span>
+              <strong id="routeName">Вероятности на доске</strong>
+            </div>
+            <ol class="route-track" aria-label="Прогресс миссии">
+              <li class="route-step complete">
+                <span>✓</span>
+                <small>Разведка</small>
+              </li>
+              <li class="route-line complete"></li>
+              <li class="route-step current" aria-current="step">
+                <span>2</span>
+                <small>Шансы</small>
+              </li>
+              <li class="route-line"></li>
+              <li class="route-step">
+                <span>3</span>
+                <small>Развилка</small>
+              </li>
+              <li class="route-line"></li>
+              <li class="route-step">
+                <span>4</span>
+                <small>Финал</small>
+              </li>
+            </ol>
+            <div class="episode-count">
+              <span id="episodeNumber">ЭПИЗОД 3</span>
+              <strong><span id="routeProgress">3</span> / 8</strong>
+            </div>
+          </div>
+
+          <div class="workspace">
+            <article class="task-panel" aria-labelledby="taskTitle">
+              <div class="task-toolbar">
+                <div class="task-kind">
+                  <span class="task-kind-icon" aria-hidden="true">◇</span>
+                  <span><small id="taskStage">ЭТАП 2 · ВЕРОЯТНОСТЬ</small><strong id="taskCode">ЗАДАЧА DC–03</strong></span>
+                </div>
+                <button class="quiet-button" id="rulesButton" type="button">
+                  <span aria-hidden="true">?</span> Правила
+                </button>
+              </div>
+
+              <div class="task-scroll" id="taskScroll">
+                <div class="task-heading">
+                  <div>
+                    <p class="task-overline" id="taskOverline">Найдите шанс комбинации</p>
+                    <h2 id="taskTitle">Соберите матовую комбинацию</h2>
+                  </div>
+                  <span class="difficulty-badge" id="difficultyBadge">Средняя сложность</span>
+                </div>
+
+                <p class="task-description" id="taskDescription">
+                  Бросают два честных кубика. На их гранях изображены шахматные фигуры.
+                  Результаты кубиков различимы.
+                </p>
+
+                <div class="game-surface">
+                  <div class="board-wrap">
+                    <div class="board-label">
+                      <span>ПОЗИЦИЯ НА ДОСКЕ</span>
+                      <small>контекст комбинации</small>
+                    </div>
+                    <div
+                      class="chess-board"
+                      id="chessBoard"
+                      role="img"
+                      aria-label="Шахматная позиция: белые готовят атаку на чёрного короля"
+                    ></div>
+                    <div class="board-caption">
+                      <span><i class="caption-dot cyan"></i> белые</span>
+                      <span><i class="caption-dot amber"></i> цель</span>
+                    </div>
+                  </div>
+
+                  <div class="dice-wrap">
+                    <div class="dice-heading">
+                      <span>ГРАНИ КУБИКОВ</span>
+                      <button class="text-button" id="rollDemo" type="button">
+                        <span aria-hidden="true">↻</span> Показать бросок
+                      </button>
+                    </div>
+
+                    <div class="die-row" id="dieRowA">
+                      <div class="die-name">
+                        <span class="die-swatch blue"></span>
+                        <span><strong>Кубик A</strong><small>честный · 6 граней</small></span>
+                      </div>
+                      <div class="face-list" aria-label="Грани кубика A">
+                        <span title="Пешка" aria-label="Пешка">♙</span>
+                        <span title="Пешка" aria-label="Пешка">♙</span>
+                        <span title="Конь" aria-label="Конь">♘</span>
+                        <span title="Конь" aria-label="Конь">♘</span>
+                        <span title="Ладья" aria-label="Ладья">♖</span>
+                        <span title="Ферзь" aria-label="Ферзь">♕</span>
+                      </div>
+                    </div>
+
+                    <div class="die-row" id="dieRowB">
+                      <div class="die-name">
+                        <span class="die-swatch white"></span>
+                        <span><strong>Кубик B</strong><small>честный · 6 граней</small></span>
+                      </div>
+                      <div class="face-list" aria-label="Грани кубика B">
+                        <span title="Пешка" aria-label="Пешка">♙</span>
+                        <span title="Конь" aria-label="Конь">♘</span>
+                        <span title="Конь" aria-label="Конь">♘</span>
+                        <span title="Слон" aria-label="Слон">♗</span>
+                        <span title="Ладья" aria-label="Ладья">♖</span>
+                        <span title="Ферзь" aria-label="Ферзь">♕</span>
+                      </div>
+                    </div>
+
+                    <div class="condition-card" id="conditionCard">
+                      <span class="condition-symbol" aria-hidden="true">♛</span>
+                      <div>
+                        <small>УСЛОВИЕ УСПЕХА</small>
+                        <p id="conditionText">
+                          Комбинация открывается, если выпал <strong>хотя бы один ферзь</strong>
+                          или одновременно выпали <strong>ладья и конь</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="question-card" id="questionCard">
+                  <div class="question-number">?</div>
+                  <div>
+                    <small>ВАШ ВОПРОС</small>
+                    <p id="questionText">Какова вероятность получить матовую комбинацию?</p>
+                    <span id="answerHint">
+                      Ответьте дробью, процентом или десятичным числом и коротко объясните расчёт.
+                    </span>
+                  </div>
+                </div>
+
+                <section class="feedback-card" id="feedbackCard" hidden aria-live="polite">
+                  <div class="feedback-mark" id="feedbackMark">✓</div>
+                  <div class="feedback-content">
+                    <small id="feedbackEyebrow">РЕШЕНИЕ ПРИНЯТО</small>
+                    <h3 id="feedbackTitle">Точный расчёт</h3>
+                    <p id="feedbackText"></p>
+                    <div class="feedback-actions">
+                      <button class="secondary-button" id="retryButton" type="button">
+                        Исправить решение
+                      </button>
+                      <button class="primary-button compact" id="nextEpisode" type="button">
+                        Следующий эпизод <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div
+                class="collapsed-composer-slot"
+                id="collapsedComposerSlot"
+                aria-label="Поле отправки решения"
+                hidden
+              ></div>
+
+              <footer class="task-footer">
+                <div class="attempt-state">
+                  <span>ПОПЫТКИ</span>
+                  <div class="attempt-dots" aria-label="Попытка 1 из 3">
+                    <i class="active"></i><i></i><i></i>
+                  </div>
+                  <strong id="attemptCounter">1 из 3</strong>
+                </div>
+                <p id="adaptiveNote">
+                  Следующий эпизод будет выбран по вашему решению
+                  <span class="pulse-dot" aria-hidden="true"></span>
+                </p>
+              </footer>
+            </article>
+
+            <aside class="chat-panel" id="chatPanel" aria-labelledby="chatTitle">
+              <div class="chat-header">
+                <div class="navigator-identity">
+                  <span class="navigator-avatar" aria-hidden="true">✦</span>
+                  <span>
+                    <small>НАВИГАТОР МИССИИ</small>
+                    <strong id="chatTitle">Чат миссии</strong>
+                  </span>
+                </div>
+                <div class="navigator-status"><i></i> ИИ доступен</div>
+                <button
+                  class="icon-button panel-toggle"
+                  id="collapseChat"
+                  type="button"
+                  aria-label="Скрыть диалог с ИИ, оставив поле ответа"
+                  aria-expanded="true"
+                >
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+
+              <div class="chat-context">
+                <span class="context-orbit" aria-hidden="true"></span>
+                <span>
+                  <small>КОНТЕКСТ</small>
+                  <strong id="chatContextName">Задача DC–03</strong>
+                </span>
+                <span class="context-ready">условие загружено</span>
+              </div>
+
+              <div
+                class="message-list"
+                id="messageList"
+                aria-live="polite"
+                aria-label="Диалог с навигатором"
+              >
+                <div class="message assistant-message">
+                  <div class="message-avatar" aria-hidden="true">✦</div>
+                  <div class="message-body">
+                    <span class="message-author">Навигатор</span>
+                    <div class="message-bubble">
+                      Я могу уточнить условие, разобрать похожий пример или проверить вашу
+                      идею. Использовать меня необязательно — решение можно сразу отправить
+                      самостоятельно.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="quick-actions" id="quickActions">
+                <span>МОЖНО СПРОСИТЬ</span>
+                <div>
+                  <button type="button" data-prompt="Помоги построить пространство исходов">
+                    Пространство исходов
+                  </button>
+                  <button type="button" data-prompt="Как не посчитать один исход дважды?">
+                    Проверить пересечения
+                  </button>
+                  <button type="button" data-prompt="Объясни условие проще">
+                    Объяснить проще
+                  </button>
+                </div>
+              </div>
+
+              <div class="composer">
+                <div class="mode-switch" role="group" aria-label="Режим сообщения">
+                  <button class="mode-button active" type="button" data-mode="assistant" aria-pressed="true">
+                    <span aria-hidden="true">✦</span> Обсудить с ИИ
+                  </button>
+                  <button class="mode-button" type="button" data-mode="solution" aria-pressed="false">
+                    <span aria-hidden="true">✓</span> Отправить решение
+                  </button>
+                </div>
+
+                <label class="sr-only" for="messageInput">Сообщение</label>
+                <div class="input-shell">
+                  <textarea
+                    id="messageInput"
+                    rows="3"
+                    maxlength="900"
+                    placeholder="Задайте вопрос или опишите свою идею…"
+                  ></textarea>
+                  <div class="input-meta">
+                    <span id="composerHint">Enter — отправить · Shift+Enter — новая строка</span>
+                    <button class="send-button" id="sendMessage" type="button" aria-label="Отправить сообщение">
+                      <span class="send-label">Отправить</span>
+                      <span class="send-arrow" aria-hidden="true">↑</span>
+                    </button>
+                  </div>
+                </div>
+                <p class="attempt-warning" id="attemptWarning" hidden>
+                  <span aria-hidden="true">◎</span>
+                  Это будет попытка <strong>1 из 3</strong>
+                </p>
+              </div>
+            </aside>
+
+            <button
+              class="chat-restore"
+              id="restoreChat"
+              type="button"
+              hidden
+              aria-label="Открыть ИИ-помощника"
+            >
+              <span aria-hidden="true">✦</span>
+              <span>Открыть диалог с ИИ</span>
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="rules-dialog" id="rulesDialog">
+      <form method="dialog">
+        <div class="dialog-header">
+          <div>
+            <span class="section-kicker"><span></span> КАК ЭТО РАБОТАЕТ</span>
+            <h2>Правила миссии</h2>
+          </div>
+          <button class="dialog-close" value="close" aria-label="Закрыть правила">×</button>
+        </div>
+        <ol>
+          <li><strong>Читайте условие.</strong> Все нужные правила игры уже находятся в задаче.</li>
+          <li><strong>Используйте ИИ по желанию.</strong> Можно просить объяснение или решать без подсказок.</li>
+          <li><strong>Отправляйте ответ в чате.</strong> Переключите режим на «Отправить решение».</li>
+          <li><strong>Двигайтесь по своему маршруту.</strong> Следующая задача зависит от текущего ответа.</li>
+        </ol>
+        <button class="primary-button dialog-action" value="close">Понятно</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>
