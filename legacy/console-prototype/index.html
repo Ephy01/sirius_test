@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Минималистичный консольный прототип миссии Dice &amp; Chess для платформы интеллектуальных отборов Сириус"
+    />
+    <meta name="theme-color" content="#f6f6f8" />
+    <title>Dice &amp; Chess · Сириус</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="Сириус — интеллектуальные миссии">
+          <span class="logo" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </span>
+          <span class="brand-name">Сириус <span>/ интеллектуальные миссии</span></span>
+        </div>
+
+        <div class="session-meta" aria-label="Состояние миссии">
+          <span class="mission-name">Dice &amp; Chess</span>
+          <span class="session-id">SESSION 7F2A</span>
+          <time id="sessionTime" datetime="PT0M0S">00:00</time>
+        </div>
+      </header>
+
+      <main class="mission-view">
+        <article class="task-zone" aria-labelledby="taskTitle">
+          <header class="zone-header">
+            <div>
+              <p class="zone-label">ЗОНА ЗАДАЧИ</p>
+              <p class="task-path" id="taskPath">ЭПИЗОД 03 · ОБУЧЕНИЕ</p>
+            </div>
+            <span class="task-code" id="taskCode">DC–03</span>
+          </header>
+
+          <div class="task-scroll">
+            <section class="task-copy">
+              <p class="task-overline" id="taskOverline">Вероятность составного события</p>
+              <h1 id="taskTitle">Откройте атакующую комбинацию</h1>
+              <p class="task-description" id="taskDescription">
+                Бросают два честных кубика. На их гранях изображены шахматные фигуры.
+                Кубики различимы.
+              </p>
+            </section>
+
+            <section class="condition-card" aria-labelledby="conditionLabel">
+              <span class="condition-mark" aria-hidden="true">◇</span>
+              <div>
+                <p id="conditionLabel">УСЛОВИЕ УСПЕХА</p>
+                <div id="conditionText">
+                  Комбинация открывается, если выпал <strong>хотя бы один ферзь</strong>
+                  или одновременно выпали <strong>ладья и конь</strong>.
+                </div>
+              </div>
+            </section>
+
+            <section class="question-card" aria-labelledby="questionLabel">
+              <p id="questionLabel">ВОПРОС</p>
+              <h2 id="questionText">Какова вероятность получить атакующую комбинацию?</h2>
+              <p id="answerHint">
+                Ответьте дробью, процентом или десятичным числом и коротко объясните расчёт.
+              </p>
+            </section>
+
+            <div class="game-context">
+              <figure class="board-card">
+                <figcaption>
+                  <span>ПОЗИЦИЯ CHESS960</span>
+                  <small>seed 7F2A · игровая среда</small>
+                </figcaption>
+                <div
+                  class="chess-board"
+                  id="chessBoard"
+                  role="img"
+                  aria-label="Стартовая позиция Chess960: слон, конь, ладья, король, ферзь, слон, ладья, конь"
+                ></div>
+              </figure>
+
+              <section class="dice-card" aria-labelledby="diceTitle">
+                <div class="context-heading">
+                  <span id="diceTitle">ГРАНИ КУБИКОВ</span>
+                  <small>каждая грань равновероятна</small>
+                </div>
+
+                <div class="die-row" data-die="A">
+                  <div class="die-name">
+                    <span class="die-token purple">A</span>
+                    <span>Кубик A</span>
+                  </div>
+                  <div class="face-list" aria-label="Грани кубика A">
+                    <span title="Пешка" data-face="пешка">♙<small>пешка</small></span>
+                    <span title="Пешка" data-face="пешка">♙<small>пешка</small></span>
+                    <span title="Конь" data-face="конь">♘<small>конь</small></span>
+                    <span title="Конь" data-face="конь">♘<small>конь</small></span>
+                    <span title="Ладья" data-face="ладья">♖<small>ладья</small></span>
+                    <span title="Ферзь" data-face="ферзь">♕<small>ферзь</small></span>
+                  </div>
+                </div>
+
+                <div class="die-row" data-die="B">
+                  <div class="die-name">
+                    <span class="die-token blue">B</span>
+                    <span>Кубик B</span>
+                  </div>
+                  <div class="face-list" aria-label="Грани кубика B">
+                    <span title="Пешка" data-face="пешка">♙<small>пешка</small></span>
+                    <span title="Конь" data-face="конь">♘<small>конь</small></span>
+                    <span title="Конь" data-face="конь">♘<small>конь</small></span>
+                    <span title="Слон" data-face="слон">♗<small>слон</small></span>
+                    <span title="Ладья" data-face="ладья">♖<small>ладья</small></span>
+                    <span title="Ферзь" data-face="ферзь">♕<small>ферзь</small></span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </article>
+
+        <section class="console-zone" aria-labelledby="consoleTitle">
+          <header class="console-header">
+            <div>
+              <p class="zone-label">ЕДИНАЯ ТОЧКА УПРАВЛЕНИЯ</p>
+              <h2 id="consoleTitle">Консоль миссии</h2>
+            </div>
+            <span class="connection-state"><i aria-hidden="true"></i> online</span>
+          </header>
+
+          <div
+            class="console-log"
+            id="consoleLog"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-label="История команд и сообщений миссии"
+          ></div>
+
+          <form class="command-form" id="commandForm" autocomplete="off">
+            <label class="command-line" for="commandInput">
+              <span class="prompt" id="promptLabel">pilot@dc03:~$</span>
+              <textarea
+                id="commandInput"
+                rows="1"
+                maxlength="1200"
+                spellcheck="true"
+                aria-describedby="commandHelp"
+                placeholder="Введите /help или задайте вопрос…"
+              ></textarea>
+            </label>
+            <button class="sr-only" type="submit">Выполнить команду</button>
+            <p class="command-help" id="commandHelp">
+              <span>Enter — выполнить</span>
+              <span>Shift+Enter — новая строка</span>
+              <span id="phaseHint">Начните с /help</span>
+            </p>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <noscript>
+      <p class="noscript-message">
+        Для запуска интерактивной миссии необходимо включить JavaScript.
+      </p>
+    </noscript>
+  </body>
+</html>

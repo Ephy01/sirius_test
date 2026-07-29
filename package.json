@@ -1,9 +1,24 @@
 {
-  "name": "sirius-dice-chess",
+  "name": "sirius-gate",
   "version": "0.1.0",
   "private": true,
-  "description": "Frontend prototype for a branching Dice & Chess assessment mission",
+  "type": "module",
+  "description": "UI prototype for the Sirius intellectual contest platform",
   "scripts": {
-    "check": "node --check app.js"
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "check": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "typescript": "^6.0.0",
+    "vite": "^8.1.0"
   }
 }
