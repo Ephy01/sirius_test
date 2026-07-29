@@ -1,0 +1,3 @@
+from .chess960 import FAMILY_KEY, GENERATOR_VERSION
+
+__all__ = ["FAMILY_KEY", "GENERATOR_VERSION"]

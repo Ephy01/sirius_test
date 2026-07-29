@@ -1,0 +1,217 @@
+from datetime import datetime, timezone
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .models import (
+    AccessCodeStatus,
+    AttemptStatus,
+    ContestStatus,
+    EnrollmentStatus,
+    TaskStatus,
+)
+
+
+class ApiModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def normalize_naive_datetimes_as_utc(self):
+        # SQLite drops timezone metadata even for DateTime(timezone=True).
+        # The service stores UTC, so restore the offset before JSON serialization
+        # instead of letting browsers interpret naive values as local time.
+        for field_name in type(self).model_fields:
+            value = getattr(self, field_name, None)
+            if isinstance(value, datetime) and value.tzinfo is None:
+                setattr(self, field_name, value.replace(tzinfo=timezone.utc))
+        return self
+
+
+class HealthResponse(ApiModel):
+    status: Literal["ok"] = "ok"
+    service: str
+
+
+class AccessRedeemRequest(ApiModel):
+    code: str = Field(min_length=3, max_length=80)
+
+    @field_validator("code")
+    @classmethod
+    def clean_code(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("code must not be blank")
+        return cleaned
+
+
+class AccessRedeemResponse(ApiModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    role: Literal["organizer", "participant"]
+    expires_at: datetime
+
+
+class ContestCreate(ApiModel):
+    title: str = Field(min_length=1, max_length=200)
+    duration_minutes: int = Field(default=60, ge=5, le=480)
+    environment_key: Literal["chess_world"] = "chess_world"
+    task_config: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("title must not be blank")
+        return cleaned
+
+
+class ContestResponse(ApiModel):
+    id: str
+    title: str
+    duration_minutes: int
+    environment_key: str
+    task_config: dict[str, Any]
+    status: ContestStatus
+    created_at: datetime
+    updated_at: datetime
+    published_at: datetime | None
+
+
+class ContestListResponse(ApiModel):
+    items: list[ContestResponse]
+
+
+class ParticipantInput(ApiModel):
+    external_ref: str = Field(min_length=1, max_length=160)
+    display_name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("external_ref", "display_name")
+    @classmethod
+    def clean_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value must not be blank")
+        return cleaned
+
+
+class EnrollmentBulkCreate(ApiModel):
+    participants: list[ParticipantInput] = Field(min_length=1, max_length=1_000)
+
+    @field_validator("participants")
+    @classmethod
+    def unique_external_refs(cls, value: list[ParticipantInput]) -> list[ParticipantInput]:
+        refs = [participant.external_ref for participant in value]
+        if len(set(refs)) != len(refs):
+            raise ValueError("external_ref values must be unique within the request")
+        return value
+
+
+class ParticipantResponse(ApiModel):
+    id: str
+    external_ref: str
+    display_name: str
+
+
+class EnrollmentResponse(ApiModel):
+    id: str
+    contest_id: str
+    participant_id: str
+    status: EnrollmentStatus
+    participant: ParticipantResponse
+    created_at: datetime
+
+
+class EnrollmentBulkResponse(ApiModel):
+    items: list[EnrollmentResponse]
+    created_count: int
+
+
+class CodeGenerationRequest(ApiModel):
+    rotate: bool = False
+    expires_at: datetime | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_must_be_future(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        normalized = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        if normalized <= datetime.now(timezone.utc):
+            raise ValueError("expires_at must be in the future")
+        return normalized
+
+
+class GeneratedCodeResponse(ApiModel):
+    enrollment_id: str
+    participant: ParticipantResponse
+    code: str
+    last4: str
+    status: AccessCodeStatus
+    expires_at: datetime | None
+
+
+class CodeGenerationResponse(ApiModel):
+    items: list[GeneratedCodeResponse]
+    generated_count: int
+    skipped_count: int
+
+
+class AttemptResponse(ApiModel):
+    id: str
+    enrollment_id: str
+    number: int
+    seed: int
+    status: AttemptStatus
+    started_at: datetime
+    deadline_at: datetime
+    finished_at: datetime | None
+
+
+class AttemptStartResponse(ApiModel):
+    attempt: AttemptResponse
+    created: bool
+
+
+class ParticipantContextResponse(ApiModel):
+    contest: ContestResponse
+    enrollment: EnrollmentResponse
+    participant: ParticipantResponse
+    active_attempt: AttemptResponse | None
+
+
+class TaskResponse(ApiModel):
+    id: str
+    ordinal: int
+    family: str
+    generator_version: str
+    difficulty: int
+    status: TaskStatus
+    public_state: dict[str, Any]
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class CurrentTaskResponse(ApiModel):
+    task: TaskResponse | None
+
+
+class NextTaskResponse(ApiModel):
+    task: TaskResponse
+    created: bool
+
+
+class TaskAnswerRequest(ApiModel):
+    answer: str = Field(min_length=1, max_length=4_000)
+
+    @field_validator("answer")
+    @classmethod
+    def answer_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("answer must not be blank")
+        return value
+
+
+class TaskActionResponse(ApiModel):
+    task: TaskResponse
+    message: str

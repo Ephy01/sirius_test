@@ -6,6 +6,7 @@
   "description": "UI prototype for the Sirius intellectual contest platform",
   "scripts": {
     "dev": "vite",
+    "dev:api": "python3 -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8001",
     "build": "tsc -b && vite build",
     "check": "tsc --noEmit",
     "preview": "vite preview"

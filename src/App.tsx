@@ -1,13 +1,17 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  ApiError,
+  api,
+  type ContestSummary as ApiContestSummary,
+  type ParticipantTask as ApiParticipantTask,
+} from "./api";
 import {
   clearAccessSession,
-  createAccessSession,
-  DEMO_CODES,
   loadAccessSession,
   normalizeAccessCode,
-  resolveAccessCode,
+  redeemAccessCode,
   saveAccessSession,
-  type AccessRole,
+  updateAccessSession,
   type AccessSession,
 } from "./auth";
 import {
@@ -17,8 +21,19 @@ import {
   OrbitGlyph,
   PlusIcon,
 } from "./components";
+import {
+  ContestBuilder,
+  type ContestDraftInput,
+  type ContestSummary as BuilderContestSummary,
+  type GeneratedCodeRow,
+  type ParticipantDraft,
+} from "./organizer/ContestBuilder";
+import {
+  ParticipantWorkspace,
+  type ParticipantTask as WorkspaceParticipantTask,
+} from "./participant";
 
-type Authenticate = (role: AccessRole, code: string) => void;
+type Authenticate = (code: string) => Promise<void>;
 
 export function App() {
   const [session, setSession] = useState<AccessSession | null>(() => loadAccessSession());
@@ -42,11 +57,63 @@ export function App() {
     setPath(expectedPath);
   }, [expectedPath, path]);
 
-  function authenticate(role: AccessRole, code: string) {
-    const nextSession = createAccessSession(role, code);
-    saveAccessSession(nextSession);
+  useEffect(() => {
+    if (!session || session.role !== "participant") return;
+
+    const controller = new AbortController();
+    api
+      .getParticipantContext({
+        token: session.token,
+        signal: controller.signal,
+      })
+      .then((context) => {
+        const refreshed: AccessSession = {
+          ...session,
+          contest: context.contest,
+          participant: context.participant,
+          enrollment: context.enrollment,
+          attempt: context.attempt,
+        };
+        saveAccessSession(refreshed);
+        setSession(refreshed);
+      })
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        if (caught instanceof ApiError && caught.status === 401) {
+          clearAccessSession();
+          setSession(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [session?.role, session?.token]);
+
+  async function authenticate(code: string) {
+    const redeemedSession = await redeemAccessCode(code);
+    let nextSession = redeemedSession;
+
+    if (redeemedSession.role === "participant") {
+      try {
+        const context = await api.getParticipantContext({
+          token: redeemedSession.token,
+        });
+        nextSession = {
+          ...redeemedSession,
+          contest: context.contest,
+          participant: context.participant,
+          enrollment: context.enrollment,
+          attempt: context.attempt,
+        };
+        saveAccessSession(nextSession);
+      } catch (caught) {
+        clearAccessSession();
+        throw caught;
+      }
+    }
+
     setSession(nextSession);
-    const destination = role === "organizer" ? "/organizer" : "/contest";
+    const destination =
+      nextSession.role === "organizer" ? "/organizer" : "/contest";
     window.history.pushState(null, "", destination);
     setPath(destination);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -61,8 +128,16 @@ export function App() {
   }
 
   if (!session) return <AccessScreen onAuthenticate={authenticate} />;
-  if (session.role === "organizer") return <OrganizerDashboard onLogout={logout} />;
-  return <ParticipantContest onLogout={logout} />;
+  if (session.role === "organizer") {
+    return <OrganizerDashboard session={session} onLogout={logout} />;
+  }
+  return (
+    <ParticipantWaitingScreen
+      session={session}
+      onSessionChange={setSession}
+      onLogout={logout}
+    />
+  );
 }
 
 function AccessScreen({ onAuthenticate }: { onAuthenticate: Authenticate }) {
@@ -75,19 +150,11 @@ function AccessScreen({ onAuthenticate }: { onAuthenticate: Authenticate }) {
     inputRef.current?.focus();
   }, []);
 
-  function selectDemoCode(value: string) {
-    setCode(value);
-    setError("");
-    inputRef.current?.focus();
-  }
-
-  function submitAccess(event: FormEvent<HTMLFormElement>) {
+  async function submitAccess(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalized = normalizeAccessCode(code);
-    const role = resolveAccessCode(normalized);
-
-    if (!role) {
-      setError("Код не найден. Проверьте символы или выберите демо-доступ ниже.");
+    if (!normalized) {
+      setError("Введите код доступа.");
       inputRef.current?.focus();
       return;
     }
@@ -95,9 +162,17 @@ function AccessScreen({ onAuthenticate }: { onAuthenticate: Authenticate }) {
     setBusy(true);
     setError("");
 
-    window.setTimeout(() => {
-      onAuthenticate(role, normalized);
-    }, 360);
+    try {
+      await onAuthenticate(normalized);
+    } catch (caught) {
+      setBusy(false);
+      setError(
+        caught instanceof ApiError || caught instanceof Error
+          ? caught.message
+          : "Не удалось проверить код. Повторите попытку.",
+      );
+      inputRef.current?.focus();
+    }
   }
 
   return (
@@ -112,57 +187,7 @@ function AccessScreen({ onAuthenticate }: { onAuthenticate: Authenticate }) {
       </header>
 
       <main className="access-layout">
-        <section className="access-story" aria-labelledby="accessTitle">
-          <div className="access-story__copy">
-            <p className="eyebrow">Интеллектуальные состязания нового типа</p>
-            <h1 id="accessTitle">
-              Маршрут,
-              <span> которого раньше не было.</span>
-            </h1>
-            <p className="access-lead">
-              Задачи меняются вслед за вашими решениями. Исследуйте правила,
-              проверяйте идеи и двигайтесь по собственной траектории.
-            </p>
-          </div>
-
-          <div className="story-facts" aria-label="Особенности платформы">
-            <article>
-              <span>01</span>
-              <strong>Новый вариант</strong>
-              <p>У каждого участника свой маршрут миссии.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <strong>ИИ по желанию</strong>
-              <p>Навигатор помогает думать, но может ошибаться.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <strong>Видимый процесс</strong>
-              <p>Организатор видит хронологию решений.</p>
-            </article>
-          </div>
-
-          <div className="story-visual" aria-hidden="true">
-            <OrbitGlyph />
-            <span className="story-visual__label story-visual__label--one">
-              исследуй
-            </span>
-            <span className="story-visual__label story-visual__label--two">
-              проверяй
-            </span>
-            <span className="story-visual__label story-visual__label--three">
-              решай
-            </span>
-          </div>
-        </section>
-
         <section className="gate-panel" aria-labelledby="gateTitle">
-          <div className="gate-panel__top">
-            <span>Единая точка входа</span>
-            <span className="secure-label">защищённый доступ</span>
-          </div>
-
           <div className="gate-panel__content">
             <p className="eyebrow">Sirius Gate</p>
             <h2 id="gateTitle">Введите код доступа</h2>
@@ -203,47 +228,145 @@ function AccessScreen({ onAuthenticate }: { onAuthenticate: Authenticate }) {
                 <ArrowIcon />
               </button>
             </form>
-
-            <div className="demo-access" aria-label="Демонстрационные коды">
-              <div className="demo-access__heading">
-                <span>Демо-доступ</span>
-                <small>только для прототипа</small>
-              </div>
-              <button
-                type="button"
-                onClick={() => selectDemoCode(DEMO_CODES.participant)}
-              >
-                <span>
-                  <i className="demo-role demo-role--participant" />
-                  Участник
-                </span>
-                <code>{DEMO_CODES.participant}</code>
-              </button>
-              <button
-                type="button"
-                onClick={() => selectDemoCode(DEMO_CODES.organizer)}
-              >
-                <span>
-                  <i className="demo-role demo-role--organizer" />
-                  Организатор
-                </span>
-                <code>{DEMO_CODES.organizer}</code>
-              </button>
-            </div>
           </div>
-
-          <footer className="gate-panel__footer">
-            <span>© Университет «Сириус»</span>
-            <span>Прототип интерфейса</span>
-          </footer>
         </section>
       </main>
     </div>
   );
 }
 
-function OrganizerDashboard({ onLogout }: { onLogout: () => void }) {
+function OrganizerDashboard({
+  session,
+  onLogout,
+}: {
+  session: AccessSession;
+  onLogout: () => void;
+}) {
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [contests, setContests] = useState<ApiContestSummary[]>([]);
+  const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
+
+  async function refreshContests() {
+    setLoading(true);
+    setNotice("");
+    try {
+      const items = await api.listContests({ token: session.token });
+      setContests(items);
+    } catch (caught) {
+      setNotice(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось загрузить контесты.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshContests();
+  }, [session.token]);
+
+  async function createContest(
+    input: ContestDraftInput,
+  ): Promise<BuilderContestSummary> {
+    const created = await api.createContest(
+      {
+        title: input.title,
+        durationMinutes: input.durationMinutes,
+        environmentKey: input.environmentKey,
+        taskConfig: {
+          adaptation_threshold: input.taskConfig.adaptationThreshold,
+          families: input.taskConfig.families.map((family) => ({
+            key: family.key,
+            enabled: family.enabled,
+            weight: family.weight,
+            initial_difficulty: family.initialDifficulty,
+            max_difficulty: family.maxDifficulty,
+          })),
+        },
+      },
+      { token: session.token },
+    );
+    return {
+      id: created.id,
+      title: created.title,
+      durationMinutes: created.durationMinutes,
+      status: created.status === "published" ? "published" : "draft",
+    };
+  }
+
+  async function addParticipants(
+    contestId: string,
+    participants: ParticipantDraft[],
+  ) {
+    await api.addEnrollments(
+      contestId,
+      {
+        participants: participants.map((participant) => ({
+          externalRef: participant.externalRef,
+          displayName: participant.displayName,
+        })),
+      },
+      { token: session.token },
+    );
+  }
+
+  async function generateCodes(contestId: string): Promise<GeneratedCodeRow[]> {
+    const response = await api.generateCodes(
+      contestId,
+      {},
+      { token: session.token },
+    );
+    return response.codes.map((item) => ({
+      enrollmentId: item.enrollmentId,
+      externalRef: item.participantExternalRef ?? "—",
+      displayName: item.participantName,
+      code: item.code,
+    }));
+  }
+
+  async function publishContest(
+    contestId: string,
+  ): Promise<BuilderContestSummary> {
+    const published = await api.publishContest(contestId, {
+      token: session.token,
+    });
+    await refreshContests();
+    return {
+      id: published.id,
+      title: published.title,
+      durationMinutes: published.durationMinutes,
+      status: "published",
+    };
+  }
+
+  if (builderOpen) {
+    return (
+      <div className="dashboard-page">
+        <AppHeader
+          role="Организатор"
+          onLogout={onLogout}
+          meta={<span className="workspace-label">Конструктор контеста</span>}
+        />
+        <ContestBuilder
+          onCancel={() => {
+            setBuilderOpen(false);
+            void refreshContests();
+          }}
+          onCreateContest={createContest}
+          onAddParticipants={addParticipants}
+          onGenerateCodes={generateCodes}
+          onPublish={publishContest}
+        />
+      </div>
+    );
+  }
+
+  const publishedCount = contests.filter(
+    (contest) => contest.status === "published",
+  ).length;
 
   return (
     <div className="dashboard-page">
@@ -259,7 +382,7 @@ function OrganizerDashboard({ onLogout }: { onLogout: () => void }) {
             <button className="side-nav-item side-nav-item--active" type="button">
               <span className="side-nav-icon">◫</span>
               Контесты
-              <small>0</small>
+              <small>{contests.length}</small>
             </button>
             <button className="side-nav-item" type="button" disabled>
               <span className="side-nav-icon">◎</span>
@@ -288,7 +411,7 @@ function OrganizerDashboard({ onLogout }: { onLogout: () => void }) {
             <button
               className="primary-action primary-action--fit"
               type="button"
-              onClick={() => setNotice("Конструктор контеста станет следующим экраном разработки.")}
+              onClick={() => setBuilderOpen(true)}
             >
               <PlusIcon />
               <span>Создать контест</span>
@@ -298,13 +421,13 @@ function OrganizerDashboard({ onLogout }: { onLogout: () => void }) {
           <section className="dashboard-stats" aria-label="Краткая статистика">
             <article>
               <span>Активные контесты</span>
-              <strong>0</strong>
-              <small>пока ничего не запущено</small>
+              <strong>{publishedCount}</strong>
+              <small>опубликованы и доступны по кодам</small>
             </article>
             <article>
-              <span>Выданные коды</span>
-              <strong>0</strong>
-              <small>участники ещё не добавлены</small>
+              <span>Всего контестов</span>
+              <strong>{loading ? "…" : contests.length}</strong>
+              <small>черновики и опубликованные</small>
             </article>
             <article className="dashboard-stats__accent">
               <span>Статус системы</span>
@@ -313,321 +436,296 @@ function OrganizerDashboard({ onLogout }: { onLogout: () => void }) {
             </article>
           </section>
 
-          <section className="empty-dashboard" aria-labelledby="emptyDashboardTitle">
-            <div className="empty-dashboard__visual" aria-hidden="true">
-              <OrbitGlyph />
-              <span>+</span>
-            </div>
-            <div className="empty-dashboard__copy">
-              <span className="empty-label">Пустое пространство</span>
-              <h2 id="emptyDashboardTitle">Здесь появятся ваши контесты</h2>
-              <p>
-                Первый контест начнётся с выбора игровых сред, начальной сложности
-                и количества доступных кодов.
-              </p>
-              <button
-                className="text-action"
-                type="button"
-                onClick={() => setNotice("Конструктор контеста станет следующим экраном разработки.")}
-              >
-                Создать первый контест
-                <ArrowIcon />
-              </button>
+          {contests.length ? (
+            <section className="contest-list" aria-label="Созданные контесты">
+              {contests.map((contest) => (
+                <article key={contest.id}>
+                  <div>
+                    <span
+                      className={`contest-status contest-status--${contest.status}`}
+                    >
+                      {contest.status === "published"
+                        ? "Опубликован"
+                        : "Черновик"}
+                    </span>
+                    <span className="eyebrow">Шахматный мир</span>
+                  </div>
+                  <h2>{contest.title}</h2>
+                  <p>{contest.durationMinutes} минут · персональные коды</p>
+                </article>
+              ))}
               <p className="dashboard-notice" role="status">
                 {notice}
               </p>
-            </div>
-          </section>
+            </section>
+          ) : (
+            <section
+              className="empty-dashboard"
+              aria-labelledby="emptyDashboardTitle"
+            >
+              <div className="empty-dashboard__visual" aria-hidden="true">
+                <OrbitGlyph />
+                <span>+</span>
+              </div>
+              <div className="empty-dashboard__copy">
+                <span className="empty-label">Пустое пространство</span>
+                <h2 id="emptyDashboardTitle">Здесь появятся ваши контесты</h2>
+                <p>
+                  Первый контест начнётся с настройки «Шахматного мира» и
+                  выпуска персональных кодов.
+                </p>
+                <button
+                  className="text-action"
+                  type="button"
+                  onClick={() => setBuilderOpen(true)}
+                >
+                  Создать первый контест
+                  <ArrowIcon />
+                </button>
+                <p className="dashboard-notice" role="status">
+                  {notice}
+                </p>
+              </div>
+            </section>
+          )}
         </main>
       </div>
     </div>
   );
 }
 
-type ConsoleEntry = {
-  id: number;
-  author: "Система" | "Вы" | "ИИ-навигатор";
-  tone: "system" | "user" | "ai";
-  text: string;
-};
+function ParticipantWaitingScreen({
+  session,
+  onSessionChange,
+  onLogout,
+}: {
+  session: AccessSession;
+  onSessionChange: (session: AccessSession) => void;
+  onLogout: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const attempt = session.attempt;
 
-const INITIAL_CONSOLE: ConsoleEntry[] = [
-  {
-    id: 1,
-    author: "Система",
-    tone: "system",
-    text: "Миссия DC–03 запущена. Все действия выполняются через эту консоль.",
-  },
-  {
-    id: 2,
-    author: "Система",
-    tone: "system",
-    text: "Введите /help, чтобы увидеть доступные команды.",
-  },
-];
-
-function ParticipantContest({ onLogout }: { onLogout: () => void }) {
-  const [input, setInput] = useState("");
-  const [entries, setEntries] = useState<ConsoleEntry[]>(INITIAL_CONSOLE);
-  const [secondsLeft, setSecondsLeft] = useState(() => getInitialSecondsLeft());
-  const nextId = useRef(3);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setSecondsLeft(getInitialSecondsLeft());
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  const timer = useMemo(() => {
-    const minutes = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
-    const seconds = String(secondsLeft % 60).padStart(2, "0");
-    return `${minutes}:${seconds}`;
-  }, [secondsLeft]);
-
-  function appendEntry(author: ConsoleEntry["author"], tone: ConsoleEntry["tone"], text: string) {
-    setEntries((current) => [
-      ...current,
-      { id: nextId.current++, author, tone, text },
-    ]);
+  if (attempt) {
+    return (
+      <ParticipantContestScreen
+        session={session}
+        onLogout={onLogout}
+      />
+    );
   }
 
-  function submitCommand(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const command = input.trim();
-    if (!command) return;
-
-    setInput("");
-    appendEntry("Вы", "user", command);
-
-    window.setTimeout(() => {
-      const normalized = command.toLowerCase();
-      if (normalized === "/help") {
-        appendEntry(
-          "Система",
-          "system",
-          "/ask <вопрос> · /check <черновик> · /answer <ответ> · /skip",
-        );
-      } else if (normalized.startsWith("/ask")) {
-        appendEntry(
-          "ИИ-навигатор",
-          "ai",
-          "Начните с пространства исходов: сколько различных пар могут образовать два шестигранных кубика?",
-        );
-      } else if (normalized.startsWith("/check")) {
-        appendEntry(
-          "ИИ-навигатор",
-          "ai",
-          "Я могу ошибаться, но в черновике стоит отдельно проверить пересечение событий с двумя ферзями.",
-        );
-      } else if (normalized.startsWith("/answer")) {
-        appendEntry(
-          "Система",
-          "system",
-          "Ответ зафиксирован. Официальная правильность будет скрыта до завершения контеста.",
-        );
-      } else if (normalized === "/skip") {
-        appendEntry(
-          "Система",
-          "system",
-          "Задача сохранена в маршруте. Переход к следующему эпизоду будет подключён на следующем этапе.",
-        );
-      } else {
-        appendEntry(
-          "Система",
-          "system",
-          "Команда не распознана. Используйте /help.",
-        );
-      }
-    }, 280);
+  async function startAttempt() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await api.startAttempt(
+        {},
+        { token: session.token },
+      );
+      const next =
+        updateAccessSession({ attempt: response.attempt }) ?? {
+          ...session,
+          attempt: response.attempt,
+        };
+      onSessionChange(next);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось запустить попытку.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <div className="contest-page">
+    <div className="participant-page">
       <AppHeader
         role="Участник"
         onLogout={onLogout}
-        meta={
-          <div className="contest-meta">
-            <span>Dice &amp; Chess</span>
-            <time dateTime={`PT${secondsLeft}S`}>{timer}</time>
-          </div>
-        }
+        meta={<span className="workspace-label">Контест</span>}
       />
 
-      <main className="contest-main">
-        <section className="mission-route" aria-label="Маршрут миссии">
-          <div>
-            <span className="eyebrow">Маршрут миссии</span>
-            <strong>Вероятности на доске</strong>
-          </div>
-          <ol>
-            <li className="mission-route__done"><i>✓</i><span>Разведка</span></li>
-            <li className="mission-route__active"><i>02</i><span>Комбинации</span></li>
-            <li><i>03</i><span>Стратегия</span></li>
-            <li><i>04</i><span>Финал</span></li>
-          </ol>
-          <span className="mission-route__code">SESSION 7F2A</span>
-        </section>
-
-        <div className="mission-workspace">
-          <article className="task-panel">
-            <header className="panel-heading">
-              <div>
-                <p className="eyebrow">Эпизод 02 · обучение</p>
-                <span>DC–03</span>
-              </div>
-              <span className="difficulty-label">уровень 3 / 10</span>
-            </header>
-
-            <div className="task-panel__body">
-              <div className="task-copy">
-                <p className="task-subject">Вероятность составного события</p>
-                <h1>Откройте атакующую комбинацию</h1>
-                <p>
-                  Бросают два честных кубика. На их гранях изображены шахматные
-                  фигуры. Кубики различимы.
-                </p>
-              </div>
-
-              <section className="success-condition">
-                <span>Условие успеха</span>
-                <p>
-                  Выпал <strong>хотя бы один ферзь</strong> или одновременно
-                  выпали <strong>ладья и конь</strong>.
-                </p>
-              </section>
-
-              <section className="task-question">
-                <span>Вопрос</span>
-                <h2>Какова вероятность получить атакующую комбинацию?</h2>
-                <p>Ответьте через консоль справа. Объяснение можно добавить после числа.</p>
-              </section>
-
-              <div className="game-board">
-                <ChessBoard />
-                <DicePanel />
-              </div>
-            </div>
-          </article>
-
-          <section className="terminal-panel" aria-labelledby="terminalTitle">
-            <header className="terminal-heading">
-              <div>
-                <p className="eyebrow">Единая точка управления</p>
-                <h2 id="terminalTitle">Консоль миссии</h2>
-              </div>
-              <span className="online-state"><i /> online</span>
-            </header>
-
-            <div className="terminal-log" role="log" aria-live="polite">
-              {entries.map((entry) => (
-                <article className={`terminal-entry terminal-entry--${entry.tone}`} key={entry.id}>
-                  <header>
-                    <span>{entry.author}</span>
-                    <time>сейчас</time>
-                  </header>
-                  <p>{entry.text}</p>
-                </article>
-              ))}
-            </div>
-
-            <form className="terminal-form" onSubmit={submitCommand}>
-              <label htmlFor="missionCommand">
-                <span>pilot@dc03:~$</span>
-                <input
-                  id="missionCommand"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    event.currentTarget.form?.requestSubmit();
-                  }}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Введите /help…"
-                />
-              </label>
-              <button className="visually-hidden" type="submit">
-                Выполнить команду
-              </button>
-              <div>
-                <span>Enter — выполнить</span>
-                <span>ИИ может ошибаться</span>
-              </div>
-            </form>
-          </section>
+      <main className="participant-waiting">
+        <div className="participant-waiting__status" aria-hidden="true">
+          <i />
         </div>
+        <p className="eyebrow">
+          Контест готов
+        </p>
+        <h1>{session.contest?.title ?? "Шахматный мир"}</h1>
+        <p>
+          После старта у вас будет {session.contest?.durationMinutes ?? 60} минут.
+          Таймер запускается только по кнопке.
+        </p>
+
+        <dl className="participant-context">
+          <div>
+            <dt>Участник</dt>
+            <dd>{session.participant?.displayName ?? "Персональный код"}</dd>
+          </div>
+          <div>
+            <dt>Среда</dt>
+            <dd>Шахматный мир</dd>
+          </div>
+          <div>
+            <dt>Длительность</dt>
+            <dd>{session.contest?.durationMinutes ?? 60} минут</dd>
+          </div>
+        </dl>
+
+        <button
+          className="primary-action participant-start"
+          type="button"
+          disabled={busy}
+          onClick={startAttempt}
+        >
+          <span>{busy ? "Запускаем…" : "Начать попытку"}</span>
+          <ArrowIcon />
+        </button>
+        <p className="participant-error" role="alert">
+          {error}
+        </p>
       </main>
     </div>
   );
 }
 
-function getInitialSecondsLeft() {
-  const key = "sirius-gate:participant-deadline";
-  const now = Date.now();
-  const stored = Number(window.sessionStorage.getItem(key));
-  const deadline = Number.isFinite(stored) && stored > now ? stored : now + 60 * 60 * 1000;
-  window.sessionStorage.setItem(key, String(deadline));
-  return Math.max(0, Math.ceil((deadline - now) / 1000));
-}
+function ParticipantContestScreen({
+  session,
+  onLogout,
+}: {
+  session: AccessSession;
+  onLogout: () => void;
+}) {
+  const [task, setTask] = useState<ApiParticipantTask | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-function ChessBoard() {
-  const pieces = [
-    "♝", "♞", "♜", "♚", "♛", "♝", "♜", "♞",
-    ...Array(8).fill("♟"),
-    ...Array(32).fill(""),
-    ...Array(8).fill("♙"),
-    "♗", "♘", "♖", "♔", "♕", "♗", "♖", "♘",
-  ];
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+
+    api
+      .getCurrentTask({
+        token: session.token,
+        signal: controller.signal,
+      })
+      .then((response) => setTask(response.task))
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Не удалось загрузить задачу.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [session.attempt?.id, session.token]);
+
+  async function answerTask(answer: string) {
+    if (!task || task.status !== "active") return;
+    await runTaskAction(async () => {
+      const response = await api.answerTask(task.id, answer, {
+        token: session.token,
+      });
+      setTask(response.task);
+    });
+  }
+
+  async function skipTask() {
+    if (!task || task.status !== "active") return;
+    await runTaskAction(async () => {
+      const response = await api.skipTask(task.id, {
+        token: session.token,
+      });
+      setTask(response.task);
+    });
+  }
+
+  async function nextTask() {
+    if (!task || task.status === "active") return;
+    await runTaskAction(async () => {
+      const response = await api.getNextTask({ token: session.token });
+      setTask(response.task);
+    });
+  }
+
+  async function runTaskAction(action: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось выполнить команду.",
+      );
+      throw caught;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const workspaceTask: WorkspaceParticipantTask | null = task
+    ? {
+        id: task.id,
+        ordinal: task.ordinal,
+        family: task.family,
+        difficulty: task.difficulty,
+        status: task.status,
+        prompt: task.publicState.prompt,
+        backRank: task.publicState.backRank as WorkspaceParticipantTask["backRank"],
+        responseHint: task.publicState.responseHint,
+      }
+    : null;
 
   return (
-    <figure className="chess-card">
-      <figcaption>
-        <span>Позиция Chess960</span>
-        <small>seed 7F2A</small>
-      </figcaption>
-      <div className="chess-grid" role="img" aria-label="Стартовая позиция Chess960">
-        {pieces.map((piece, index) => (
-          <span
-            className={(Math.floor(index / 8) + index) % 2 ? "dark" : "light"}
-            key={index}
-            aria-hidden="true"
-          >
-            {piece}
-          </span>
-        ))}
-      </div>
-    </figure>
-  );
-}
+    <div className="participant-page">
+      <AppHeader
+        role="Участник"
+        onLogout={onLogout}
+        meta={<span className="workspace-label">Контест идёт</span>}
+      />
 
-function DicePanel() {
-  const dice = [
-    { name: "Кубик A", faces: ["♙", "♙", "♘", "♘", "♖", "♕"] },
-    { name: "Кубик B", faces: ["♙", "♘", "♘", "♗", "♖", "♕"] },
-  ];
-
-  return (
-    <section className="dice-panel" aria-label="Грани кубиков">
-      <header>
-        <span>Грани кубиков</span>
-        <small>все грани равновероятны</small>
-      </header>
-      {dice.map((die, dieIndex) => (
-        <div className="dice-row" key={die.name}>
-          <strong>
-            <i>{dieIndex ? "B" : "A"}</i>
-            {die.name}
-          </strong>
-          <div>
-            {die.faces.map((face, index) => (
-              <span key={`${die.name}-${index}`}>{face}</span>
-            ))}
+      {workspaceTask ? (
+        <ParticipantWorkspace
+          task={workspaceTask}
+          deadlineAt={session.attempt?.deadlineAt}
+          contestTitle={session.contest?.title ?? "Контест"}
+          participantName={session.participant?.displayName}
+          busy={busy}
+          error={error}
+          onAnswer={answerTask}
+          onSkip={skipTask}
+          onNext={nextTask}
+        />
+      ) : (
+        <main className="participant-waiting">
+          <div className="participant-waiting__status" aria-hidden="true">
+            <i />
           </div>
-        </div>
-      ))}
-    </section>
+          <p className="eyebrow">
+            {loading ? "Готовим среду" : "Задача недоступна"}
+          </p>
+          <h1>{loading ? "Создаём ваш вариант…" : "Не удалось открыть задачу"}</h1>
+          <p>
+            {loading
+              ? "Расстановка воспроизводимо создаётся по seed этой попытки."
+              : error}
+          </p>
+        </main>
+      )}
+    </div>
   );
 }
