@@ -6,6 +6,12 @@ import {
   useRef,
   useState,
 } from "react";
+import type {
+  CountersPublicState,
+  LeaperBoardPublicState,
+  MachinePanelPublicState,
+  MachineState,
+} from "../api";
 import "./participant-workspace.css";
 
 export type ChessPieceKind = "K" | "Q" | "R" | "B" | "N";
@@ -107,6 +113,9 @@ export type ParticipantTask = {
   geometryScene?: GeometryScene;
   geometryContent?: Record<string, unknown>;
   geometryInteraction?: Record<string, unknown>;
+  machinePanel?: MachinePanelPublicState;
+  leaperBoard?: LeaperBoardPublicState;
+  counters?: CountersPublicState;
   responseHint?: string;
   worldPhase?: string;
 };
@@ -141,6 +150,11 @@ export type ParticipantWorkspaceProps = {
     probe: string,
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
+  onApplyOperation?: (
+    opId: string,
+    clientActionId: string,
+  ) => Promise<TaskMoveTransitionResult>;
+  onUndo?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
   onMessage?: (message: string) => Promise<unknown> | unknown;
 };
 
@@ -254,12 +268,7 @@ function createStartingBoard(
 function normalizeBoard(task: ParticipantTask): ChessBoardCell[][] {
   if (!task.board) return createStartingBoard(task.backRank);
 
-  return Array.from({ length: 8 }, (_, rankIndex) =>
-    Array.from(
-      { length: 8 },
-      (_, fileIndex) => task.board?.[rankIndex]?.[fileIndex] ?? null,
-    ),
-  );
+  return task.board.map((rank) => [...rank]);
 }
 
 function normalizeDice(task: ParticipantTask): ChessDiceSet {
@@ -297,6 +306,60 @@ function createClientActionId(): string {
 }
 
 function initialEntries(task: ParticipantTask): ConsoleEntry[] {
+  if (
+    task.kind === "machine_panel" ||
+    (task.kind === "chess" && task.family === "machine_reach")
+  ) {
+    return [
+      {
+        id: 1,
+        author: "system",
+        content: (
+          <>
+            Открыта машина{" "}
+            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
+            Переведите текущее состояние в целевое.
+          </>
+        ),
+      },
+      {
+        id: 2,
+        author: "system",
+        content: (
+          <>
+            Применяйте операции командой <code>/op &lt;id&gt;</code>, отменяйте
+            последний шаг через <code>/undo</code>. Итог: <code>done</code>{" "}
+            или <code>impossible</code>.
+          </>
+        ),
+      },
+    ];
+  }
+  if (task.kind === "counters" || task.family === "nim_like") {
+    return [
+      {
+        id: 1,
+        author: "system",
+        content: (
+          <>
+            Открыта позиция{" "}
+            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
+            Найдите один решающий ход.
+          </>
+        ),
+      },
+      {
+        id: 2,
+        author: "system",
+        content: (
+          <>
+            Ответьте <code>take &lt;куча&gt; &lt;число&gt;</code> или{" "}
+            <code>проигрышная</code>.
+          </>
+        ),
+      },
+    ];
+  }
   if (task.kind === "penultima_induction") {
     return [
       {
@@ -390,6 +453,8 @@ export function ParticipantWorkspace({
   onNext,
   onMove,
   onProbe,
+  onApplyOperation,
+  onUndo,
   onMessage,
 }: ParticipantWorkspaceProps) {
   const board = useMemo(() => normalizeBoard(task), [task]);
@@ -417,6 +482,11 @@ export function ParticipantWorkspace({
   const isPenultima = task.kind === "penultima_induction";
   const isGeometry = task.kind === "geometry_atlas";
   const isZendo = isGeometry && task.family === "geo_zendo";
+  const isMachine =
+    task.kind === "machine_panel" ||
+    (task.kind === "chess" && task.family === "machine_reach");
+  const isLeaperBoard = task.kind === "chess" && Boolean(task.leaperBoard);
+  const isCounters = task.kind === "counters" || task.family === "nim_like";
   const worldPhaseLabel =
     task.worldPhase === "calibration"
       ? "знакомство со средой"
@@ -495,6 +565,58 @@ export function ParticipantWorkspace({
     );
   }
 
+  async function submitMachineOperation(opId: string) {
+    if (!onApplyOperation) {
+      appendEntry("system", "Пульт машины сейчас недоступен.");
+      return;
+    }
+    const transition = await onApplyOperation(
+      opId,
+      createClientActionId(),
+    );
+    appendEntry(
+      "system",
+      transition.message ??
+        (transition.accepted
+          ? `Операция ${opId} применена.`
+          : `Операцию ${opId} применить нельзя.`),
+    );
+  }
+
+  async function submitMachineUndo() {
+    if (!onUndo) {
+      appendEntry("system", "Отмена сейчас недоступна.");
+      return;
+    }
+    const transition = await onUndo(createClientActionId());
+    appendEntry(
+      "system",
+      transition.message ??
+        (transition.accepted
+          ? "Последняя операция отменена."
+          : "Отменять пока нечего."),
+    );
+  }
+
+  async function submitFinalAnswer(answer: string) {
+    const transition = await onAnswer(answer);
+    appendEntry(
+      "system",
+      transition.message ??
+        (transition.advanced ? (
+          <>
+            Ответ зафиксирован. Открыта задача{" "}
+            <strong>
+              №{String(transition.ordinal).padStart(2, "0")}
+            </strong>
+            .
+          </>
+        ) : (
+          "Ответ зафиксирован. Для продолжения используйте /next."
+        )),
+    );
+  }
+
   async function runCommand(rawInput: string) {
     const input = rawInput.trim();
     if (!input || isBusy || inFlight.current) return;
@@ -510,35 +632,57 @@ export function ParticipantWorkspace({
     try {
       switch (command.toLowerCase()) {
         case "/help":
-          appendEntry("system", isPenultima ? (
-            <>
-              <code>/move c2 d3</code> — предложить ход арбитру
-              <br />
-              <code>/history</code> — показать последние пробы в главе
-              <br />
-              <code>/skip</code> — пропустить текущую цель
-              <br />
-              Координаты можно отправить и без слова <code>/move</code>.
-            </>
-          ) : isZendo ? (
-            <>
-              <code>/test &lt;код&gt;</code> — проверить одну из карточек-проб
-              <br />
-              <code>/answer &lt;ответ&gt;</code> — классифицировать целевые
-              конфигурации
-              <br />
-              <code>/skip</code> — пропустить и открыть следующую задачу
-            </>
-          ) : (
-            <>
-              <code>/answer &lt;текст&gt;</code> — зафиксировать ответ
-              и открыть следующую задачу
-              <br />
-              <code>/skip</code> — пропустить и открыть следующую задачу
-              <br />
-              <code>/next</code> — повторить переход, если он прервался
-            </>
-          ));
+          appendEntry(
+            "system",
+            isPenultima ? (
+              <>
+                <code>/move c2 d3</code> — предложить ход арбитру
+                <br />
+                <code>/history</code> — показать последние пробы в главе
+                <br />
+                <code>/skip</code> — пропустить текущую цель
+                <br />
+                Координаты можно отправить и без слова <code>/move</code>.
+              </>
+            ) : isMachine ? (
+              <>
+                <code>/op &lt;id&gt;</code> — применить указанную операцию
+                <br />
+                <code>/undo</code> — отменить последнюю операцию
+                <br />
+                <code>done</code> — зафиксировать достигнутую цель
+                <br />
+                <code>impossible</code> — заявить, что цель недостижима
+              </>
+            ) : isCounters ? (
+              <>
+                <code>take &lt;куча&gt; &lt;число&gt;</code> — сделать
+                решающий ход
+                <br />
+                <code>проигрышная</code> — отметить позицию без выигрышного хода
+                <br />
+                <code>/skip</code> — пропустить текущую позицию
+              </>
+            ) : isZendo ? (
+              <>
+                <code>/test &lt;код&gt;</code> — проверить одну из карточек-проб
+                <br />
+                <code>/answer &lt;ответ&gt;</code> — классифицировать целевые
+                конфигурации
+                <br />
+                <code>/skip</code> — пропустить и открыть следующую задачу
+              </>
+            ) : (
+              <>
+                <code>/answer &lt;текст&gt;</code> — зафиксировать ответ
+                и открыть следующую задачу
+                <br />
+                <code>/skip</code> — пропустить и открыть следующую задачу
+                <br />
+                <code>/next</code> — повторить переход, если он прервался
+              </>
+            ),
+          );
           break;
 
         case "/probe":
@@ -569,6 +713,58 @@ export function ParticipantWorkspace({
           await submitZendoProbe(payload);
           break;
 
+        case "/op":
+          if (!isMachine) {
+            appendEntry(
+              "system",
+              "Команда /op доступна только в задачах с машиной.",
+            );
+            break;
+          }
+          if (task.status !== "active") {
+            appendEntry(
+              "system",
+              "Текущая машина уже закрыта. Используйте /next.",
+            );
+            break;
+          }
+          if (!payload || parts.length !== 1) {
+            appendEntry(
+              "system",
+              <>
+                Укажите один идентификатор. Например: <code>/op op1</code>.
+              </>,
+            );
+            break;
+          }
+          await submitMachineOperation(payload);
+          break;
+
+        case "/undo":
+          if (!isMachine) {
+            appendEntry(
+              "system",
+              "Команда /undo доступна только в задачах с машиной.",
+            );
+            break;
+          }
+          if (task.status !== "active") {
+            appendEntry(
+              "system",
+              "Текущая машина уже закрыта. Используйте /next.",
+            );
+            break;
+          }
+          if (parts.length > 0) {
+            appendEntry(
+              "system",
+              "Команда /undo не принимает дополнительных данных.",
+            );
+            break;
+          }
+          await submitMachineUndo();
+          break;
+
         case "/answer":
           if (isPenultima) {
             appendEntry(
@@ -590,40 +786,27 @@ export function ParticipantWorkspace({
           if (!payload) {
             appendEntry(
               "system",
-                <>
-                  После команды нужен текст ответа. Например:{" "}
-                  <code>
-                    {isDiceChess
+              <>
+                После команды нужен текст ответа. Например:{" "}
+                <code>
+                  {isMachine
+                    ? "/answer done"
+                    : isCounters
+                      ? "/answer take 1 2"
+                      : isDiceChess
                       ? "/answer 5/12"
                       : task.variant === "single_swap_repair"
                         ? "/answer a1 b1"
                         : task.variant === "repair_count"
                           ? "/answer 3"
                           : "/answer да, допустима"}
-                  </code>
-                  .
-                </>,
+                </code>
+                .
+              </>,
             );
             break;
           }
-          {
-            const transition = await onAnswer(payload);
-            appendEntry(
-              "system",
-              transition.message ??
-                (transition.advanced ? (
-                  <>
-                    Ответ зафиксирован. Открыта задача{" "}
-                    <strong>
-                      №{String(transition.ordinal).padStart(2, "0")}
-                    </strong>
-                    .
-                  </>
-                ) : (
-                  "Ответ зафиксирован. Для продолжения используйте /next."
-                )),
-            );
-          }
+          await submitFinalAnswer(payload);
           break;
 
         case "/move":
@@ -760,6 +943,37 @@ export function ParticipantWorkspace({
             break;
           }
 
+          if (
+            isMachine &&
+            /^(?:done|impossible|готово?|невозможно|недостижимо)$/iu.test(input)
+          ) {
+            if (task.status !== "active") {
+              appendEntry(
+                "system",
+                "Текущая машина уже закрыта. Используйте /next.",
+              );
+              break;
+            }
+            await submitFinalAnswer(input);
+            break;
+          }
+
+          if (
+            isCounters &&
+            (/^take\s+\S+\s+\d+$/iu.test(input) ||
+              /^(?:проигрышная|losing)$/iu.test(input))
+          ) {
+            if (task.status !== "active") {
+              appendEntry(
+                "system",
+                "Текущая позиция уже закрыта. Используйте /next.",
+              );
+              break;
+            }
+            await submitFinalAnswer(input);
+            break;
+          }
+
           if (onMessage) {
             await onMessage(input);
             appendEntry("system", "Сообщение принято.");
@@ -828,6 +1042,17 @@ export function ParticipantWorkspace({
                   Предлагайте ходы в чате командой{" "}
                   <code>/move c2 d3</code>.
                 </>
+              ) : isMachine ? (
+                <>
+                  Управляйте средой через <code>/op &lt;id&gt;</code> и{" "}
+                  <code>/undo</code>. Когда решение найдено, отправьте{" "}
+                  <code>done</code> или <code>impossible</code>.
+                </>
+              ) : isCounters ? (
+                <>
+                  Отправьте <code>take &lt;куча&gt; &lt;число&gt;</code> или{" "}
+                  <code>проигрышная</code>.
+                </>
               ) : isZendo ? (
                 <>
                   Проверяйте карточки командой <code>/test &lt;код&gt;</code>,
@@ -853,6 +1078,12 @@ export function ParticipantWorkspace({
               acceptedMoves={task.acceptedMoves ?? 0}
               rejectedMoves={task.rejectedMoves ?? 0}
             />
+          ) : task.machinePanel ? (
+            <MachinePanel state={task.machinePanel} />
+          ) : isLeaperBoard && task.leaperBoard ? (
+            <LeaperBoardScene state={task.leaperBoard} />
+          ) : isCounters && task.counters ? (
+            <CountersScene state={task.counters} />
           ) : isGeometry && task.geometryScene ? (
             <GeometryAtlasScene
               scene={task.geometryScene}
@@ -1221,6 +1452,209 @@ function DicePositionScene({
   );
 }
 
+function MachineStateDisplay({
+  label,
+  state,
+  current = false,
+}: {
+  label: string;
+  state: MachineState;
+  current?: boolean;
+}) {
+  return (
+    <section
+      className={`machine-state${current ? " machine-state--current" : ""}`}
+    >
+      <span>{label}</span>
+      {"lamps" in state ? (
+        <ol className="machine-lamps" aria-label={`${label}: состояние ламп`}>
+          {state.lamps.map((lamp, index) => (
+            <li
+              className={lamp ? "is-on" : ""}
+              aria-label={`Лампа ${index + 1}: ${lamp ? "горит" : "не горит"}`}
+              key={index}
+            >
+              <i aria-hidden="true" />
+              <small>{index + 1}</small>
+            </li>
+          ))}
+        </ol>
+      ) : "cards" in state ? (
+        <ol className="machine-cards" aria-label={`${label}: порядок карточек`}>
+          {state.cards.map((card, index) => (
+            <li key={`${card}-${index}`}>{card}</li>
+          ))}
+        </ol>
+      ) : (
+        <strong className="machine-number">{state.value}</strong>
+      )}
+    </section>
+  );
+}
+
+function MachinePanel({ state }: { state: MachinePanelPublicState }) {
+  return (
+    <figure className="machine-panel" aria-label="Пульт машины">
+      <header>
+        <div>
+          <span>Пульт машины</span>
+          <strong>
+            {state.subKind === "lamps_gf2"
+              ? "Лампы"
+              : state.subKind === "numeric_machine"
+                ? "Числовая машина"
+                : "Перестановки"}
+          </strong>
+        </div>
+        <small>
+          Шагов {state.stepsTaken} / {state.stepsSoftCap}
+        </small>
+      </header>
+
+      <div className="machine-panel__states">
+        <MachineStateDisplay label="Старт" state={state.start} />
+        <MachineStateDisplay label="Сейчас" state={state.current} current />
+        <MachineStateDisplay label="Цель" state={state.target} />
+      </div>
+
+      <ol className="machine-operations" aria-label="Доступные операции">
+        {state.ops.map((operation) => (
+          <li key={operation.id}>
+            <code>{operation.id}</code>
+            <span>{operation.label}</span>
+          </li>
+        ))}
+      </ol>
+
+      <figcaption>
+        Команда <code>/op &lt;id&gt;</code> применяет операцию к текущему
+        состоянию. <code>/undo</code> отменяет один шаг.
+      </figcaption>
+    </figure>
+  );
+}
+
+function pointToSquare(point: { row: number; col: number }): string {
+  return `${FILES[point.col] ?? "?"}${point.row + 1}`;
+}
+
+function LeaperBoardScene({ state }: { state: LeaperBoardPublicState }) {
+  return (
+    <figure className="leaper-scene" aria-label="Доска прыгуна">
+      <div className="leaper-scene__meta">
+        <span>
+          Сейчас <strong>{pointToSquare(state.current)}</strong>
+        </span>
+        <span>
+          Цель <strong>{pointToSquare(state.target)}</strong>
+        </span>
+        <span>
+          Шагов <strong>{state.stepsTaken} / {state.stepsSoftCap}</strong>
+        </span>
+      </div>
+      <Chessboard
+        board={state.board as ChessBoard}
+        goalSquare={pointToSquare(state.target)}
+      />
+      <ol className="leaper-operations" aria-label="Разрешённые прыжки">
+        {state.ops.map((operation) => (
+          <li key={operation.id}>
+            <code>{operation.id}</code>
+            <span>{operation.label}</span>
+          </li>
+        ))}
+      </ol>
+      <figcaption>
+        Белый конь — текущая позиция · чёрный король — цель · пешки —
+        препятствия
+      </figcaption>
+    </figure>
+  );
+}
+
+function readAllowedTakes(rules: Record<string, unknown>): number[] {
+  const candidate =
+    rules.allowed_takes ??
+    rules.allowedTakes ??
+    rules.take ??
+    rules.takes ??
+    rules.moves;
+  return Array.isArray(candidate)
+    ? candidate.filter(
+        (take): take is number =>
+          typeof take === "number" && Number.isInteger(take) && take > 0,
+      )
+    : [];
+}
+
+function CountersScene({ state }: { state: CountersPublicState }) {
+  const globalTakes = readAllowedTakes(state.rules);
+  const description =
+    typeof state.rules.description === "string"
+      ? state.rules.description
+      : undefined;
+
+  return (
+    <figure className="counters-scene" aria-label="Позиция игры с кучами">
+      <header>
+        <div>
+          <span>Правило окончания</span>
+          <strong>
+            {state.misere
+              ? "Последний ход проигрывает"
+              : "Последний ход выигрывает"}
+          </strong>
+        </div>
+        {globalTakes.length > 0 && (
+          <small>Можно взять: {globalTakes.join(", ")}</small>
+        )}
+      </header>
+
+      <div className="counter-heaps">
+        {state.heaps.map((heap) => {
+          const visibleCount = Math.min(heap.count, 28);
+          const allowed =
+            state.rulesByHeap[heap.id] ??
+            state.rulesByHeap[String(state.heaps.indexOf(heap) + 1)];
+          return (
+            <section className="counter-heap" key={heap.id}>
+              <header>
+                <div>
+                  <code>{heap.id}</code>
+                  <strong>{heap.label}</strong>
+                </div>
+                <span>{heap.count}</span>
+              </header>
+              <div
+                className="counter-heap__tokens"
+                aria-label={`${heap.label}: ${heap.count}`}
+              >
+                {Array.from({ length: visibleCount }, (_, index) => (
+                  <i aria-hidden="true" key={index} />
+                ))}
+                {heap.count > visibleCount && (
+                  <b>+{heap.count - visibleCount}</b>
+                )}
+              </div>
+              {allowed && allowed.length > 0 && (
+                <small>Можно взять: {allowed.join(", ")}</small>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      <figcaption>
+        {description ?? (
+          <>
+            Формат хода: <code>take &lt;куча&gt; &lt;число&gt;</code>
+          </>
+        )}
+      </figcaption>
+    </figure>
+  );
+}
+
 function PenultimaScene({
   board,
   pieceName,
@@ -1281,6 +1715,9 @@ function Chessboard({
   compact?: boolean;
   goalSquare?: string;
 }) {
+  const rowCount = board.length;
+  const colCount = Math.max(1, ...board.map((rank) => rank.length));
+
   return (
     <div
       className={`chess-position${compact ? " chess-position--compact" : ""}`}
@@ -1289,11 +1726,16 @@ function Chessboard({
         className="chessboard"
         role="grid"
         aria-label="Шахматная доска, белые снизу"
+        style={{
+          gridTemplateColumns: `repeat(${colCount}, 1fr)`,
+          gridTemplateRows: `repeat(${Math.max(1, rowCount)}, 1fr)`,
+          aspectRatio: `${colCount} / ${Math.max(1, rowCount)}`,
+        }}
       >
         {board.flatMap((rank, rankIndex) =>
           rank.map((piece, fileIndex) => {
-            const rankNumber = 8 - rankIndex;
-            const coordinate = `${FILES[fileIndex]}${rankNumber}`;
+            const rankNumber = rowCount - rankIndex;
+            const coordinate = `${FILES[fileIndex] ?? "?"}${rankNumber}`;
             const isDark = (rankIndex + fileIndex) % 2 === 1;
             const isGoal = coordinate === goalSquare;
 
@@ -1317,7 +1759,7 @@ function Chessboard({
                     {rankNumber}
                   </span>
                 )}
-                {rankIndex === 7 && (
+                {rankIndex === rowCount - 1 && (
                   <span className="chess-square__file" aria-hidden="true">
                     {FILES[fileIndex]}
                   </span>

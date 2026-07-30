@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 
-from ..chess_world.director import (
+from ..director import (
     CompletedTask,
     DirectorDecision,
     DirectorPhase,
@@ -33,6 +33,7 @@ def decide_next_task(
         families=families,
         history=history,
         start_family=start_family,
+        version=DIRECTOR_VERSION,
     )
     return replace(decision, version=DIRECTOR_VERSION)
 

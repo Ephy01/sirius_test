@@ -37,8 +37,13 @@ from .chess_world.dice_chess_position import (
 )
 from .chess_world.penultima import (
     FAMILY_KEY as PENULTIMA_FAMILY,
-    GENERATOR_VERSION as PENULTIMA_GENERATOR_VERSION,
+    GENERATOR_VERSION as PENULTIMA_LEGACY_GENERATOR_VERSION,
     PenultimaTransition,
+    generate_penultima_task as generate_legacy_penultima_task,
+    transition_penultima_move as transition_legacy_penultima_move,
+)
+from .chess_world.penultima_v2 import (
+    GENERATOR_VERSION as PENULTIMA_GENERATOR_VERSION,
     generate_penultima_task,
     transition_penultima_move,
 )
@@ -53,16 +58,54 @@ from .geometry_world import (
     generate_geometry_atlas_task,
     transition_geo_zendo_probe,
 )
+from .geometry_world.zendo_v2 import (
+    GENERATOR_VERSION as GEO_ZENDO_GENERATOR_VERSION,
+    evaluate_geo_zendo_v2_answer,
+    generate_geo_zendo_v2_task,
+    transition_geo_zendo_v2_probe,
+)
+from .machines import (
+    FAMILY_KEY as MACHINE_REACH_FAMILY,
+    GENERATOR_VERSION as MACHINE_REACH_GENERATOR_VERSION,
+    MachineTransition,
+    evaluate_machine_answer,
+    generate_machine_reach_task,
+    transition_machine_action,
+)
+from .nim_like import (
+    FAMILY_KEY as NIM_LIKE_FAMILY,
+    GENERATOR_VERSION as NIM_LIKE_GENERATOR_VERSION,
+    evaluate_nim_like_answer,
+    generate_nim_like_task,
+)
 
 IMPLEMENTED_FAMILIES = frozenset(
-    {CHESS960_FAMILY, DICE_CHESS_FAMILY, PENULTIMA_FAMILY, *GEOMETRY_FAMILIES}
+    {
+        CHESS960_FAMILY,
+        DICE_CHESS_FAMILY,
+        PENULTIMA_FAMILY,
+        MACHINE_REACH_FAMILY,
+        NIM_LIKE_FAMILY,
+        *GEOMETRY_FAMILIES,
+    }
 )
-INTERACTIVE_FAMILIES = frozenset({PENULTIMA_FAMILY, GEO_ZENDO_FAMILY})
+INTERACTIVE_FAMILIES = frozenset(
+    {PENULTIMA_FAMILY, GEO_ZENDO_FAMILY, MACHINE_REACH_FAMILY}
+)
 GENERATOR_VERSIONS = {
     CHESS960_FAMILY: CHESS960_GENERATOR_VERSION,
     DICE_CHESS_FAMILY: DICE_CHESS_GENERATOR_VERSION,
     PENULTIMA_FAMILY: PENULTIMA_GENERATOR_VERSION,
-    **{family: GEOMETRY_GENERATOR_VERSION for family in GEOMETRY_FAMILIES},
+    MACHINE_REACH_FAMILY: MACHINE_REACH_GENERATOR_VERSION,
+    NIM_LIKE_FAMILY: NIM_LIKE_GENERATOR_VERSION,
+    **{
+        family: (
+            GEO_ZENDO_GENERATOR_VERSION
+            if family == GEO_ZENDO_FAMILY
+            else GEOMETRY_GENERATOR_VERSION
+        )
+        for family in GEOMETRY_FAMILIES
+    },
 }
 
 
@@ -192,6 +235,65 @@ def generate_task(
             public_state=public_state,
             private_state=private_state,
         )
+    if (
+        family == PENULTIMA_FAMILY
+        and generator_version == PENULTIMA_LEGACY_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_legacy_penultima_task(
+            seed=seed,
+            difficulty=difficulty,
+            context=context,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    if (
+        family == MACHINE_REACH_FAMILY
+        and generator_version == MACHINE_REACH_GENERATOR_VERSION
+    ):
+        configured_sub_kinds = (
+            context.get("sub_kinds")
+            if isinstance(context, dict)
+            else None
+        )
+        sub_kind = None
+        if isinstance(configured_sub_kinds, list):
+            candidates = [
+                item for item in configured_sub_kinds if isinstance(item, str)
+            ]
+            if candidates:
+                sub_kind = candidates[seed % len(candidates)]
+        public_state, private_state = generate_machine_reach_task(
+            seed=seed,
+            difficulty=difficulty,
+            sub_kind=sub_kind,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    if (
+        family == GEO_ZENDO_FAMILY
+        and generator_version == GEO_ZENDO_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_geo_zendo_v2_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    if family == NIM_LIKE_FAMILY and generator_version == NIM_LIKE_GENERATOR_VERSION:
+        public_state, private_state = generate_nim_like_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         public_state, private_state = generate_geometry_atlas_task(
             family=family,
@@ -250,6 +352,27 @@ def evaluate_task(
             answer=answer,
             private_state=private_state,
         )
+    if (
+        family == MACHINE_REACH_FAMILY
+        and generator_version == MACHINE_REACH_GENERATOR_VERSION
+    ):
+        return evaluate_machine_answer(
+            answer=answer,
+            private_state=private_state,
+        )
+    if (
+        family == GEO_ZENDO_FAMILY
+        and generator_version == GEO_ZENDO_GENERATOR_VERSION
+    ):
+        return evaluate_geo_zendo_v2_answer(
+            answer=answer,
+            private_state=private_state,
+        )
+    if family == NIM_LIKE_FAMILY and generator_version == NIM_LIKE_GENERATOR_VERSION:
+        return evaluate_nim_like_answer(
+            answer=answer,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         return evaluate_geometry_atlas_answer(
             family=family,
@@ -294,6 +417,52 @@ def interact_task(
             evaluation_state=transition.evaluation_state,
         )
     if (
+        family == PENULTIMA_FAMILY
+        and generator_version == PENULTIMA_LEGACY_GENERATOR_VERSION
+        and action_type == "move"
+    ):
+        move = action_payload.get("move")
+        if not isinstance(move, str):
+            raise ValueError("Penultima move payload must contain a string move")
+        legacy_transition: PenultimaTransition = transition_legacy_penultima_move(
+            move=move,
+            public_state=public_state,
+            private_state=private_state,
+        )
+        return InteractionTransition(
+            public_state=legacy_transition.public_state,
+            private_state=legacy_transition.private_state,
+            accepted=legacy_transition.accepted,
+            completed=legacy_transition.completed,
+            reason=legacy_transition.reason,
+            message=legacy_transition.message,
+            normalized_input=legacy_transition.normalized_move,
+            evaluation_state=legacy_transition.evaluation_state,
+        )
+    if (
+        family == GEO_ZENDO_FAMILY
+        and generator_version == GEO_ZENDO_GENERATOR_VERSION
+        and action_type == "probe"
+    ):
+        probe = action_payload.get("probe")
+        if not isinstance(probe, str):
+            raise ValueError("Geometry probe payload must contain a string probe")
+        transition = transition_geo_zendo_v2_probe(
+            card_id=probe,
+            public_state=public_state,
+            private_state=private_state,
+        )
+        return InteractionTransition(
+            public_state=transition.public_state,
+            private_state=transition.private_state,
+            accepted=transition.accepted,
+            completed=False,
+            reason=transition.reason,
+            message=transition.message,
+            normalized_input=transition.normalized_card_id,
+            evaluation_state=transition.telemetry,
+        )
+    if (
         family == GEO_ZENDO_FAMILY
         and generator_version == GEOMETRY_GENERATOR_VERSION
         and action_type == "probe"
@@ -315,6 +484,39 @@ def interact_task(
             message=transition.message,
             normalized_input=probe.strip().upper(),
             evaluation_state=None,
+        )
+    if (
+        family == MACHINE_REACH_FAMILY
+        and generator_version == MACHINE_REACH_GENERATOR_VERSION
+        and action_type in {"apply_op", "undo"}
+    ):
+        op_id = action_payload.get("op_id")
+        client_action_id = action_payload.get("client_action_id")
+        if not isinstance(client_action_id, str):
+            raise ValueError("Machine action requires client_action_id")
+        if op_id is not None and not isinstance(op_id, str):
+            raise ValueError("Machine op_id must be a string")
+        latency = action_payload.get("first_action_latency_ms")
+        transition: MachineTransition = transition_machine_action(
+            action_type=action_type,
+            public_state=public_state,
+            private_state=private_state,
+            client_action_id=client_action_id,
+            op_id=op_id,
+            first_action_latency_ms=(
+                latency if isinstance(latency, int) and not isinstance(latency, bool)
+                else None
+            ),
+        )
+        return InteractionTransition(
+            public_state=transition.public_state,
+            private_state=transition.private_state,
+            accepted=transition.accepted,
+            completed=transition.completed,
+            reason=transition.reason,
+            message=transition.message,
+            normalized_input=transition.normalized_input,
+            evaluation_state=transition.evaluation_state,
         )
     raise ValueError(
         "Unsupported task interaction: "

@@ -474,7 +474,16 @@ def _run_mixed_sequence(database_path) -> tuple[list[str], list[int]]:
                 stored = session.get(TaskInstance, task["id"])
                 assert stored is not None
                 if family == "chess960":
-                    answer = "Да" if stored.private_state["is_valid"] else "Нет"
+                    variant = stored.private_state["variant"]
+                    if variant == "validation":
+                        answer = (
+                            "Да" if stored.private_state["is_valid"] else "Нет"
+                        )
+                    elif variant == "single_swap_repair":
+                        first, second = stored.private_state["valid_repairs"][0]
+                        answer = f"{first} {second}"
+                    else:
+                        answer = str(stored.private_state["repair_count"])
                 else:
                     probability = stored.private_state["probability"]
                     answer = (

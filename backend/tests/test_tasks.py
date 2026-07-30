@@ -11,7 +11,7 @@ from app.environments import (
     generate_task,
 )
 from app.environments.chess_world.chess960 import (
-    chess960_violations,
+    enumerate_chess960_repairs,
     is_valid_chess960,
 )
 from app.main import create_app
@@ -129,15 +129,14 @@ def test_chess960_generator_is_deterministic_and_preserves_invariants():
         back_rank = generated.public_state["back_rank"]
         assert len(back_rank) == 8
         assert generated.public_state["kind"] == "chess960_mission"
-        assert generated.public_state["variant"] == "validation"
-        violations = chess960_violations(back_rank)
-        if generated.private_state["is_valid"]:
-            assert is_valid_chess960(back_rank)
-            assert violations == set()
-            assert generated.private_state["violation"] is None
-        else:
-            assert not is_valid_chess960(back_rank)
-            assert violations == {generated.private_state["violation"]}
+        assert generated.public_state["variant"] == "single_swap_repair"
+        assert generated.private_state["variant"] == "single_swap_repair"
+        assert not is_valid_chess960(back_rank)
+        repairs = enumerate_chess960_repairs(back_rank)
+        assert repairs
+        assert tuple(
+            tuple(pair) for pair in generated.private_state["valid_repairs"]
+        ) == repairs
 
 
 def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):

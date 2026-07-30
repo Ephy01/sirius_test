@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import "./contest-builder.css";
 
-export type EnvironmentKey = "chess_world" | "geometry_world";
+export type EnvironmentKey = "mixed" | "chess_world" | "geometry_world";
 export type TaskFamilyKey =
   | "chess960"
   | "dice_chess"
@@ -9,14 +9,19 @@ export type TaskFamilyKey =
   | "geo_zendo"
   | "geo_transform"
   | "geo_probability"
-  | "geo_graph";
+  | "geo_graph"
+  | "machine_reach"
+  | "nim_like";
 
 export type TaskFamilyConfig = {
   key: TaskFamilyKey;
+  skin: string;
   enabled: boolean;
   weight: number;
   initialDifficulty: number;
   maxDifficulty: number;
+  lockedChapter?: boolean;
+  subKinds?: string[];
 };
 
 export type ContestDraftInput = {
@@ -25,6 +30,7 @@ export type ContestDraftInput = {
   environmentKey: EnvironmentKey;
   taskConfig: {
     adaptationThreshold: number;
+    cohortSeed?: string;
     families: TaskFamilyConfig[];
   };
 };
@@ -96,110 +102,109 @@ const FAMILY_LABELS: Record<
     description:
       "Построить или исправить сеть с заданными степенями, связностью и пересечениями.",
   },
+  machine_reach: {
+    title: "Машины и инварианты",
+    description:
+      "Лампы, числовые операции, перестановки и прыгуны: достигните цели или докажите недостижимость.",
+  },
+  nim_like: {
+    title: "Игры Гранди",
+    description:
+      "Один решающий ход в игре с кучами: найдите выигрышный переход или распознайте проигрышную позицию.",
+  },
 };
 
-const CHESS_FAMILIES: TaskFamilyConfig[] = [
+const CONTENT_FAMILIES: TaskFamilyConfig[] = [
   {
     key: "chess960",
+    skin: "chess",
     enabled: true,
-    weight: 1,
+    weight: 10,
     initialDifficulty: 1,
-    maxDifficulty: 10,
+    maxDifficulty: 5,
   },
   {
     key: "dice_chess",
+    skin: "chess",
     enabled: true,
-    weight: 1,
+    weight: 10,
     initialDifficulty: 1,
-    maxDifficulty: 10,
+    maxDifficulty: 5,
   },
   {
     key: "penultima",
+    skin: "chess",
     enabled: true,
-    weight: 1,
+    weight: 15,
     initialDifficulty: 1,
-    maxDifficulty: 10,
+    maxDifficulty: 5,
+    lockedChapter: true,
   },
-];
-
-const GEOMETRY_FAMILIES: TaskFamilyConfig[] = [
   {
     key: "geo_zendo",
+    skin: "graph",
     enabled: true,
-    weight: 30,
+    weight: 15,
     initialDifficulty: 1,
-    maxDifficulty: 10,
+    maxDifficulty: 5,
   },
   {
     key: "geo_transform",
+    skin: "graph",
     enabled: true,
-    weight: 25,
+    weight: 10,
     initialDifficulty: 1,
-    maxDifficulty: 10,
+    maxDifficulty: 5,
   },
   {
     key: "geo_probability",
+    skin: "graph",
     enabled: true,
-    weight: 25,
+    weight: 10,
     initialDifficulty: 1,
-    maxDifficulty: 10,
+    maxDifficulty: 5,
   },
   {
     key: "geo_graph",
+    skin: "graph",
     enabled: true,
-    weight: 20,
+    weight: 10,
     initialDifficulty: 1,
-    maxDifficulty: 10,
+    maxDifficulty: 5,
+  },
+  {
+    key: "machine_reach",
+    skin: "machine_panel",
+    enabled: true,
+    weight: 15,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
+    subKinds: [
+      "lamps_gf2",
+      "numeric_machine",
+      "perm_puzzle",
+      "leaper_board",
+    ],
+  },
+  {
+    key: "nim_like",
+    skin: "counters",
+    enabled: true,
+    weight: 15,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
   },
 ];
 
-const WORLD_COPY: Record<
-  EnvironmentKey,
-  { title: string; description: string }
-> = {
-  chess_world: {
-    title: "Шахматный мир",
-    description:
-      "Chess960, Dice & Chess и Penultima образуют одну адаптивную траекторию на шахматной доске.",
-  },
-  geometry_world: {
-    title: "Геометрический мир",
-    description:
-      "Скрытые правила Zendo, преобразования, вероятность и конструкции используют общий язык точек, рёбер и фигур.",
-  },
-};
-
 function cloneFamilies(families: readonly TaskFamilyConfig[]) {
-  return families.map((family) => ({ ...family }));
+  return families.map((family) => ({
+    ...family,
+    subKinds: family.subKinds ? [...family.subKinds] : undefined,
+  }));
 }
 
 function newParticipant(): ParticipantDraft {
   return { externalRef: "", displayName: "" };
-}
-
-function EnvironmentSelector({
-  value,
-  onChange,
-}: {
-  value: EnvironmentKey;
-  onChange: (environment: EnvironmentKey) => void;
-}) {
-  return (
-    <div className="world-selector" aria-label="Выбор среды контеста">
-      {(Object.keys(WORLD_COPY) as EnvironmentKey[]).map((world) => (
-        <button
-          className={value === world ? "is-selected" : ""}
-          type="button"
-          aria-pressed={value === world}
-          onClick={() => onChange(world)}
-          key={world}
-        >
-          <strong>{WORLD_COPY[world].title}</strong>
-          <span>{WORLD_COPY[world].description}</span>
-        </button>
-      ))}
-    </div>
-  );
 }
 
 export function ContestBuilder({
@@ -212,10 +217,9 @@ export function ContestBuilder({
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
-  const [environmentKey, setEnvironmentKey] =
-    useState<EnvironmentKey>("chess_world");
+  const [cohortSeed, setCohortSeed] = useState("");
   const [families, setFamilies] =
-    useState<TaskFamilyConfig[]>(() => cloneFamilies(CHESS_FAMILIES));
+    useState<TaskFamilyConfig[]>(() => cloneFamilies(CONTENT_FAMILIES));
   const [participants, setParticipants] = useState<ParticipantDraft[]>([
     newParticipant(),
   ]);
@@ -248,18 +252,6 @@ export function ContestBuilder({
     );
   }
 
-  function selectEnvironment(nextEnvironment: EnvironmentKey) {
-    setEnvironmentKey(nextEnvironment);
-    setFamilies(
-      cloneFamilies(
-        nextEnvironment === "geometry_world"
-          ? GEOMETRY_FAMILIES
-          : CHESS_FAMILIES,
-      ),
-    );
-    setError("");
-  }
-
   function updateParticipant(
     index: number,
     field: keyof ParticipantDraft,
@@ -274,12 +266,25 @@ export function ContestBuilder({
     );
   }
 
-  async function createContest(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function openFamiliesStep() {
     if (!title.trim()) {
       setError("Введите название контеста.");
       return;
     }
+    if (
+      !Number.isFinite(durationMinutes) ||
+      durationMinutes < 15 ||
+      durationMinutes > 240
+    ) {
+      setError("Продолжительность должна быть от 15 до 240 минут.");
+      return;
+    }
+
+    setError("");
+    setStep(2);
+  }
+
+  async function createContest() {
     if (!activeFamilies.length) {
       setError("Выберите хотя бы одно семейство задач.");
       return;
@@ -288,7 +293,7 @@ export function ContestBuilder({
       activeFamilies.some(
         (family) =>
           family.initialDifficulty < 1 ||
-          family.maxDifficulty > 10 ||
+          family.maxDifficulty > 5 ||
           family.initialDifficulty > family.maxDifficulty,
       )
     ) {
@@ -304,9 +309,10 @@ export function ContestBuilder({
       const created = await onCreateContest({
         title: title.trim(),
         durationMinutes,
-        environmentKey,
+        environmentKey: "mixed",
         taskConfig: {
           adaptationThreshold: 3,
+          cohortSeed: cohortSeed.trim() || undefined,
           families,
         },
       });
@@ -319,6 +325,15 @@ export function ContestBuilder({
     } finally {
       setBusy(false);
     }
+  }
+
+  function submitCurrentStep(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (step === 1) {
+      openFamiliesStep();
+      return;
+    }
+    void createContest();
   }
 
   async function saveParticipants() {
@@ -401,7 +416,7 @@ export function ContestBuilder({
           <p className="eyebrow">Конструктор контеста</p>
           <h1>{contest?.title || "Новый контест"}</h1>
           <p>
-            Выберите мир, настройте адаптивную траекторию и выпустите
+            Выберите семейства, настройте адаптивную траекторию и выпустите
             персональные коды.
           </p>
         </div>
@@ -411,7 +426,7 @@ export function ContestBuilder({
       </header>
 
       <ol className="builder-progress" aria-label="Этапы создания контеста">
-        {["Параметры", "Среда", "Участники", "Коды"].map((label, index) => (
+        {["Параметры", "Семейства", "Участники", "Коды"].map((label, index) => (
           <li
             className={step === index + 1 ? "is-active" : ""}
             key={label}
@@ -424,7 +439,7 @@ export function ContestBuilder({
       </ol>
 
       {step <= 2 && (
-        <form className="builder-card" onSubmit={createContest}>
+        <form className="builder-card" onSubmit={submitCurrentStep}>
           {step === 1 ? (
             <section aria-labelledby="builderBasicsTitle">
               <span className="builder-section-label">01 · параметры</span>
@@ -454,27 +469,24 @@ export function ContestBuilder({
                     }
                   />
                 </label>
-              </div>
-              <div className="builder-world-choice">
-                <span>Среда контеста</span>
-                <p>
-                  Выберите мир, из семейств которого будет строиться
-                  индивидуальная траектория участника.
-                </p>
-                <EnvironmentSelector
-                  value={environmentKey}
-                  onChange={selectEnvironment}
-                />
+                <label>
+                  <span>Сид когорты, необязательно</span>
+                  <input
+                    value={cohortSeed}
+                    onChange={(event) => setCohortSeed(event.target.value)}
+                    placeholder="Волна-2026-01"
+                  />
+                </label>
               </div>
             </section>
           ) : (
             <section aria-labelledby="builderWorldTitle">
-              <span className="builder-section-label">02 · задачи среды</span>
-              <h2 id="builderWorldTitle">{WORLD_COPY[environmentKey].title}</h2>
+              <span className="builder-section-label">02 · семейства</span>
+              <h2 id="builderWorldTitle">Контент траектории</h2>
               <p className="builder-intro">
-                Семейства образуют единую адаптивную траекторию. Система
-                сначала познакомит участника с выбранными механиками, затем
-                будет менять их порядок и сложность по истории прохождения.
+                Скины отвечают только за представление сцены. Режиссёр
+                калибрует каждое включённое семейство и затем меняет порядок и
+                сложность по истории прохождения.
               </p>
               <div className="family-list">
                 {families.map((family) => {
@@ -497,7 +509,9 @@ export function ContestBuilder({
                           />
                           <span>{copy.title}</span>
                         </label>
-                        <small>{family.key}</small>
+                        <small>
+                          {family.key} · {family.skin}
+                        </small>
                       </header>
                       <p>{copy.description}</p>
                       <div>
@@ -523,7 +537,7 @@ export function ContestBuilder({
                             type="number"
                             aria-label={`Начальная сложность ${copy.title}`}
                             min={1}
-                            max={10}
+                            max={5}
                             disabled={!family.enabled}
                             value={family.initialDifficulty}
                             onChange={(event) =>
@@ -539,7 +553,7 @@ export function ContestBuilder({
                             type="number"
                             aria-label={`Максимальная сложность ${copy.title}`}
                             min={1}
-                            max={10}
+                            max={5}
                             disabled={!family.enabled}
                             value={family.maxDifficulty}
                             onChange={(event) =>
@@ -573,27 +587,9 @@ export function ContestBuilder({
             {step === 1 ? (
               <button
                 className="primary-action primary-action--fit"
-                type="button"
-                onClick={() => {
-                  if (!title.trim()) {
-                    setError("Введите название контеста.");
-                    return;
-                  }
-                  if (
-                    !Number.isFinite(durationMinutes) ||
-                    durationMinutes < 15 ||
-                    durationMinutes > 240
-                  ) {
-                    setError(
-                      "Продолжительность должна быть от 15 до 240 минут.",
-                    );
-                    return;
-                  }
-                  setError("");
-                  setStep(2);
-                }}
+                type="submit"
               >
-                Настроить среду
+                Настроить семейства
               </button>
             ) : (
               <button

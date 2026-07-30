@@ -52,7 +52,7 @@ def test_versions_and_legacy_validation_remain_callable():
 
 def test_current_generator_is_deterministic_and_repairs_are_exhaustive():
     expected_variants = {
-        1: "validation",
+        1: "single_swap_repair",
         2: "single_swap_repair",
         3: "single_swap_repair",
         4: "single_swap_repair",
@@ -80,11 +80,6 @@ def test_current_generator_is_deterministic_and_repairs_are_exhaustive():
             assert private_state["variant"] == expected_variant
             assert len(public_state["back_rank"]) == 8
             observed_ranks.add(public_state["back_rank"])
-
-            if expected_variant == "validation":
-                assert private_state["valid_repairs"] == []
-                assert private_state["repair_count"] == 0
-                continue
 
             back_rank = public_state["back_rank"]
             assert is_valid_chess960(back_rank) is False
@@ -166,7 +161,7 @@ def test_single_swap_accepts_every_valid_pair_and_required_formats():
     assert malformed["correct"] is False
 
 
-def test_repair_count_evaluation_and_current_validation_evaluation():
+def test_repair_count_evaluation_and_saved_v2_validation_evaluation():
     count_public, count_private = generate_chess960_task(
         seed=909,
         difficulty=6,
@@ -196,14 +191,23 @@ def test_repair_count_evaluation_and_current_validation_evaluation():
     assert malformed["parsed"] is False
     assert malformed["correct"] is False
 
-    validation_public, validation_private = generate_chess960_task(
+    legacy_public, legacy_private = generate_chess960_validation_task(
         seed=101,
         difficulty=1,
     )
-    assert validation_public["variant"] == "validation"
-    expected = "да" if validation_private["is_valid"] else "нет"
+    saved_v2_private = {
+        **legacy_private,
+        "variant": "validation",
+        "valid_repairs": [],
+        "repair_count": 0,
+    }
+    expected = "да" if saved_v2_private["is_valid"] else "нет"
     validation = evaluate_chess960_answer(
         answer=expected,
-        private_state=validation_private,
+        private_state=saved_v2_private,
     )
     assert validation["correct"] is True
+
+    # The public part of a previously stored mission is not regenerated, but
+    # it used the same legacy validation payload wrapped as a v2 mission.
+    assert legacy_public["kind"] == "chess960_validation"

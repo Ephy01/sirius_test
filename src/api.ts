@@ -190,7 +190,7 @@ export type ChessBoardPieceSymbol = `w${ChessPieceSymbol}` | `b${ChessPieceSymbo
 export type ChessBoardState = (ChessBoardPieceSymbol | null)[][];
 
 export type WorldContext = {
-  world: "chess_world" | "geometry_world";
+  world: string;
   episode: number;
   family: string;
   phase: "calibration" | "chapter" | "remediation" | "rotation" | string;
@@ -310,13 +310,87 @@ export type GeometryPublicState = {
   worldContext?: WorldContext;
 };
 
+export type MachineSubKind =
+  | "lamps_gf2"
+  | "numeric_machine"
+  | "perm_puzzle";
+
+export type MachineState =
+  | { lamps: number[] }
+  | { value: number }
+  | { cards: number[] };
+
+export type MachineOperation = {
+  id: string;
+  label: string;
+  spec: Record<string, unknown>;
+};
+
+export type MachinePanelPublicState = {
+  kind: "machine_panel";
+  subKind: MachineSubKind;
+  prompt: string;
+  ops: MachineOperation[];
+  start: MachineState;
+  target: MachineState;
+  current: MachineState;
+  stepsSoftCap: number;
+  stepsTaken: number;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type BoardPoint = {
+  row: number;
+  col: number;
+};
+
+export type LeaperBoardPublicState = {
+  kind: "chess";
+  subKind: "leaper_board";
+  prompt: string;
+  ops: MachineOperation[];
+  start: BoardPoint;
+  target: BoardPoint;
+  current: BoardPoint;
+  stepsSoftCap: number;
+  stepsTaken: number;
+  rows: number;
+  cols: number;
+  blocked: BoardPoint[];
+  jump?: { a: number; b: number };
+  board: ChessBoardState;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type CounterHeap = {
+  id: string;
+  label: string;
+  count: number;
+};
+
+export type CountersPublicState = {
+  kind: "counters";
+  prompt: string;
+  heaps: CounterHeap[];
+  rules: Record<string, unknown>;
+  rulesByHeap: Record<string, number[]>;
+  misere: boolean;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
 export type TaskPublicState =
   | Chess960PublicState
   | DiceChessPublicState
   | DiceChessInventoryPublicState
   | DiceChessPositionPublicState
   | PenultimaPublicState
-  | GeometryPublicState;
+  | GeometryPublicState
+  | MachinePanelPublicState
+  | LeaperBoardPublicState
+  | CountersPublicState;
 
 export type ParticipantTask = {
   id: string;
@@ -353,6 +427,15 @@ export type TaskInteractionInput =
   | {
       actionType: "probe";
       probe: string;
+      clientActionId: string;
+    }
+  | {
+      actionType: "apply_op";
+      opId: string;
+      clientActionId: string;
+    }
+  | {
+      actionType: "undo";
       clientActionId: string;
     };
 
@@ -398,6 +481,17 @@ function readNumber(record: UnknownRecord, ...keys: string[]): number | undefine
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function readBoolean(
+  record: UnknownRecord,
+  ...keys: string[]
+): boolean | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
   }
   return undefined;
 }
@@ -676,11 +770,15 @@ function parseDiceDefinition(
   };
 }
 
-function parseChessBoard(value: unknown): ChessBoardState | null {
-  if (!Array.isArray(value) || value.length !== 8) return null;
+function parseChessBoard(
+  value: unknown,
+  expectedRows = 8,
+  expectedCols = 8,
+): ChessBoardState | null {
+  if (!Array.isArray(value) || value.length !== expectedRows) return null;
   const board: ChessBoardState = [];
   for (const rank of value) {
-    if (!Array.isArray(rank) || rank.length !== 8) return null;
+    if (!Array.isArray(rank) || rank.length !== expectedCols) return null;
     if (
       !rank.every(
         (piece) => piece === null || isChessBoardPieceSymbol(piece),
@@ -691,6 +789,143 @@ function parseChessBoard(value: unknown): ChessBoardState | null {
     board.push([...rank] as (ChessBoardPieceSymbol | null)[]);
   }
   return board;
+}
+
+function parseMachineOperations(value: unknown): MachineOperation[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const operations = value.flatMap((item): MachineOperation[] => {
+    if (!isRecord(item)) return [];
+    const id = readString(item, "id");
+    const label = readString(item, "label");
+    if (!id || !label) return [];
+    return [{
+      id,
+      label,
+      spec: isRecord(item.spec) ? item.spec : {},
+    }];
+  });
+  return operations.length === value.length ? operations : null;
+}
+
+function parseMachineState(
+  value: unknown,
+  subKind: MachineSubKind,
+): MachineState | null {
+  if (!isRecord(value)) return null;
+  if (subKind === "lamps_gf2") {
+    const lamps = value.lamps;
+    if (
+      !Array.isArray(lamps) ||
+      lamps.length === 0 ||
+      !lamps.every((lamp) => lamp === 0 || lamp === 1)
+    ) {
+      return null;
+    }
+    return { lamps: [...lamps] as number[] };
+  }
+  if (subKind === "numeric_machine") {
+    const number = readNumber(value, "value");
+    return number === undefined ? null : { value: number };
+  }
+  const cards = value.cards;
+  if (
+    !Array.isArray(cards) ||
+    cards.length === 0 ||
+    !cards.every((card) => Number.isInteger(card))
+  ) {
+    return null;
+  }
+  return { cards: [...cards] as number[] };
+}
+
+function parseBoardPoint(value: unknown): BoardPoint | null {
+  if (!isRecord(value)) return null;
+  const row = readNumber(value, "row");
+  const col = readNumber(value, "col");
+  if (
+    row === undefined ||
+    col === undefined ||
+    !Number.isInteger(row) ||
+    !Number.isInteger(col)
+  ) {
+    return null;
+  }
+  return { row, col };
+}
+
+function parseCounterHeaps(value: unknown): CounterHeap[] | null {
+  const parseHeap = (
+    item: unknown,
+    index: number,
+    fallbackId?: string,
+  ): CounterHeap | null => {
+    if (typeof item === "number" && Number.isInteger(item) && item >= 0) {
+      const id = fallbackId ?? String(index + 1);
+      return { id, label: `Куча ${id}`, count: item };
+    }
+    if (!isRecord(item)) return null;
+    const count = readNumber(item, "count", "size", "value");
+    if (count === undefined || !Number.isInteger(count) || count < 0) return null;
+    const id = readString(item, "id", "key", "heap") ?? fallbackId ?? String(index + 1);
+    return {
+      id,
+      label: readString(item, "label", "name") ?? `Куча ${id}`,
+      count,
+    };
+  };
+
+  if (Array.isArray(value)) {
+    const heaps = value.map((item, index) => parseHeap(item, index));
+    return heaps.length > 0 && heaps.every((heap) => heap !== null)
+      ? (heaps as CounterHeap[])
+      : null;
+  }
+  if (isRecord(value)) {
+    const heaps = Object.entries(value).map(([id, item], index) =>
+      parseHeap(item, index, id),
+    );
+    return heaps.length > 0 && heaps.every((heap) => heap !== null)
+      ? (heaps as CounterHeap[])
+      : null;
+  }
+  return null;
+}
+
+function parseRulesByHeap(value: unknown): Record<string, number[]> {
+  if (Array.isArray(value)) {
+    return Object.fromEntries(
+      value.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const heap = readNumber(item, "heap") ?? readString(item, "heap", "id");
+        const rawTakes =
+          item.take ?? item.takes ?? item.allowed_takes ?? item.allowedTakes;
+        if (heap === undefined || !Array.isArray(rawTakes)) return [];
+        const takes = rawTakes.filter(
+          (take): take is number =>
+            typeof take === "number" && Number.isInteger(take) && take > 0,
+        );
+        return takes.length > 0 ? [[String(heap), takes]] : [];
+      }),
+    );
+  }
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([heapId, rawRule]) => {
+      const rule = isRecord(rawRule)
+        ? rawRule.allowedTakes ??
+          rawRule.allowed_takes ??
+          rawRule.take ??
+          rawRule.takes ??
+          rawRule.moves
+        : rawRule;
+      if (!Array.isArray(rule)) return [];
+      const takes = rule.filter(
+        (take): take is number =>
+          typeof take === "number" && Number.isInteger(take) && take > 0,
+      );
+      return takes.length > 0 ? [[heapId, takes]] : [];
+    }),
+  );
 }
 
 function parsePenultimaObservations(value: unknown): PenultimaObservation[] {
@@ -782,7 +1017,7 @@ function parseWorldContext(value: unknown): WorldContext | undefined {
   const family = readString(value, "family");
   const phase = readString(value, "phase");
   if (
-    (world !== "chess_world" && world !== "geometry_world") ||
+    !world ||
     episode === undefined ||
     !family ||
     !phase
@@ -812,12 +1047,13 @@ function parseParticipantTask(value: unknown): ParticipantTask {
 
   const kind = readString(publicStateValue, "kind");
   const prompt = requiredString(publicStateValue, "task.prompt", "prompt");
-  const responseHint = requiredString(
-    publicStateValue,
-    "task.responseHint",
-    "responseHint",
-    "response_hint",
-  );
+  const responseHint =
+    readString(publicStateValue, "responseHint", "response_hint") ??
+    (kind === "machine_panel" || kind === "chess"
+      ? "/op op1 · /undo · done / impossible"
+      : kind === "counters"
+        ? "take <куча> <число> · проигрышная"
+        : "/answer ваш ответ");
   const worldContext = parseWorldContext(
     publicStateValue.worldContext ?? publicStateValue.world_context,
   );
@@ -1051,6 +1287,153 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       interaction: isRecord(publicStateValue.interaction)
         ? publicStateValue.interaction
         : {},
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "machine_panel") {
+    const subKindValue = readString(
+      publicStateValue,
+      "subKind",
+      "sub_kind",
+    );
+    const subKind =
+      subKindValue === "lamps_gf2" ||
+      subKindValue === "numeric_machine" ||
+      subKindValue === "perm_puzzle"
+        ? subKindValue
+        : undefined;
+    const operations = parseMachineOperations(publicStateValue.ops);
+    const start = subKind
+      ? parseMachineState(publicStateValue.start, subKind)
+      : null;
+    const target = subKind
+      ? parseMachineState(publicStateValue.target, subKind)
+      : null;
+    const current = subKind
+      ? parseMachineState(publicStateValue.current, subKind)
+      : null;
+    if (!subKind || !operations || !start || !target || !current) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректное состояние машины.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      subKind,
+      prompt,
+      ops: operations,
+      start,
+      target,
+      current,
+      stepsSoftCap:
+        readNumber(publicStateValue, "stepsSoftCap", "steps_soft_cap") ?? 24,
+      stepsTaken:
+        readNumber(publicStateValue, "stepsTaken", "steps_taken") ?? 0,
+      responseHint,
+      worldContext,
+    };
+  } else if (
+    kind === "chess" &&
+    readString(publicStateValue, "subKind", "sub_kind") === "leaper_board"
+  ) {
+    const rows = readNumber(publicStateValue, "rows");
+    const cols = readNumber(publicStateValue, "cols");
+    const operations = parseMachineOperations(publicStateValue.ops);
+    const start = parseBoardPoint(publicStateValue.start);
+    const target = parseBoardPoint(publicStateValue.target);
+    const current = parseBoardPoint(publicStateValue.current);
+    const blockedValue = publicStateValue.blocked;
+    const blocked = Array.isArray(blockedValue)
+      ? blockedValue.map(parseBoardPoint)
+      : [];
+    const board =
+      rows !== undefined && cols !== undefined
+        ? parseChessBoard(publicStateValue.board, rows, cols)
+        : null;
+    const jumpValue = publicStateValue.jump;
+    const jumpA = isRecord(jumpValue) ? readNumber(jumpValue, "a") : undefined;
+    const jumpB = isRecord(jumpValue) ? readNumber(jumpValue, "b") : undefined;
+    if (
+      rows === undefined ||
+      cols === undefined ||
+      !Number.isInteger(rows) ||
+      !Number.isInteger(cols) ||
+      rows < 1 ||
+      rows > 8 ||
+      cols < 1 ||
+      cols > 8 ||
+      !operations ||
+      !start ||
+      !target ||
+      !current ||
+      !board ||
+      blocked.some((point) => point === null)
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную доску прыгуна.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      subKind: "leaper_board",
+      prompt,
+      ops: operations,
+      start,
+      target,
+      current,
+      stepsSoftCap:
+        readNumber(publicStateValue, "stepsSoftCap", "steps_soft_cap") ?? 24,
+      stepsTaken:
+        readNumber(publicStateValue, "stepsTaken", "steps_taken") ?? 0,
+      rows,
+      cols,
+      blocked: blocked as BoardPoint[],
+      jump:
+        jumpA === undefined || jumpB === undefined
+          ? undefined
+          : { a: jumpA, b: jumpB },
+      board,
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "counters") {
+    const heaps = parseCounterHeaps(publicStateValue.heaps);
+    if (!heaps) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную позицию игры с кучами.",
+        details: value,
+      });
+    }
+    const rulesValue = publicStateValue.rules;
+    const rules = isRecord(rulesValue)
+      ? rulesValue
+      : Array.isArray(rulesValue)
+        ? { allowed_takes: rulesValue }
+        : typeof rulesValue === "string"
+          ? { description: rulesValue }
+          : {};
+    const rulesByHeap = parseRulesByHeap(
+      publicStateValue.rulesByHeap ??
+        publicStateValue.rules_by_heap ??
+        rules.by_heap ??
+        rules.rules_by_heap ??
+        rules.rulesByHeap,
+    );
+    publicState = {
+      kind,
+      prompt,
+      heaps,
+      rules,
+      rulesByHeap,
+      misere:
+        readBoolean(publicStateValue, "misere", "misère") ??
+        readBoolean(rules, "misere", "misère") ??
+        readString(publicStateValue, "mode") === "misere",
       responseHint,
       worldContext,
     };
@@ -1670,7 +2053,11 @@ export class ApiClient {
           action_type: input.actionType,
           ...(input.actionType === "move"
             ? { move: input.move }
-            : { probe: input.probe }),
+            : input.actionType === "probe"
+              ? { probe: input.probe }
+              : input.actionType === "apply_op"
+                ? { op_id: input.opId }
+                : {}),
           client_action_id: input.clientActionId,
         },
       },

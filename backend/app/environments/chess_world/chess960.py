@@ -279,27 +279,13 @@ def generate_chess960_mission_task(
     seed: int,
     difficulty: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Generate one of the three version-2 Chess960 mission variants."""
+    """Generate a repair or counting task for the current Chess960 mission.
 
-    if difficulty <= 1:
-        legacy_public, legacy_private = generate_chess960_validation_task(
-            seed=seed,
-            difficulty=difficulty,
-        )
-        public_state: dict[str, Any] = {
-            "kind": "chess960_mission",
-            "variant": "validation",
-            "prompt": legacy_public["prompt"],
-            "back_rank": legacy_public["back_rank"],
-            "response_hint": legacy_public["response_hint"],
-        }
-        private_state: dict[str, Any] = {
-            **legacy_private,
-            "variant": "validation",
-            "valid_repairs": [],
-            "repair_count": 0,
-        }
-        return public_state, private_state
+    New missions deliberately start with an actionable single-swap repair
+    instead of the old yes/no position validation.  The evaluator still
+    accepts stored ``validation`` private states, and the legacy generator
+    remains available under ``chess960-validation-v1``.
+    """
 
     rng = random.Random(seed)
     back_rank, repairs = _select_repair_candidate(

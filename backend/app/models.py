@@ -79,7 +79,7 @@ class Contest(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     environment_key: Mapped[str] = mapped_column(
-        String(80), nullable=False, default="chess_world"
+        String(80), nullable=False, default="mixed"
     )
     task_config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[ContestStatus] = mapped_column(

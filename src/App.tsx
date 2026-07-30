@@ -18,7 +18,6 @@ import {
   AppHeader,
   ArrowIcon,
   Brand,
-  OrbitGlyph,
   PlusIcon,
 } from "./components";
 import {
@@ -297,24 +296,23 @@ function OrganizerDashboard({
         environmentKey: input.environmentKey,
         taskConfig: {
           adaptation_threshold: input.taskConfig.adaptationThreshold,
+          cohort_seed: input.taskConfig.cohortSeed,
           trajectory: {
             mode: "adaptive",
-            director_version:
-              input.environmentKey === "geometry_world"
-                ? "geometry-world-director-v1"
-                : "chess-world-director-v1",
+            director_version: "director-v2",
             start_family:
               input.taskConfig.families.find((family) => family.enabled)?.key ??
-              (input.environmentKey === "geometry_world"
-                ? "geo_zendo"
-                : "chess960"),
+              "geo_zendo",
           },
           families: input.taskConfig.families.map((family) => ({
-            key: family.key,
+            family: family.key,
+            skin: family.skin,
             enabled: family.enabled,
             weight: family.weight,
             initial_difficulty: family.initialDifficulty,
             max_difficulty: family.maxDifficulty,
+            locked_chapter: family.lockedChapter,
+            sub_kinds: family.subKinds,
           })),
         },
       },
@@ -455,6 +453,15 @@ function OrganizerDashboard({
               Контесты
               <small>{contests.length}</small>
             </button>
+            <button
+              className="side-nav-create"
+              type="button"
+              aria-label="Создать контест"
+              title="Создать контест"
+              onClick={() => setBuilderOpen(true)}
+            >
+              <PlusIcon />
+            </button>
             <button className="side-nav-item" type="button" disabled>
               <span className="side-nav-icon">◎</span>
               Участники
@@ -468,98 +475,55 @@ function OrganizerDashboard({
         </aside>
 
         <main className="dashboard-main">
-          <header className="dashboard-heading">
-            <div>
-              <p className="eyebrow">Рабочее пространство организатора</p>
-              <h1>Контесты</h1>
-              <p>Создавайте испытания, назначайте среды и выдавайте коды участникам.</p>
-            </div>
-            <button
-              className="primary-action primary-action--fit"
-              type="button"
-              onClick={() => setBuilderOpen(true)}
-            >
-              <PlusIcon />
-              <span>Создать контест</span>
-            </button>
-          </header>
-
-          {contests.length ? (
-            <section className="contest-list" aria-label="Созданные контесты">
-              {contests.map((contest) => (
-                <article key={contest.id}>
-                  <div>
-                    <span
-                      className={`contest-status contest-status--${contest.status}`}
-                    >
-                      {contest.status === "published"
-                        ? "Опубликован"
-                        : "Черновик"}
-                    </span>
-                    <span className="eyebrow">
-                      {contest.environmentKey === "geometry_world"
+          <section className="contest-list" aria-label="Созданные контесты">
+            {contests.map((contest) => (
+              <article key={contest.id}>
+                <div>
+                  <span
+                    className={`contest-status contest-status--${contest.status}`}
+                  >
+                    {contest.status === "published"
+                      ? "Опубликован"
+                      : "Черновик"}
+                  </span>
+                  <span className="eyebrow">
+                    {contest.environmentKey === "mixed"
+                      ? "Смешанный контент"
+                      : contest.environmentKey === "geometry_world"
                         ? "Геометрический мир"
                         : "Шахматный мир"}
-                    </span>
-                  </div>
-                  <h2>{contest.title}</h2>
-                  <p>{contest.durationMinutes} минут · персональные коды</p>
-                  <div className="contest-list__actions">
-                    <button
-                      className="contest-list__manage"
-                      type="button"
-                      onClick={() => setManagedContest(contest)}
-                    >
-                      Управлять доступом
-                      <ArrowIcon />
-                    </button>
-                    <button
-                      className="contest-list__delete"
-                      type="button"
-                      onClick={() => {
-                        setDeleteError("");
-                        setContestPendingDeletion(contest);
-                      }}
-                    >
-                      Удалить контест
-                    </button>
-                  </div>
-                </article>
-              ))}
+                  </span>
+                </div>
+                <h2>{contest.title}</h2>
+                <p>{contest.durationMinutes} минут · персональные коды</p>
+                <div className="contest-list__actions">
+                  <button
+                    className="contest-list__manage"
+                    type="button"
+                    onClick={() => setManagedContest(contest)}
+                  >
+                    Управлять доступом
+                    <ArrowIcon />
+                  </button>
+                  <button
+                    className="contest-list__delete"
+                    type="button"
+                    onClick={() => {
+                      setDeleteError("");
+                      setContestPendingDeletion(contest);
+                    }}
+                  >
+                    Удалить контест
+                  </button>
+                </div>
+              </article>
+            ))}
+            {notice && (
               <p className="dashboard-notice" role="status">
                 {notice}
               </p>
-            </section>
-          ) : (
-            <section
-              className="empty-dashboard"
-              aria-labelledby="emptyDashboardTitle"
-            >
-              <div className="empty-dashboard__visual" aria-hidden="true">
-                <OrbitGlyph />
-                <span>+</span>
-              </div>
-              <div className="empty-dashboard__copy">
-                <span className="empty-label">Пустое пространство</span>
-                <h2 id="emptyDashboardTitle">Здесь появятся ваши контесты</h2>
-                <p>
-                  Первый контест начнётся с выбора мира и выпуска персональных
-                  кодов.
-                </p>
-                <button
-                  className="text-action"
-                  type="button"
-                  onClick={() => setBuilderOpen(true)}
-                >
-                  Создать первый контест
-                  <ArrowIcon />
-                </button>
-                <p className="dashboard-notice" role="status">
-                  {notice}
-                </p>
-              </div>
-            </section>
-          )}
+            )}
+          </section>
         </main>
       </div>
 
@@ -633,9 +597,11 @@ function ParticipantWaitingScreen({
   const [error, setError] = useState("");
   const attempt = session.attempt;
   const worldName =
-    session.contest?.environmentKey === "geometry_world"
-      ? "Геометрический мир"
-      : "Шахматный мир";
+    session.contest?.environmentKey === "mixed"
+      ? "Смешанный контент"
+      : session.contest?.environmentKey === "geometry_world"
+        ? "Геометрический мир"
+        : "Шахматный мир";
 
   if (attempt) {
     return (
@@ -771,6 +737,13 @@ function ParticipantContestScreen({
         token: session.token,
       });
       setTask(response.task);
+      if (response.task.status === "active") {
+        return {
+          ordinal: response.task.ordinal,
+          advanced: false,
+          message: response.message,
+        };
+      }
       try {
         const next = await api.getNextTask({ token: session.token });
         setTask(next.task);
@@ -850,6 +823,60 @@ function ParticipantContestScreen({
         {
           actionType: "probe",
           probe,
+          clientActionId,
+        },
+        { token: session.token },
+      );
+      setTask(response.task);
+      return {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: response.completed,
+        message: response.message,
+      };
+    });
+  }
+
+  async function applyOperationTask(
+    opId: string,
+    clientActionId: string,
+  ): Promise<TaskMoveTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая машина уже закрыта.");
+    }
+    return runTaskAction(async () => {
+      const response = await api.interactWithTask(
+        task.id,
+        {
+          actionType: "apply_op",
+          opId,
+          clientActionId,
+        },
+        { token: session.token },
+      );
+      setTask(response.task);
+      return {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: response.completed,
+        message: response.message,
+      };
+    });
+  }
+
+  async function undoMachineTask(
+    clientActionId: string,
+  ): Promise<TaskMoveTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая машина уже закрыта.");
+    }
+    return runTaskAction(async () => {
+      const response = await api.interactWithTask(
+        task.id,
+        {
+          actionType: "undo",
           clientActionId,
         },
         { token: session.token },
@@ -1009,6 +1036,18 @@ function ParticipantContestScreen({
           task.publicState.kind === "geometry_atlas"
             ? task.publicState.interaction
             : undefined,
+        machinePanel:
+          task.publicState.kind === "machine_panel"
+            ? task.publicState
+            : undefined,
+        leaperBoard:
+          task.publicState.kind === "chess"
+            ? task.publicState
+            : undefined,
+        counters:
+          task.publicState.kind === "counters"
+            ? task.publicState
+            : undefined,
         worldPhase: task.publicState.worldContext?.phase,
         responseHint: task.publicState.responseHint,
       }
@@ -1035,6 +1074,8 @@ function ParticipantContestScreen({
           onNext={nextTask}
           onMove={moveTask}
           onProbe={probeTask}
+          onApplyOperation={applyOperationTask}
+          onUndo={undoMachineTask}
         />
       ) : (
         <main className="participant-waiting">

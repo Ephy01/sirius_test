@@ -25,8 +25,12 @@ from .environments import (
     GEO_PROBABILITY_FAMILY,
     GEO_TRANSFORM_FAMILY,
     GEO_ZENDO_FAMILY,
+    GEOMETRY_GENERATOR_VERSION,
     INTERACTIVE_FAMILIES,
+    MACHINE_REACH_FAMILY,
+    NIM_LIKE_FAMILY,
     PENULTIMA_FAMILY,
+    PENULTIMA_LEGACY_GENERATOR_VERSION,
     derive_task_seed,
     evaluate_task,
     generate_task,
@@ -41,10 +45,15 @@ from .environments.chess_world.director import (
     FamilySettings as DirectorFamilySettings,
     decide_next_task as decide_next_chess_task,
 )
+from .environments.director import (
+    DIRECTOR_VERSION as SHARED_DIRECTOR_VERSION,
+    decide_next_task as decide_next_shared_task,
+)
 from .environments.geometry_world.director import (
     DIRECTOR_VERSION as GEOMETRY_DIRECTOR_VERSION,
     decide_next_task as decide_next_geometry_task,
 )
+from .environments.machines import SUB_KINDS as MACHINE_REACH_SUB_KINDS
 from .models import (
     AccessCode,
     AccessCodeStatus,
@@ -116,6 +125,10 @@ FAMILY_ALIASES = {
     "geometry_probability": GEO_PROBABILITY_FAMILY,
     "geo_graph": GEO_GRAPH_FAMILY,
     "geometry_graph": GEO_GRAPH_FAMILY,
+    "machine_reach": MACHINE_REACH_FAMILY,
+    "machine-reach": MACHINE_REACH_FAMILY,
+    "nim_like": NIM_LIKE_FAMILY,
+    "nim-like": NIM_LIKE_FAMILY,
 }
 WORLD_FAMILIES = {
     "chess_world": frozenset({"chess960", DICE_CHESS_FAMILY, PENULTIMA_FAMILY}),
@@ -128,17 +141,27 @@ WORLD_FAMILIES = {
         }
     ),
 }
+WORLD_FAMILIES["mixed"] = frozenset(
+    {
+        *frozenset().union(*WORLD_FAMILIES.values()),
+        MACHINE_REACH_FAMILY,
+        NIM_LIKE_FAMILY,
+    }
+)
 WORLD_DEFAULT_FAMILY = {
     "chess_world": "chess960",
     "geometry_world": GEO_ZENDO_FAMILY,
+    "mixed": "chess960",
 }
 WORLD_DIRECTOR_VERSION = {
     "chess_world": CHESS_DIRECTOR_VERSION,
     "geometry_world": GEOMETRY_DIRECTOR_VERSION,
+    "mixed": SHARED_DIRECTOR_VERSION,
 }
-FAMILY_INTERACTION_ACTION = {
-    PENULTIMA_FAMILY: "move",
-    GEO_ZENDO_FAMILY: "probe",
+FAMILY_INTERACTION_ACTIONS = {
+    PENULTIMA_FAMILY: frozenset({"move"}),
+    GEO_ZENDO_FAMILY: frozenset({"probe"}),
+    MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
 }
 FAMILY_ROUTE_VERSION = "weighted-family-route-v1"
 ADAPTIVE_TRAJECTORY_MODE = "adaptive"
@@ -150,6 +173,9 @@ class FamilyTaskSettings:
     weight_units: int
     initial_difficulty: int
     max_difficulty: int
+    skin: str | None = None
+    locked_chapter: bool = False
+    sub_kinds: tuple[str, ...] = ()
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -369,7 +395,7 @@ def _task_family_settings_from_config(
         elif isinstance(raw_family, dict):
             if raw_family.get("enabled", True) is False:
                 continue
-            raw_key = raw_family.get("key")
+            raw_key = raw_family.get("family", raw_family.get("key"))
             values = raw_family
         else:
             continue
@@ -385,23 +411,38 @@ def _task_family_settings_from_config(
         weight_units = _weight_units(values.get("weight", 1))
         if weight_units == 0:
             continue
+        difficulty_cap = 5 if environment_key == "mixed" else 10
         initial = _bounded_int(
             values.get("initial_difficulty"),
             default=1,
             minimum=1,
-            maximum=10,
+            maximum=difficulty_cap,
         )
         maximum = _bounded_int(
             values.get("max_difficulty"),
-            default=10,
+            default=difficulty_cap,
             minimum=initial,
-            maximum=10,
+            maximum=difficulty_cap,
         )
         parsed[family] = FamilyTaskSettings(
             family=family,
             weight_units=weight_units,
             initial_difficulty=initial,
             max_difficulty=maximum,
+            skin=(
+                values.get("skin").strip()
+                if isinstance(values.get("skin"), str)
+                and values.get("skin").strip()
+                else None
+            ),
+            locked_chapter=values.get("locked_chapter") is True,
+            sub_kinds=tuple(
+                item.strip()
+                for item in values.get("sub_kinds", [])
+                if isinstance(item, str) and item.strip()
+            )
+            if isinstance(values.get("sub_kinds"), list)
+            else (),
         )
 
     threshold = _bounded_int(
@@ -474,6 +515,44 @@ def _canonical_hash(value: object) -> str:
         separators=(",", ":"),
     ).encode("ascii")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _seed_relevant_task_config(config: dict) -> dict:
+    """Remove presentation-only skin choices from deterministic seed material."""
+
+    normalized = json.loads(json.dumps(config))
+    families = normalized.get("families")
+    if isinstance(families, list):
+        for family in families:
+            if isinstance(family, dict):
+                family.pop("skin", None)
+    return normalized
+
+
+def _seed_relevant_generation_context(context: dict) -> dict:
+    """Remove database identities from cross-participant task seed material."""
+
+    return {
+        key: value
+        for key, value in context.items()
+        if key not in {"context_hash", "parent_task_id"}
+    }
+
+
+def _attempt_seed(contest: Contest, attempt_number: int) -> int:
+    config = contest.task_config if isinstance(contest.task_config, dict) else {}
+    cohort_seed = config.get("cohort_seed")
+    if cohort_seed is None or isinstance(cohort_seed, (dict, list, bool)):
+        return secrets.randbits(63)
+    identity = json.dumps(
+        ["cohort-attempt-v1", str(cohort_seed), attempt_number],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return int.from_bytes(
+        hashlib.sha256(identity).digest()[:8],
+        byteorder="big",
+    ) & ((1 << 63) - 1)
 
 
 def _attempt_task_config(
@@ -599,6 +678,21 @@ def _director_signal(
     return "strong"
 
 
+def _evaluation_with_telemetry(
+    task: TaskInstance,
+    evaluation: dict,
+) -> dict:
+    enriched = dict(evaluation)
+    raw_score = enriched.get("continuous_score")
+    if isinstance(raw_score, bool) or not isinstance(raw_score, (int, float)):
+        raw_score = 1.0 if enriched.get("correct") is True else 0.0
+    enriched["continuous_score"] = min(1.0, max(0.0, float(raw_score)))
+    enriched["difficulty"] = task.difficulty
+    enriched["family"] = task.family
+    enriched["generator_version"] = task.generator_version
+    return enriched
+
+
 def _director_history(
     session: SessionDependency,
     *,
@@ -645,11 +739,11 @@ def _adaptive_director_decision(
     start_family: str | None,
 ) -> DirectorDecision:
     enabled = {item.family for item in settings}
-    decide = (
-        decide_next_geometry_task
-        if environment_key == "geometry_world"
-        else decide_next_chess_task
-    )
+    decide = {
+        "geometry_world": decide_next_geometry_task,
+        "chess_world": decide_next_chess_task,
+        "mixed": decide_next_shared_task,
+    }.get(environment_key, decide_next_shared_task)
     return decide(
         seed=attempt_seed,
         families=[
@@ -658,6 +752,7 @@ def _adaptive_director_decision(
                 weight=item.weight_units,
                 initial_difficulty=item.initial_difficulty,
                 max_difficulty=item.max_difficulty,
+                locked_chapter=item.locked_chapter,
             )
             for item in settings
         ],
@@ -734,11 +829,15 @@ def _penultima_generation_context(
     }
     if branch == "new_chapter":
         payload["exclude_rule_key"] = private.get("rule_key")
+        payload["exclude_rule_fingerprint"] = private.get(
+            "rule_fingerprint"
+        )
     if branch != "new_chapter":
         payload["chapter"] = {
             "chapter_id": private.get("chapter_id"),
             "chapter_stage": next_stage,
             "rule_key": private.get("rule_key"),
+            "rule_spec": private.get("rule_spec"),
             "blockers": private.get("blockers", []),
             "current_square": private.get("current_square"),
             "piece_name": private.get("piece_name"),
@@ -753,6 +852,31 @@ def _task_state_hash(task: TaskInstance) -> str:
             "private_state": task.private_state,
             "status": task.status.value,
         }
+    )
+
+
+def _task_input_frozen_until(task: TaskInstance) -> datetime | None:
+    private = task.private_state if isinstance(task.private_state, dict) else {}
+    raw_value = private.get("input_frozen_until")
+    if not isinstance(raw_value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw_value)
+    except ValueError:
+        return None
+    return _as_utc(parsed)
+
+
+def _require_task_input_available(task: TaskInstance) -> None:
+    frozen_until = _task_input_frozen_until(task)
+    now = utc_now()
+    if frozen_until is None or frozen_until <= now:
+        return
+    remaining = max(1, int((frozen_until - now).total_seconds() + 0.999))
+    raise api_error(
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        "TASK_INPUT_FROZEN",
+        f"Ввод временно приостановлен. Повторите через {remaining} с.",
     )
 
 
@@ -825,14 +949,29 @@ def _create_or_get_current_task(
             threshold=threshold,
         )
     generator_version = generator_version_for(selected_family.family)
+    if (
+        environment_key == "chess_world"
+        and selected_family.family == PENULTIMA_FAMILY
+    ):
+        generator_version = PENULTIMA_LEGACY_GENERATOR_VERSION
+    elif (
+        environment_key == "geometry_world"
+        and selected_family.family == GEO_ZENDO_FAMILY
+    ):
+        generator_version = GEOMETRY_GENERATOR_VERSION
+    seed_family = (
+        f"{environment_key}:{selected_family.family}"
+        if environment_key == "geometry_world"
+        and (
+            director_decision is None
+            or director_decision.version == GEOMETRY_DIRECTOR_VERSION
+        )
+        else selected_family.family
+    )
     base_task_seed = derive_task_seed(
         attempt.seed,
         ordinal,
-        (
-            f"{environment_key}:{selected_family.family}"
-            if environment_key != "chess_world"
-            else selected_family.family
-        ),
+        seed_family,
         generator_version,
     )
     generation_context = (
@@ -840,8 +979,43 @@ def _create_or_get_current_task(
         if selected_family.family == PENULTIMA_FAMILY
         else None
     )
+    generator_context = dict(generation_context or {})
+    if selected_family.skin is not None:
+        generator_context["skin"] = selected_family.skin
+    if selected_family.sub_kinds:
+        generator_context["sub_kinds"] = list(selected_family.sub_kinds)
     director_context_hash: str | None = None
     if director_decision is not None:
+        shared_director = director_decision.version == SHARED_DIRECTOR_VERSION
+        seed_config = (
+            _seed_relevant_task_config(task_config)
+            if shared_director
+            else task_config
+        )
+        seed_history = [
+            {
+                **(
+                    {}
+                    if shared_director
+                    else {"task_id": item.task_id}
+                ),
+                "family": item.family,
+                "difficulty": item.difficulty,
+                "evidence": item.evidence,
+                "phase": item.phase.value,
+                "chapter_stage": item.chapter_stage,
+            }
+            for item in director_history
+        ]
+        family_context_hash = (
+            _canonical_hash(
+                _seed_relevant_generation_context(generation_context)
+            )
+            if shared_director and generation_context is not None
+            else generation_context.get("context_hash")
+            if generation_context is not None
+            else None
+        )
         director_context_hash = _canonical_hash(
             {
                 "version": director_decision.version,
@@ -849,24 +1023,14 @@ def _create_or_get_current_task(
                 "difficulty": director_decision.difficulty,
                 "phase": director_decision.phase.value,
                 "reason": director_decision.reason,
-                "parent_task_id": director_decision.parent_task_id,
-                "task_config_hash": _canonical_hash(task_config),
-                "history": [
-                    {
-                        "task_id": item.task_id,
-                        "family": item.family,
-                        "difficulty": item.difficulty,
-                        "evidence": item.evidence,
-                        "phase": item.phase.value,
-                        "chapter_stage": item.chapter_stage,
-                    }
-                    for item in director_history
-                ],
-                "family_context_hash": (
-                    generation_context.get("context_hash")
-                    if generation_context is not None
-                    else None
+                **(
+                    {}
+                    if shared_director
+                    else {"parent_task_id": director_decision.parent_task_id}
                 ),
+                "task_config_hash": _canonical_hash(seed_config),
+                "history": seed_history,
+                "family_context_hash": family_context_hash,
             }
         )
         task_seed = _contextual_task_seed(
@@ -874,9 +1038,16 @@ def _create_or_get_current_task(
             director_context_hash,
         )
     elif generation_context is not None:
+        generation_context_hash = (
+            _canonical_hash(
+                _seed_relevant_generation_context(generation_context)
+            )
+            if environment_key == "mixed"
+            else str(generation_context["context_hash"])
+        )
         task_seed = _contextual_task_seed(
             base_task_seed,
-            str(generation_context["context_hash"]),
+            generation_context_hash,
         )
     else:
         task_seed = base_task_seed
@@ -885,10 +1056,12 @@ def _create_or_get_current_task(
         generator_version=generator_version,
         seed=task_seed,
         difficulty=difficulty,
-        context=generation_context,
+        context=generator_context or None,
     )
     public_state = dict(generated.public_state)
     private_state = dict(generated.private_state)
+    if selected_family.skin is not None:
+        public_state.setdefault("skin", selected_family.skin)
     private_state["world_runtime"] = {
         "world": environment_key,
         "version": f"{environment_key}-runtime-v1",
@@ -1119,15 +1292,50 @@ def create_contest(
     _organizer: OrganizerDependency,
 ) -> Contest:
     task_config = payload.task_config if isinstance(payload.task_config, dict) else {}
+    # Older API clients did not send ``environment_key`` and identified the
+    # chess runtime solely by its pinned director version.  Keep those payloads
+    # reproducible, while every new client (the current constructor sends the
+    # field explicitly) writes the skin-independent ``mixed`` environment.
+    environment_key = payload.environment_key
+    trajectory = task_config.get("trajectory")
+    if (
+        "environment_key" not in payload.model_fields_set
+        and isinstance(trajectory, dict)
+        and trajectory.get("director_version") == CHESS_DIRECTOR_VERSION
+    ):
+        environment_key = "chess_world"
     configured_families = task_config.get("families")
-    allowed_families = WORLD_FAMILIES[payload.environment_key]
+    if (
+        "environment_key" not in payload.model_fields_set
+        and isinstance(configured_families, list)
+        and configured_families
+        and all(
+            isinstance(item, dict)
+            and "family" not in item
+            and isinstance(item.get("key"), str)
+            for item in configured_families
+        )
+    ):
+        legacy_families = {
+            FAMILY_ALIASES.get(str(item["key"]).strip().casefold())
+            for item in configured_families
+        }
+        legacy_families.discard(None)
+        if legacy_families and legacy_families <= WORLD_FAMILIES["chess_world"]:
+            environment_key = "chess_world"
+        elif (
+            legacy_families
+            and legacy_families <= WORLD_FAMILIES["geometry_world"]
+        ):
+            environment_key = "geometry_world"
+    allowed_families = WORLD_FAMILIES[environment_key]
     foreign_families: list[str] = []
     if isinstance(configured_families, list):
         for configured in configured_families:
             raw_key = (
                 configured
                 if isinstance(configured, str)
-                else configured.get("key")
+                else configured.get("family", configured.get("key"))
                 if isinstance(configured, dict)
                 else None
             )
@@ -1142,9 +1350,36 @@ def create_contest(
             "TASK_FAMILY_WORLD_MISMATCH",
             "Одно или несколько семейств не относятся к указанному миру.",
         )
+    if isinstance(configured_families, list):
+        for configured in configured_families:
+            if not isinstance(configured, dict):
+                continue
+            raw_family = configured.get("family", configured.get("key"))
+            family = (
+                FAMILY_ALIASES.get(raw_family.strip().casefold())
+                if isinstance(raw_family, str)
+                else None
+            )
+            raw_sub_kinds = configured.get("sub_kinds")
+            if family != MACHINE_REACH_FAMILY or raw_sub_kinds is None:
+                continue
+            if (
+                not isinstance(raw_sub_kinds, list)
+                or not raw_sub_kinds
+                or any(
+                    not isinstance(item, str)
+                    or item not in MACHINE_REACH_SUB_KINDS
+                    for item in raw_sub_kinds
+                )
+            ):
+                raise api_error(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "TASK_SUB_KIND_NOT_AVAILABLE",
+                    "Указан неизвестный вариант семейства machine_reach.",
+                )
     family_settings, _ = _task_family_settings_from_config(
         task_config,
-        payload.environment_key,
+        environment_key,
     )
     if isinstance(configured_families, list) and not family_settings:
         raise api_error(
@@ -1154,7 +1389,7 @@ def create_contest(
         )
     _adaptive, start_family = _adaptive_trajectory(
         task_config,
-        payload.environment_key,
+        environment_key,
     )
     if start_family is not None and start_family not in allowed_families:
         raise api_error(
@@ -1162,7 +1397,9 @@ def create_contest(
             "TASK_FAMILY_WORLD_MISMATCH",
             "Стартовое семейство не относится к указанному миру.",
         )
-    contest = Contest(**payload.model_dump())
+    contest_data = payload.model_dump()
+    contest_data["environment_key"] = environment_key
+    contest = Contest(**contest_data)
     session.add(contest)
     session.commit()
     session.refresh(contest)
@@ -1585,10 +1822,11 @@ def start_attempt(
             )
 
     started_at = utc_now()
+    attempt_number = (previous_number or 0) + 1
     attempt = Attempt(
         enrollment_id=enrollment.id,
-        number=(previous_number or 0) + 1,
-        seed=secrets.randbits(63),
+        number=attempt_number,
+        seed=_attempt_seed(enrollment.contest, attempt_number),
         status=AttemptStatus.ACTIVE,
         active_slot=True,
         started_at=started_at,
@@ -1710,11 +1948,14 @@ def interact_with_task(
             "Задача не найдена в текущей попытке.",
         )
 
-    request_payload = (
-        {"move": payload.move}
-        if payload.action_type == "move"
-        else {"probe": payload.probe}
-    )
+    if payload.action_type == "move":
+        request_payload = {"move": payload.move}
+    elif payload.action_type == "probe":
+        request_payload = {"probe": payload.probe}
+    elif payload.action_type == "apply_op":
+        request_payload = {"op_id": payload.op_id}
+    else:
+        request_payload = {}
     existing = session.scalar(
         select(TaskInteraction).where(
             TaskInteraction.task_instance_id == task.id,
@@ -1739,13 +1980,17 @@ def interact_with_task(
             "TASK_ALREADY_CLOSED",
             "Эта задача уже завершена.",
         )
+    _require_task_input_available(task)
     if task.family not in INTERACTIVE_FAMILIES:
         raise api_error(
             status.HTTP_409_CONFLICT,
             "TASK_INTERACTION_NOT_SUPPORTED",
             "Для этой задачи пошаговые действия не поддерживаются.",
         )
-    if FAMILY_INTERACTION_ACTION.get(task.family) != payload.action_type:
+    if payload.action_type not in FAMILY_INTERACTION_ACTIONS.get(
+        task.family,
+        frozenset(),
+    ):
         raise api_error(
             status.HTTP_409_CONFLICT,
             "TASK_INTERACTION_ACTION_NOT_SUPPORTED",
@@ -1753,11 +1998,24 @@ def interact_with_task(
         )
 
     previous_hash = _task_state_hash(task)
+    transition_payload = {
+        **request_payload,
+        "client_action_id": payload.client_action_id,
+        "first_action_latency_ms": max(
+            0,
+            int(
+                (
+                    utc_now() - _as_utc(task.created_at)
+                ).total_seconds()
+                * 1000
+            ),
+        ),
+    }
     transition = interact_task(
         family=task.family,
         generator_version=task.generator_version,
         action_type=payload.action_type,
-        action_payload=request_payload,
+        action_payload=transition_payload,
         public_state=task.public_state,
         private_state=task.private_state,
     )
@@ -1767,7 +2025,10 @@ def interact_with_task(
         task.status = TaskStatus.ANSWERED
         task.active_slot = None
         task.participant_answer = transition.normalized_input
-        evaluation_state = dict(transition.evaluation_state or {})
+        evaluation_state = _evaluation_with_telemetry(
+            task,
+            dict(transition.evaluation_state or {}),
+        )
         evaluation_state["director_signal"] = _director_signal(
             family=task.family,
             evaluation=evaluation_state,
@@ -1835,6 +2096,39 @@ def interact_with_task(
             "after_state_hash": current_hash,
         },
     )
+    if (
+        task.family == GEO_ZENDO_FAMILY
+        and payload.action_type == "probe"
+        and transition.accepted
+        and isinstance(transition.evaluation_state, dict)
+    ):
+        _append_event(
+            session,
+            attempt_id=attempt.id,
+            task_instance_id=task.id,
+            event_type="zendo_probe",
+            payload={
+                "interaction_id": interaction.id,
+                "client_action_id": payload.client_action_id,
+                "card_id": transition.normalized_input,
+                **transition.evaluation_state,
+            },
+        )
+    if (
+        transition.completed
+        and isinstance(task.evaluation_state, dict)
+        and not (
+            task.family == PENULTIMA_FAMILY
+            and task.generator_version == PENULTIMA_LEGACY_GENERATOR_VERSION
+        )
+    ):
+        _append_event(
+            session,
+            attempt_id=attempt.id,
+            task_instance_id=task.id,
+            event_type="answer_evaluated",
+            payload=task.evaluation_state,
+        )
     try:
         session.commit()
     except IntegrityError:
@@ -1891,6 +2185,26 @@ def answer_task(
             "INTERACTIVE_TASK_REQUIRES_MOVE",
             "Эта задача решается ходами. Используйте команду /move.",
         )
+    _require_task_input_available(task)
+    if task.family == MACHINE_REACH_FAMILY:
+        next_private = dict(
+            task.private_state
+            if isinstance(task.private_state, dict)
+            else {}
+        )
+        interaction = dict(next_private.get("interaction") or {})
+        if interaction.get("first_action_latency_ms") is None:
+            interaction["first_action_latency_ms"] = max(
+                0,
+                int(
+                    (
+                        utc_now() - _as_utc(task.created_at)
+                    ).total_seconds()
+                    * 1000
+                ),
+            )
+            next_private["interaction"] = interaction
+            task.private_state = next_private
     evaluation = dict(
         evaluate_task(
             family=task.family,
@@ -1899,10 +2213,61 @@ def answer_task(
             private_state=task.private_state,
         )
     )
+    evaluation = _evaluation_with_telemetry(task, evaluation)
     evaluation["director_signal"] = _director_signal(
         family=task.family,
         evaluation=evaluation,
     )
+    if evaluation.get("should_finalize") is False:
+        freeze_seconds = evaluation.get("freeze_seconds")
+        if (
+            isinstance(freeze_seconds, int)
+            and not isinstance(freeze_seconds, bool)
+            and freeze_seconds > 0
+        ):
+            frozen_until = utc_now() + timedelta(seconds=freeze_seconds)
+            next_private = dict(
+                task.private_state
+                if isinstance(task.private_state, dict)
+                else {}
+            )
+            next_private["input_frozen_until"] = frozen_until.isoformat()
+            task.private_state = next_private
+            evaluation["input_frozen_until"] = frozen_until.isoformat()
+            _append_event(
+                session,
+                attempt_id=attempt.id,
+                task_instance_id=task.id,
+                event_type="task_input_frozen",
+                payload={
+                    "seconds": freeze_seconds,
+                    "until": frozen_until.isoformat(),
+                    "reason": evaluation.get("reason"),
+                },
+            )
+        _append_event(
+            session,
+            attempt_id=attempt.id,
+            task_instance_id=task.id,
+            event_type="answer_submitted",
+            payload={"answer": payload.answer},
+        )
+        _append_event(
+            session,
+            attempt_id=attempt.id,
+            task_instance_id=task.id,
+            event_type="answer_evaluated",
+            payload=evaluation,
+        )
+        session.commit()
+        session.refresh(task)
+        return TaskActionResponse(
+            task=task,
+            message=str(
+                evaluation.get("feedback")
+                or "Ответ пока не завершает задачу."
+            ),
+        )
     completed_at = utc_now()
     task.participant_answer = payload.answer
     task.evaluation_state = evaluation
@@ -1957,22 +2322,22 @@ def skip_task(
                 private.get("initial_shortest_path_length") or 0
             ),
         }
-        event_payload = {
-            "family": PENULTIMA_FAMILY,
-            "accepted_moves": task.evaluation_state["accepted_moves"],
-            "rejected_moves": task.evaluation_state["rejected_moves"],
-            "director_signal": "struggle",
-        }
+        task.evaluation_state = _evaluation_with_telemetry(
+            task,
+            task.evaluation_state,
+        )
+        event_payload = dict(task.evaluation_state)
     else:
         task.evaluation_state = {
             "correct": False,
             "skipped": True,
             "director_signal": "struggle",
         }
-        event_payload = {
-            "family": task.family,
-            "director_signal": "struggle",
-        }
+        task.evaluation_state = _evaluation_with_telemetry(
+            task,
+            task.evaluation_state,
+        )
+        event_payload = dict(task.evaluation_state)
     task.status = TaskStatus.SKIPPED
     task.active_slot = None
     task.completed_at = utc_now()

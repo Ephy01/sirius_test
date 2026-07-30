@@ -54,7 +54,7 @@ class AccessRedeemResponse(ApiModel):
 class ContestCreate(ApiModel):
     title: str = Field(min_length=1, max_length=200)
     duration_minutes: int = Field(default=60, ge=5, le=480)
-    environment_key: Literal["chess_world", "geometry_world"] = "chess_world"
+    environment_key: Literal["mixed", "chess_world", "geometry_world"] = "mixed"
     task_config: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("title")
@@ -80,6 +80,18 @@ class ContestResponse(ApiModel):
 
 class ContestListResponse(ApiModel):
     items: list[ContestResponse]
+
+
+class ParticipantContestResponse(ApiModel):
+    """Contest metadata that is safe to expose before and during an attempt."""
+
+    id: str
+    title: str
+    duration_minutes: int
+    environment_key: str
+    status: ContestStatus
+    created_at: datetime
+    published_at: datetime | None
 
 
 class ParticipantInput(ApiModel):
@@ -229,7 +241,7 @@ class AttemptGrantResponse(ApiModel):
 
 
 class ParticipantContextResponse(ApiModel):
-    contest: ContestResponse
+    contest: ParticipantContestResponse
     enrollment: EnrollmentResponse
     participant: ParticipantResponse
     active_attempt: AttemptResponse | None
@@ -274,9 +286,10 @@ class TaskActionResponse(ApiModel):
 
 class TaskInteractionRequest(ApiModel):
     client_action_id: str = Field(min_length=1, max_length=128)
-    action_type: Literal["move", "probe"]
+    action_type: Literal["move", "probe", "apply_op", "undo"]
     move: str | None = Field(default=None, min_length=2, max_length=40)
     probe: str | None = Field(default=None, min_length=1, max_length=80)
+    op_id: str | None = Field(default=None, min_length=1, max_length=80)
 
     @field_validator("client_action_id")
     @classmethod
@@ -292,14 +305,22 @@ class TaskInteractionRequest(ApiModel):
             if self.move is None or not self.move.strip():
                 raise ValueError("move action requires move")
             self.move = self.move.strip()
-            if self.probe is not None:
-                raise ValueError("move action must not contain probe")
-        else:
+            if self.probe is not None or self.op_id is not None:
+                raise ValueError("move action contains an unrelated payload")
+        elif self.action_type == "probe":
             if self.probe is None or not self.probe.strip():
                 raise ValueError("probe action requires probe")
             self.probe = self.probe.strip()
-            if self.move is not None:
-                raise ValueError("probe action must not contain move")
+            if self.move is not None or self.op_id is not None:
+                raise ValueError("probe action contains an unrelated payload")
+        elif self.action_type == "apply_op":
+            if self.op_id is None or not self.op_id.strip():
+                raise ValueError("apply_op action requires op_id")
+            self.op_id = self.op_id.strip()
+            if self.move is not None or self.probe is not None:
+                raise ValueError("apply_op action contains an unrelated payload")
+        elif any(value is not None for value in (self.move, self.probe, self.op_id)):
+            raise ValueError("undo action must not contain a payload")
         return self
 
 
