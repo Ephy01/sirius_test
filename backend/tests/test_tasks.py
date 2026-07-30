@@ -128,7 +128,8 @@ def test_chess960_generator_is_deterministic_and_preserves_invariants():
 
         back_rank = generated.public_state["back_rank"]
         assert len(back_rank) == 8
-        assert generated.public_state["kind"] == "chess960_validation"
+        assert generated.public_state["kind"] == "chess960_mission"
+        assert generated.public_state["variant"] == "validation"
         violations = chess960_violations(back_rank)
         if generated.private_state["is_valid"]:
             assert is_valid_chess960(back_rank)
@@ -180,10 +181,13 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
         assert task["status"] == "active"
         assert set(task["public_state"]) == {
             "kind",
+            "variant",
             "prompt",
             "back_rank",
             "response_hint",
         }
+        assert task["public_state"]["kind"] == "chess960_mission"
+        assert task["public_state"]["variant"] == "single_swap_repair"
         assert len(task["public_state"]["back_rank"]) == 8
 
         same_current = client.get(
@@ -199,11 +203,15 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
         assert no_implicit_skip.status_code == 200
         assert no_implicit_skip.json() == {"task": task, "created": False}
 
-        valid = is_valid_chess960(task["public_state"]["back_rank"])
+        with application.state.database.session_factory() as session:
+            stored_before_answer = session.get(TaskInstance, task["id"])
+            assert stored_before_answer is not None
+            first_repair = stored_before_answer.private_state["valid_repairs"][0]
+            correct_answer = f"{first_repair[0]} {first_repair[1]}"
         answered = client.post(
             f"/api/v1/participant/tasks/{task['id']}/answer",
             headers=auth(participant),
-            json={"answer": "Да, допустима." if valid else "Нет, недопустима."},
+            json={"answer": correct_answer},
         )
         assert answered.status_code == 200
         action = answered.json()
@@ -247,10 +255,14 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
                     select(TaskInstance).order_by(TaskInstance.ordinal)
                 ).all()
             )
-            assert stored_tasks[0].private_state["is_valid"] is valid
+            assert stored_tasks[0].private_state["variant"] == "single_swap_repair"
             assert stored_tasks[0].evaluation_state["correct"] is True
             assert stored_tasks[0].participant_answer
-            assert stored_tasks[1].evaluation_state is None
+            assert stored_tasks[1].evaluation_state["skipped"] is True
+            assert (
+                stored_tasks[1].evaluation_state["director_signal"]
+                == "struggle"
+            )
 
             events = list(
                 session.scalars(

@@ -529,50 +529,6 @@ svg {
   text-align: center;
 }
 
-.sidebar-note {
-  padding: 16px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--paper);
-}
-
-.orbit-glyph--small {
-  width: 68px;
-  height: 68px;
-  margin: -5px 0 3px;
-}
-
-.orbit-glyph--small .orbit-glyph__ring {
-  border-color: rgba(72, 48, 77, 0.28);
-}
-
-.orbit-glyph--small .orbit-glyph__core {
-  box-shadow: 0 0 0 8px rgba(75, 190, 207, 0.08);
-}
-
-.orbit-glyph--small .orbit-glyph__satellite {
-  width: 5px;
-  height: 5px;
-}
-
-.sidebar-note p {
-  margin: 0;
-  color: var(--vintage-grape);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.sidebar-note > span {
-  display: block;
-  margin-top: 8px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 7px;
-  text-transform: uppercase;
-}
-
 .dashboard-main {
   min-width: 0;
   padding: clamp(28px, 4vw, 58px);
@@ -752,7 +708,9 @@ svg {
 }
 
 .contest-list article {
-  min-height: 180px;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
   padding: 23px;
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -797,8 +755,146 @@ svg {
   font-size: 10px;
 }
 
+.contest-list__actions {
+  display: grid !important;
+  grid-template-columns: 1fr;
+  gap: 8px !important;
+  margin-top: auto;
+  padding-top: 22px;
+}
+
+.contest-list__manage {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 13px;
+  border: 1px solid rgba(75, 190, 207, 0.35);
+  border-radius: 12px;
+  background: var(--cyan-soft);
+  color: var(--logo-navy);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.contest-list__manage:hover {
+  border-color: var(--strong-cyan);
+  background: #ddf3f6;
+}
+
+.contest-list__manage svg {
+  width: 15px;
+  height: 15px;
+}
+
+.contest-list__delete {
+  min-height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--error);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  transition: background 160ms ease;
+}
+
+.contest-list__delete:hover {
+  background: rgba(179, 77, 104, 0.08);
+}
+
 .contest-list > .dashboard-notice {
   grid-column: 1 / -1;
+}
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(33, 24, 36, 0.44);
+  backdrop-filter: blur(4px);
+}
+
+.confirm-dialog {
+  width: min(440px, 100%);
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: 0 26px 80px rgba(33, 24, 36, 0.28);
+}
+
+.confirm-dialog__label {
+  color: var(--error);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.confirm-dialog h2 {
+  margin: 10px 0 12px;
+  color: var(--vintage-grape);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+}
+
+.confirm-dialog > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.confirm-dialog .confirm-dialog__error {
+  min-height: 18px;
+  margin-top: 12px;
+  color: var(--error);
+  font-size: 9px;
+}
+
+.confirm-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.confirm-dialog footer button {
+  min-height: 42px;
+  padding: 0 17px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.confirm-dialog footer button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.confirm-dialog__cancel {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--vintage-grape);
+}
+
+.confirm-dialog__delete {
+  border: 1px solid var(--error);
+  background: var(--error);
+  color: var(--paper);
 }
 
 .participant-page {

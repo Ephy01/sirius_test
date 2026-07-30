@@ -61,6 +61,11 @@ class AttemptStatus(str, enum.Enum):
     EXPIRED = "expired"
 
 
+class AttemptGrantStatus(str, enum.Enum):
+    PENDING = "pending"
+    CONSUMED = "consumed"
+
+
 class TaskStatus(str, enum.Enum):
     ACTIVE = "active"
     ANSWERED = "answered"
@@ -144,6 +149,9 @@ class Enrollment(Base):
     attempts: Mapped[list[Attempt]] = relationship(
         back_populates="enrollment", cascade="all, delete-orphan"
     )
+    attempt_grants: Mapped[list[AttemptGrant]] = relationship(
+        back_populates="enrollment", cascade="all, delete-orphan"
+    )
 
 
 class AccessCode(Base):
@@ -210,6 +218,45 @@ class Attempt(Base):
     )
 
 
+class AttemptGrant(Base):
+    """A persistent, one-shot permission to start the next retry.
+
+    Consumed grants are retained for auditability. ``pending_slot`` is true
+    only while the grant can be consumed, which lets the database enforce at
+    most one pending grant for an enrollment while retaining its full history.
+    """
+
+    __tablename__ = "attempt_grants"
+    __table_args__ = (
+        UniqueConstraint(
+            "enrollment_id",
+            "pending_slot",
+            name="uq_attempt_grant_one_pending",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    enrollment_id: Mapped[str] = mapped_column(
+        ForeignKey("enrollments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[AttemptGrantStatus] = mapped_column(
+        enum_type(AttemptGrantStatus, "attempt_grant_status"),
+        nullable=False,
+        default=AttemptGrantStatus.PENDING,
+    )
+    pending_slot: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_attempt_id: Mapped[str | None] = mapped_column(
+        ForeignKey("attempts.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+
+    enrollment: Mapped[Enrollment] = relationship(back_populates="attempt_grants")
+    consumed_attempt: Mapped[Attempt | None] = relationship()
+
+
 class TaskInstance(Base):
     __tablename__ = "task_instances"
     __table_args__ = (
@@ -244,6 +291,44 @@ class TaskInstance(Base):
 
     attempt: Mapped[Attempt] = relationship(back_populates="tasks")
     events: Mapped[list[AttemptEvent]] = relationship(back_populates="task")
+    interactions: Mapped[list[TaskInteraction]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
+
+
+class TaskInteraction(Base):
+    """One idempotent participant action inside a stateful task."""
+
+    __tablename__ = "task_interactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_instance_id",
+            "sequence",
+            name="uq_task_interaction_sequence",
+        ),
+        UniqueConstraint(
+            "task_instance_id",
+            "client_action_id",
+            name="uq_task_interaction_client_action",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    task_instance_id: Mapped[str] = mapped_column(
+        ForeignKey("task_instances.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    client_action_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    request_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    result_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    task: Mapped[TaskInstance] = relationship(back_populates="interactions")
 
 
 class AttemptEvent(Base):

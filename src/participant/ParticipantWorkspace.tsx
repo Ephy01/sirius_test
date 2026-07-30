@@ -9,6 +9,25 @@ import {
 import "./participant-workspace.css";
 
 export type ChessPieceKind = "K" | "Q" | "R" | "B" | "N";
+export type DicePieceKind = ChessPieceKind | "P";
+export type DiceFaces = readonly [
+  DicePieceKind,
+  DicePieceKind,
+  DicePieceKind,
+  DicePieceKind,
+  DicePieceKind,
+  DicePieceKind,
+];
+export type ChessDie = {
+  id: string;
+  label: string;
+  faces: DiceFaces;
+};
+export type ChessDiceSet =
+  | readonly [ChessDie]
+  | readonly [ChessDie, ChessDie]
+  | readonly [ChessDie, ChessDie, ChessDie]
+  | readonly [ChessDie, ChessDie, ChessDie, ChessDie];
 export type ChessPieceCode =
   | "wK"
   | "wQ"
@@ -24,17 +43,83 @@ export type ChessPieceCode =
   | "bP";
 export type ChessBoardCell = ChessPieceCode | null;
 export type ChessBoard = readonly (readonly ChessBoardCell[])[];
+export type PenultimaObservation = {
+  from: string;
+  to: string;
+  accepted: boolean;
+};
+export type GeometryPoint = {
+  id: string;
+  group: string;
+  x: number;
+  y: number;
+  label?: string;
+  color?: string;
+};
+export type GeometryEdge = {
+  id: string;
+  group: string;
+  source: string;
+  target: string;
+  color?: string;
+};
+export type GeometryScene = {
+  bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  };
+  points: readonly GeometryPoint[];
+  edges: readonly GeometryEdge[];
+};
 
 export type ParticipantTask = {
   id: string;
   ordinal: number;
   family: "chess960" | "dice_chess" | "penultima" | (string & {});
+  kind:
+    | "chess960_validation"
+    | "chess960_mission"
+    | "dice_chess_probability"
+    | "dice_chess_board_inventory_probability"
+    | "dice_chess_position_probability"
+    | "penultima_induction"
+    | (string & {});
   difficulty: number;
   status: "active" | "answered" | "skipped";
   prompt: string;
   board?: ChessBoard;
   backRank?: readonly ChessPieceKind[];
+  variant?: string;
+  dice?: ChessDiceSet;
+  sampleSpaceSize?: number;
+  eventDescription?: string;
+  sideToMove?: "white" | "black";
+  pieceName?: string;
+  currentSquare?: string;
+  goalSquare?: string;
+  chapterStage?: number;
+  stageTitle?: string;
+  acceptedMoves?: number;
+  rejectedMoves?: number;
+  observations?: readonly PenultimaObservation[];
+  geometryScene?: GeometryScene;
+  geometryContent?: Record<string, unknown>;
+  geometryInteraction?: Record<string, unknown>;
   responseHint?: string;
+  worldPhase?: string;
+};
+
+export type TaskTransitionResult = {
+  ordinal: number;
+  advanced: boolean;
+  message?: string;
+};
+
+export type TaskMoveTransitionResult = TaskTransitionResult & {
+  accepted: boolean;
+  completed: boolean;
 };
 
 export type ParticipantWorkspaceProps = {
@@ -45,9 +130,17 @@ export type ParticipantWorkspaceProps = {
   totalTasks?: number;
   busy?: boolean;
   error?: string;
-  onAnswer: (answer: string) => Promise<unknown> | unknown;
-  onSkip: () => Promise<unknown> | unknown;
-  onNext: () => Promise<unknown> | unknown;
+  onAnswer: (answer: string) => Promise<TaskTransitionResult>;
+  onSkip: () => Promise<TaskTransitionResult>;
+  onNext: () => Promise<TaskTransitionResult>;
+  onMove?: (
+    move: string,
+    clientActionId: string,
+  ) => Promise<TaskMoveTransitionResult>;
+  onProbe?: (
+    probe: string,
+    clientActionId: string,
+  ) => Promise<TaskMoveTransitionResult>;
   onMessage?: (message: string) => Promise<unknown> | unknown;
 };
 
@@ -99,10 +192,44 @@ const PIECE_NAMES: Record<ChessPieceCode, string> = {
   bP: "чёрная пешка",
 };
 
-const FAMILY_LABELS: Record<string, string> = {
-  chess960: "Chess960",
-  dice_chess: "Dice & Chess",
-  penultima: "Penultima",
+const DEFAULT_DICE: ChessDiceSet = [
+  {
+    id: "white",
+    label: "Кубик A",
+    faces: ["K", "Q", "R", "B", "N", "P"],
+  },
+  {
+    id: "black",
+    label: "Кубик B",
+    faces: ["K", "Q", "R", "B", "N", "P"],
+  },
+];
+
+const DICE_GLYPHS: Record<DicePieceKind, string> = {
+  K: "♔",
+  Q: "♕",
+  R: "♖",
+  B: "♗",
+  N: "♘",
+  P: "♙",
+};
+
+const BLACK_DICE_GLYPHS: Record<DicePieceKind, string> = {
+  K: "♚",
+  Q: "♛",
+  R: "♜",
+  B: "♝",
+  N: "♞",
+  P: "♟",
+};
+
+const DICE_FACE_NAMES: Record<DicePieceKind, string> = {
+  K: "король",
+  Q: "ферзь",
+  R: "ладья",
+  B: "слон",
+  N: "конь",
+  P: "пешка",
 };
 
 function createStartingBoard(
@@ -135,6 +262,13 @@ function normalizeBoard(task: ParticipantTask): ChessBoardCell[][] {
   );
 }
 
+function normalizeDice(task: ParticipantTask): ChessDiceSet {
+  if (!task.dice || task.dice.length < 1 || task.dice.length > 4) {
+    return DEFAULT_DICE;
+  }
+  return task.dice;
+}
+
 function formatRemainingTime(deadlineAt?: string | null): string {
   if (!deadlineAt) return "--:--";
 
@@ -155,14 +289,78 @@ function formatRemainingTime(deadlineAt?: string | null): string {
         .join(":");
 }
 
+function createClientActionId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `action-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function initialEntries(task: ParticipantTask): ConsoleEntry[] {
+  if (task.kind === "penultima_induction") {
+    return [
+      {
+        id: 1,
+        author: "system",
+        content: (
+          <>
+            Открыта цель{" "}
+            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
+            Правило движения фигуры «{task.pieceName ?? "Комета"}» скрыто,
+            но не изменится внутри главы.
+          </>
+        ),
+      },
+      {
+        id: 2,
+        author: "system",
+        content: (
+          <>
+            Предлагайте ходы командой <code>/move c2 d3</code>. Арбитр
+            сообщит, разрешён ход или нет.
+          </>
+        ),
+      },
+    ];
+  }
+  if (task.kind === "geometry_atlas") {
+    return [
+      {
+        id: 1,
+        author: "system",
+        content: (
+          <>
+            Открыта задача{" "}
+            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>{" "}
+            Геометрического мира.
+          </>
+        ),
+      },
+      {
+        id: 2,
+        author: "system",
+        content:
+          task.family === "geo_zendo" ? (
+            <>
+              Можно проверить доступную карточку командой{" "}
+              <code>/test &lt;код&gt;</code>, затем отправить итоговый ответ.
+            </>
+          ) : (
+            <>
+              Введите <code>/help</code>, чтобы увидеть доступные команды.
+            </>
+          ),
+      },
+    ];
+  }
+
   return [
     {
       id: 1,
       author: "system",
       content: (
         <>
-          Среда готова. Перед вами задача{" "}
+          Открыта задача{" "}
           <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
         </>
       ),
@@ -190,9 +388,12 @@ export function ParticipantWorkspace({
   onAnswer,
   onSkip,
   onNext,
+  onMove,
+  onProbe,
   onMessage,
 }: ParticipantWorkspaceProps) {
   const board = useMemo(() => normalizeBoard(task), [task]);
+  const dice = useMemo(() => normalizeDice(task), [task]);
   const [draft, setDraft] = useState("");
   const [entries, setEntries] = useState<ConsoleEntry[]>(() =>
     initialEntries(task),
@@ -203,12 +404,41 @@ export function ParticipantWorkspace({
   );
   const entryId = useRef(3);
   const activeTaskId = useRef(task.id);
+  const inFlight = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const consoleLogRef = useRef<HTMLDivElement>(null);
 
   const timeIsUp = Boolean(deadlineAt) && remainingTime === "00:00";
   const isBusy = busy || commandBusy || timeIsUp;
-  const familyLabel = FAMILY_LABELS[task.family] ?? task.family;
+  const isDiceChess = task.family === "dice_chess";
+  const isDicePosition =
+    task.kind === "dice_chess_position_probability" ||
+    task.kind === "dice_chess_board_inventory_probability";
+  const isPenultima = task.kind === "penultima_induction";
+  const isGeometry = task.kind === "geometry_atlas";
+  const isZendo = isGeometry && task.family === "geo_zendo";
+  const worldPhaseLabel =
+    task.worldPhase === "calibration"
+      ? "знакомство со средой"
+      : task.worldPhase === "chapter"
+        ? "связная глава"
+        : task.worldPhase === "remediation"
+          ? "закрепление"
+          : task.worldPhase === "rotation"
+            ? "адаптивный маршрут"
+            : "";
+  const statementPrompt = isDiceChess
+    ? task.prompt.replace(
+        /\s*Найдите вероятность описанного события\.\s*$/u,
+        "",
+      )
+    : task.prompt;
+  const statementQuestion =
+    isDiceChess && task.eventDescription
+      ? `Найдите вероятность того, что ${task.eventDescription
+          .charAt(0)
+          .toLocaleLowerCase("ru-RU")}${task.eventDescription.slice(1)}`
+      : task.eventDescription;
 
   useEffect(() => {
     const updateTimer = () => setRemainingTime(formatRemainingTime(deadlineAt));
@@ -221,26 +451,12 @@ export function ParticipantWorkspace({
     if (activeTaskId.current === task.id) return;
     activeTaskId.current = task.id;
     setDraft("");
-    setEntries((current) => [
-      ...current,
-      {
-        id: entryId.current++,
-        author: "system",
-        content: (
-          <>
-            Открыта задача{" "}
-            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>. Условие
-            обновлено слева.
-          </>
-        ),
-      },
-    ]);
-  }, [task.id, task.ordinal]);
+  }, [task.id]);
 
   useEffect(() => {
     const log = consoleLogRef.current;
     if (log) log.scrollTop = log.scrollHeight;
-  }, [entries]);
+  }, [entries, error]);
 
   function appendEntry(author: ConsoleEntry["author"], content: ReactNode) {
     setEntries((current) => [
@@ -249,10 +465,41 @@ export function ParticipantWorkspace({
     ]);
   }
 
+  async function submitPenultimaMove(move: string) {
+    if (!onMove) {
+      appendEntry("system", "Игровой арбитр сейчас недоступен.");
+      return;
+    }
+    const transition = await onMove(move, createClientActionId());
+    appendEntry(
+      "system",
+      transition.message ??
+        (transition.accepted
+          ? "Арбитр: ход принят. Позиция обновлена."
+          : "Арбитр: ход невозможен. Позиция не изменилась."),
+    );
+  }
+
+  async function submitZendoProbe(probe: string) {
+    if (!onProbe) {
+      appendEntry("system", "Оракул сейчас недоступен.");
+      return;
+    }
+    const transition = await onProbe(probe, createClientActionId());
+    appendEntry(
+      "system",
+      transition.message ??
+        (transition.accepted
+          ? "Оракул классифицировал конфигурацию."
+          : "Эту конфигурацию нельзя проверить."),
+    );
+  }
+
   async function runCommand(rawInput: string) {
     const input = rawInput.trim();
-    if (!input || isBusy) return;
+    if (!input || isBusy || inFlight.current) return;
 
+    inFlight.current = true;
     setDraft("");
     appendEntry("participant", input);
     setCommandBusy(true);
@@ -263,19 +510,46 @@ export function ParticipantWorkspace({
     try {
       switch (command.toLowerCase()) {
         case "/help":
-          appendEntry(
-            "system",
+          appendEntry("system", isPenultima ? (
+            <>
+              <code>/move c2 d3</code> — предложить ход арбитру
+              <br />
+              <code>/history</code> — показать последние пробы в главе
+              <br />
+              <code>/skip</code> — пропустить текущую цель
+              <br />
+              Координаты можно отправить и без слова <code>/move</code>.
+            </>
+          ) : isZendo ? (
+            <>
+              <code>/test &lt;код&gt;</code> — проверить одну из карточек-проб
+              <br />
+              <code>/answer &lt;ответ&gt;</code> — классифицировать целевые
+              конфигурации
+              <br />
+              <code>/skip</code> — пропустить и открыть следующую задачу
+            </>
+          ) : (
             <>
               <code>/answer &lt;текст&gt;</code> — зафиксировать ответ
+              и открыть следующую задачу
               <br />
-              <code>/skip</code> — пропустить текущую задачу
+              <code>/skip</code> — пропустить и открыть следующую задачу
               <br />
-              <code>/next</code> — перейти к следующей задаче
-            </>,
-          );
+              <code>/next</code> — повторить переход, если он прервался
+            </>
+          ));
           break;
 
-        case "/answer":
+        case "/probe":
+        case "/test":
+          if (!isZendo) {
+            appendEntry(
+              "system",
+              "Команда /test доступна только в задачах Геометрического Zendo.",
+            );
+            break;
+          }
           if (task.status !== "active") {
             appendEntry(
               "system",
@@ -287,16 +561,122 @@ export function ParticipantWorkspace({
             appendEntry(
               "system",
               <>
-                После команды нужен текст ответа. Например:{" "}
-                <code>/answer c1 и f1</code>.
+                Укажите код карточки. Например: <code>/test P1</code>.
               </>,
             );
             break;
           }
-          await onAnswer(payload);
+          await submitZendoProbe(payload);
+          break;
+
+        case "/answer":
+          if (isPenultima) {
+            appendEntry(
+              "system",
+              <>
+                В Penultima нет отдельного ответа. Двигайте фигуру командой{" "}
+                <code>/move c2 d3</code>; цель завершится автоматически.
+              </>,
+            );
+            break;
+          }
+          if (task.status !== "active") {
+            appendEntry(
+              "system",
+              "Текущая задача уже закрыта. Используйте /next.",
+            );
+            break;
+          }
+          if (!payload) {
+            appendEntry(
+              "system",
+                <>
+                  После команды нужен текст ответа. Например:{" "}
+                  <code>
+                    {isDiceChess
+                      ? "/answer 5/12"
+                      : task.variant === "single_swap_repair"
+                        ? "/answer a1 b1"
+                        : task.variant === "repair_count"
+                          ? "/answer 3"
+                          : "/answer да, допустима"}
+                  </code>
+                  .
+                </>,
+            );
+            break;
+          }
+          {
+            const transition = await onAnswer(payload);
+            appendEntry(
+              "system",
+              transition.message ??
+                (transition.advanced ? (
+                  <>
+                    Ответ зафиксирован. Открыта задача{" "}
+                    <strong>
+                      №{String(transition.ordinal).padStart(2, "0")}
+                    </strong>
+                    .
+                  </>
+                ) : (
+                  "Ответ зафиксирован. Для продолжения используйте /next."
+                )),
+            );
+          }
+          break;
+
+        case "/move":
+          if (!isPenultima) {
+            appendEntry(
+              "system",
+              "Команда /move доступна только в среде Penultima.",
+            );
+            break;
+          }
+          if (task.status !== "active") {
+            appendEntry(
+              "system",
+              "Текущая цель уже закрыта. Используйте /next.",
+            );
+            break;
+          }
+          if (!payload) {
+            appendEntry(
+              "system",
+              <>
+                Укажите исходное и целевое поля. Например:{" "}
+                <code>/move c2 d3</code>.
+              </>,
+            );
+            break;
+          }
+          await submitPenultimaMove(payload);
+          break;
+
+        case "/history":
+          if (!isPenultima) {
+            appendEntry(
+              "system",
+              "История проб доступна только в среде Penultima.",
+            );
+            break;
+          }
+          if (!task.observations?.length) {
+            appendEntry("system", "В этой главе ещё не было проб.");
+            break;
+          }
           appendEntry(
             "system",
-            "Ответ зафиксирован. Результат будет доступен организатору после контеста.",
+            <>
+              {task.observations.map((observation, index) => (
+                <span key={`${observation.from}-${observation.to}-${index}`}>
+                  {observation.from} → {observation.to}:{" "}
+                  {observation.accepted ? "разрешено" : "запрещено"}
+                  {index < (task.observations?.length ?? 0) - 1 && <br />}
+                </span>
+              ))}
+            </>,
           );
           break;
 
@@ -312,8 +692,24 @@ export function ParticipantWorkspace({
             appendEntry("system", "Команда /skip не принимает дополнительных данных.");
             break;
           }
-          await onSkip();
-          appendEntry("system", "Пропуск зафиксирован.");
+          {
+            const transition = await onSkip();
+            appendEntry(
+              "system",
+              transition.message ??
+                (transition.advanced ? (
+                  <>
+                    Пропуск зафиксирован. Открыта задача{" "}
+                    <strong>
+                      №{String(transition.ordinal).padStart(2, "0")}
+                    </strong>
+                    .
+                  </>
+                ) : (
+                  "Пропуск зафиксирован. Для продолжения используйте /next."
+                )),
+            );
+          }
           break;
 
         case "/next":
@@ -328,8 +724,21 @@ export function ParticipantWorkspace({
             );
             break;
           }
-          await onNext();
-          appendEntry("system", "Запрос на следующую задачу принят.");
+          {
+            const transition = await onNext();
+            appendEntry(
+              "system",
+              transition.message ?? (
+                <>
+                  Открыта задача{" "}
+                  <strong>
+                    №{String(transition.ordinal).padStart(2, "0")}
+                  </strong>
+                  .
+                </>
+              ),
+            );
+          }
           break;
 
         default:
@@ -343,25 +752,38 @@ export function ParticipantWorkspace({
             break;
           }
 
+          if (
+            isPenultima &&
+            /^[a-h][1-8](?:\s+|[-–—]|→)?[a-h][1-8]$/iu.test(input)
+          ) {
+            await submitPenultimaMove(input);
+            break;
+          }
+
           if (onMessage) {
             await onMessage(input);
             appendEntry("system", "Сообщение принято.");
           } else {
             appendEntry(
               "system",
-              <>
-                Чтобы сохранить решение, начните сообщение с{" "}
-                <code>/answer</code>.
-              </>,
+              isPenultima ? (
+                <>
+                  Чтобы предложить ход, введите{" "}
+                  <code>/move c2 d3</code>.
+                </>
+              ) : (
+                <>
+                  Чтобы сохранить решение, начните сообщение с{" "}
+                  <code>/answer</code>.
+                </>
+              ),
             );
           }
       }
     } catch {
-      appendEntry(
-        "system",
-        "Не удалось выполнить команду. Попробуйте ещё раз.",
-      );
+      // The parent exposes the concrete API error through the connection entry.
     } finally {
+      inFlight.current = false;
       setCommandBusy(false);
       window.requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -376,63 +798,92 @@ export function ParticipantWorkspace({
     <main
       className="participant-workspace"
       data-task-family={task.family}
+      data-task-kind={task.kind}
       data-task-difficulty={task.difficulty}
     >
       <section className="participant-task" aria-labelledby="participantTaskTitle">
         <header className="participant-task__header">
-          <div>
-            <p className="participant-workspace__eyebrow">{contestTitle}</p>
-            <h1 id="participantTaskTitle">Шахматный мир</h1>
-          </div>
-          <div className="participant-task__progress">
-            <span>{familyLabel}</span>
-            <strong>
-              {String(task.ordinal).padStart(2, "0")}
-              {totalTasks ? ` / ${String(totalTasks).padStart(2, "0")}` : ""}
-            </strong>
-          </div>
+          <p>
+            {contestTitle}
+            {worldPhaseLabel && <small> · {worldPhaseLabel}</small>}
+          </p>
+          <span>
+            {task.ordinal}
+            {totalTasks ? ` / ${totalTasks}` : ""}
+          </span>
         </header>
 
         <div className="participant-task__stage">
           <article className="participant-brief">
-            <div>
-              <span className="participant-brief__index">
-                Задача {String(task.ordinal).padStart(2, "0")}
-              </span>
-              <span className="participant-brief__turn">
-                <i />
-                Проверка позиции
-              </span>
+            <h1 id="participantTaskTitle">
+              {isPenultima ? "Цель" : "Задача"} {task.ordinal}
+            </h1>
+            <div className="participant-brief__statement">
+              <p>{statementPrompt}</p>
+              {statementQuestion && <p>{statementQuestion}</p>}
             </div>
-            <h2>Изучите позицию</h2>
-            <p>{task.prompt}</p>
-            <aside>
-              Ответ отправляется в консоли командой{" "}
-              <code>/answer &lt;ваш ответ&gt;</code>.
-            </aside>
+            <p className="participant-brief__answer">
+              {isPenultima ? (
+                <>
+                  Предлагайте ходы в чате командой{" "}
+                  <code>/move c2 d3</code>.
+                </>
+              ) : isZendo ? (
+                <>
+                  Проверяйте карточки командой <code>/test &lt;код&gt;</code>,
+                  итог отправьте через <code>/answer</code>.
+                </>
+              ) : (
+                <>
+                  Ответ введите в чате командой{" "}
+                  <code>/answer &lt;ваш ответ&gt;</code>.
+                </>
+              )}
+            </p>
           </article>
 
-          <Chessboard board={board} />
+          {isPenultima ? (
+            <PenultimaScene
+              board={board}
+              pieceName={task.pieceName ?? "Комета"}
+              currentSquare={task.currentSquare}
+              goalSquare={task.goalSquare}
+              chapterStage={task.chapterStage ?? 1}
+              stageTitle={task.stageTitle ?? "Маршрут"}
+              acceptedMoves={task.acceptedMoves ?? 0}
+              rejectedMoves={task.rejectedMoves ?? 0}
+            />
+          ) : isGeometry && task.geometryScene ? (
+            <GeometryAtlasScene
+              scene={task.geometryScene}
+              content={task.geometryContent ?? {}}
+              family={task.family}
+            />
+          ) : isDicePosition ? (
+            <DicePositionScene
+              board={board}
+              die={dice[0]}
+              sideToMove={task.sideToMove}
+            />
+          ) : isDiceChess ? (
+            <DiceScene dice={dice} />
+          ) : (
+            <Chessboard board={board} />
+          )}
         </div>
       </section>
 
       <aside className="participant-console" aria-label="Чат и команды">
         <header className="participant-console__header">
-          <div>
-            <i />
-            <span>Канал связи</span>
-          </div>
+          <strong>{participantName ?? "Участник"}</strong>
           <time dateTime={deadlineAt ?? undefined}>{remainingTime}</time>
         </header>
 
-        <div className="participant-console__identity">
-          <span>Сессия участника</span>
-          <strong>{participantName ?? "Персональный доступ"}</strong>
-        </div>
-
         <div
           className="participant-console__log"
+          role="log"
           aria-live="polite"
+          aria-relevant="additions"
           ref={consoleLogRef}
         >
           {entries.map((entry) => (
@@ -464,7 +915,8 @@ export function ParticipantWorkspace({
               placeholder={
                 timeIsUp
                   ? "Время попытки завершено"
-                  : task.responseHint ?? "/answer ваш ответ"
+                  : task.responseHint ??
+                    (isPenultima ? "/move c2 d3" : "/answer ваш ответ")
               }
               autoComplete="off"
               spellCheck={false}
@@ -491,13 +943,348 @@ export function ParticipantWorkspace({
   );
 }
 
-function Chessboard({ board }: { board: ChessBoard }) {
+const GEOMETRY_COLORS: Record<string, string> = {
+  cyan: "#4bbecf",
+  navy: "#004278",
+  grape: "#48304d",
+  plum: "#c792df",
+  violet: "#765184",
+  coral: "#e5857b",
+  gold: "#d7a62b",
+  green: "#4f9d79",
+  gray: "#958b98",
+};
+
+function geometryColor(value?: string): string {
+  if (!value) return GEOMETRY_COLORS.grape;
+  return GEOMETRY_COLORS[value] ?? value;
+}
+
+function geometryGroupLabel(
+  group: string,
+  content: Record<string, unknown>,
+): string {
+  const examples = Array.isArray(content.examples) ? content.examples : [];
+  const example = examples.find(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      "card_id" in item &&
+      item.card_id === group,
+  );
+  if (example && "classification" in example) {
+    return `${group} · ${
+      example.classification === "positive" ? "подходит" : "не подходит"
+    }`;
+  }
+  const targetIndex = (Array.isArray(content.targets) ? content.targets : [])
+    .findIndex(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "card_id" in item &&
+        item.card_id === group,
+    );
+  if (targetIndex >= 0) return `${group} · цель ${targetIndex + 1}`;
+  const probe = (Array.isArray(content.probe_cards) ? content.probe_cards : [])
+    .find(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "card_id" in item &&
+        item.card_id === group,
+    );
+  if (probe) {
+    const observed = (Array.isArray(content.probe_observations)
+      ? content.probe_observations
+      : []
+    ).find(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "card_id" in item &&
+        item.card_id === group,
+    );
+    if (observed && "classification" in observed) {
+      return `${group} · ${
+        observed.classification === "positive" ? "подходит" : "не подходит"
+      }`;
+    }
+    return `${group} · доступна проба`;
+  }
+  return group.replaceAll("_", " ");
+}
+
+function GeometryAtlasScene({
+  scene,
+  content,
+  family,
+}: {
+  scene: GeometryScene;
+  content: Record<string, unknown>;
+  family: ParticipantTask["family"];
+}) {
+  const groups = Array.from(
+    new Set([
+      ...scene.points.map((point) => point.group),
+      ...scene.edges.map((edge) => edge.group),
+    ]),
+  );
+  const pointByKey = new Map(
+    scene.points.map((point) => [`${point.group}:${point.id}`, point]),
+  );
+  const width = Math.max(1, scene.bounds.maxX - scene.bounds.minX);
+  const height = Math.max(1, scene.bounds.maxY - scene.bounds.minY);
+  const viewPadding = Math.max(width, height) * 0.09;
+  const radius = Math.max(
+    0.48,
+    Math.min(0.72, Math.min(width, height) * 0.075),
+  );
+  const options = Array.isArray(content.answer_cards)
+    ? content.answer_cards
+    : Array.isArray(content.options)
+      ? content.options
+      : [];
+  const remaining =
+    typeof content.probes_remaining === "number"
+      ? content.probes_remaining
+      : typeof content.probesRemaining === "number"
+        ? content.probesRemaining
+        : undefined;
+
   return (
-    <div className="chess-position">
-      <div className="chess-position__meta">
-        <span>Позиция Chess960</span>
-        <small>Белые снизу</small>
+    <figure className="geometry-atlas" aria-label="Геометрические конфигурации">
+      <div className="geometry-atlas__cards">
+        {groups.map((group) => {
+          const points = scene.points.filter((point) => point.group === group);
+          const edges = scene.edges.filter((edge) => edge.group === group);
+          return (
+            <section className="geometry-card" key={group}>
+              <header>{geometryGroupLabel(group, content)}</header>
+              <svg
+                viewBox={`${scene.bounds.minX - viewPadding} ${
+                  scene.bounds.minY - viewPadding
+                } ${width + viewPadding * 2} ${height + viewPadding * 2}`}
+                role="img"
+                aria-label={`Конфигурация ${group}`}
+              >
+                <rect
+                  className="geometry-card__plane"
+                  x={scene.bounds.minX}
+                  y={scene.bounds.minY}
+                  width={width}
+                  height={height}
+                />
+                {edges.map((edge) => {
+                  const source = pointByKey.get(`${group}:${edge.source}`);
+                  const target = pointByKey.get(`${group}:${edge.target}`);
+                  if (!source || !target) return null;
+                  return (
+                    <line
+                      x1={source.x}
+                      y1={source.y}
+                      x2={target.x}
+                      y2={target.y}
+                      stroke={geometryColor(edge.color)}
+                      key={edge.id}
+                    />
+                  );
+                })}
+                {points.map((point) => (
+                  <g key={point.id}>
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={radius}
+                      style={{ fill: geometryColor(point.color) }}
+                    />
+                    {point.label && (
+                      <text
+                        x={point.x}
+                        y={point.y}
+                        dominantBaseline="central"
+                        textAnchor="middle"
+                        style={{
+                          fill:
+                            point.color === "cyan" ? "#004278" : "#ffffff",
+                          fontSize: `${Math.max(radius * 1.05, 0.46)}px`,
+                        }}
+                      >
+                        {point.label}
+                      </text>
+                    )}
+                  </g>
+                ))}
+              </svg>
+            </section>
+          );
+        })}
       </div>
+      {(options.length > 0 || remaining !== undefined) && (
+        <figcaption>
+          {options.length > 0 && (
+            <span>
+              Варианты:{" "}
+              {options
+                .map((option) =>
+                  typeof option === "string"
+                    ? option
+                    : typeof option === "object" &&
+                        option !== null &&
+                        "id" in option
+                      ? `${String(option.id)}${
+                          "label" in option ? ` — ${String(option.label)}` : ""
+                        }`
+                      : "",
+                )
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+          {remaining !== undefined && (
+            <span>Проверок у оракула осталось: {remaining}</span>
+          )}
+          <span>
+            {family === "geo_graph"
+              ? "Рёбра задаются парами вершин"
+              : "Все рисунки даны в одной системе обозначений"}
+          </span>
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+function DiceScene({
+  dice,
+}: {
+  dice: readonly ChessDie[];
+}) {
+  return (
+    <figure className="dice-scene" aria-label="Шахматные кубики">
+      <div className="dice-set">
+        {dice.map((die) => (
+          <section className="chess-die" key={die.id}>
+            <p>{die.label}</p>
+            <ol aria-label={`Грани: ${die.label}`}>
+              {die.faces.map((face, faceIndex) => (
+                <li
+                  title={DICE_FACE_NAMES[face]}
+                  aria-label={`Грань ${faceIndex + 1}: ${DICE_FACE_NAMES[face]}`}
+                  key={`${die.id}-${faceIndex}`}
+                >
+                  <span aria-hidden="true">{DICE_GLYPHS[face]}</span>
+                  <small>{face}</small>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+function DicePositionScene({
+  board,
+  die,
+  sideToMove = "white",
+}: {
+  board: ChessBoard;
+  die: ChessDie;
+  sideToMove?: "white" | "black";
+}) {
+  return (
+    <div className="dice-position-scene">
+      <Chessboard board={board} compact />
+
+      <section className="position-die" aria-label="Кубик текущего хода">
+        <p>Грани кубика</p>
+        <ol aria-label={`Грани: ${die.label}`}>
+          {die.faces.map((face, faceIndex) => (
+            <li
+              title={DICE_FACE_NAMES[face]}
+              aria-label={`Грань ${faceIndex + 1}: ${DICE_FACE_NAMES[face]}`}
+              key={`${die.id}-${faceIndex}`}
+            >
+              <span aria-hidden="true">
+                {sideToMove === "black"
+                  ? BLACK_DICE_GLYPHS[face]
+                  : DICE_GLYPHS[face]}
+              </span>
+              <small>{face}</small>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </div>
+  );
+}
+
+function PenultimaScene({
+  board,
+  pieceName,
+  currentSquare,
+  goalSquare,
+  chapterStage,
+  stageTitle,
+  acceptedMoves,
+  rejectedMoves,
+}: {
+  board: ChessBoard;
+  pieceName: string;
+  currentSquare?: string;
+  goalSquare?: string;
+  chapterStage: number;
+  stageTitle: string;
+  acceptedMoves: number;
+  rejectedMoves: number;
+}) {
+  return (
+    <figure className="penultima-scene" aria-label="Игровая доска Penultima">
+      <div className="penultima-scene__meta">
+        <div>
+          <span>Фигура</span>
+          <strong>{pieceName}</strong>
+        </div>
+        <div>
+          <span>Этап {chapterStage} / 3</span>
+          <strong>{stageTitle}</strong>
+        </div>
+        <div>
+          <span>Маяк</span>
+          <strong>{goalSquare ?? "—"}</strong>
+        </div>
+      </div>
+
+      <Chessboard board={board} goalSquare={goalSquare} />
+
+      <figcaption>
+        <span>
+          Текущее поле <strong>{currentSquare ?? "—"}</strong>
+        </span>
+        <span>Тёмные пешки — закрытые клетки</span>
+        <span>
+          Принято: {acceptedMoves} · отклонено: {rejectedMoves}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
+function Chessboard({
+  board,
+  compact = false,
+  goalSquare,
+}: {
+  board: ChessBoard;
+  compact?: boolean;
+  goalSquare?: string;
+}) {
+  return (
+    <div
+      className={`chess-position${compact ? " chess-position--compact" : ""}`}
+    >
       <div
         className="chessboard"
         role="grid"
@@ -508,12 +1295,21 @@ function Chessboard({ board }: { board: ChessBoard }) {
             const rankNumber = 8 - rankIndex;
             const coordinate = `${FILES[fileIndex]}${rankNumber}`;
             const isDark = (rankIndex + fileIndex) % 2 === 1;
+            const isGoal = coordinate === goalSquare;
 
             return (
               <div
-                className={`chess-square ${isDark ? "chess-square--dark" : ""}`}
+                className={[
+                  "chess-square",
+                  isDark ? "chess-square--dark" : "",
+                  isGoal ? "chess-square--goal" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 role="gridcell"
-                aria-label={`${coordinate}: ${piece ? PIECE_NAMES[piece] : "пусто"}`}
+                aria-label={`${coordinate}: ${piece ? PIECE_NAMES[piece] : "пусто"}${
+                  isGoal ? ", маяк" : ""
+                }`}
                 key={coordinate}
               >
                 {fileIndex === 0 && (
@@ -538,16 +1334,15 @@ function Chessboard({ board }: { board: ChessBoard }) {
                     {PIECE_GLYPHS[piece]}
                   </span>
                 )}
+                {isGoal && (
+                  <span className="chess-square__goal" aria-hidden="true">
+                    ✦
+                  </span>
+                )}
               </div>
             );
           }),
         )}
-      </div>
-      <div className="chess-position__caption">
-        <span>
-          <i className="chess-position__marker" /> Исходная позиция
-        </span>
-        <span>Расстановка создана для этой попытки</span>
       </div>
     </div>
   );

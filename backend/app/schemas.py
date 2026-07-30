@@ -54,7 +54,7 @@ class AccessRedeemResponse(ApiModel):
 class ContestCreate(ApiModel):
     title: str = Field(min_length=1, max_length=200)
     duration_minutes: int = Field(default=60, ge=5, le=480)
-    environment_key: Literal["chess_world"] = "chess_world"
+    environment_key: Literal["chess_world", "geometry_world"] = "chess_world"
     task_config: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("title")
@@ -142,6 +142,20 @@ class CodeGenerationRequest(ApiModel):
         return normalized
 
 
+class CodeRotationRequest(ApiModel):
+    expires_at: datetime | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_must_be_future(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        normalized = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        if normalized <= datetime.now(timezone.utc):
+            raise ValueError("expires_at must be in the future")
+        return normalized
+
+
 class GeneratedCodeResponse(ApiModel):
     enrollment_id: str
     participant: ParticipantResponse
@@ -161,7 +175,6 @@ class AttemptResponse(ApiModel):
     id: str
     enrollment_id: str
     number: int
-    seed: int
     status: AttemptStatus
     started_at: datetime
     deadline_at: datetime
@@ -171,6 +184,48 @@ class AttemptResponse(ApiModel):
 class AttemptStartResponse(ApiModel):
     attempt: AttemptResponse
     created: bool
+
+
+class AccessCodeSummary(ApiModel):
+    id: str
+    last4: str
+    status: AccessCodeStatus
+    created_at: datetime
+    expires_at: datetime | None
+    revoked_at: datetime | None
+    redeemed_at: datetime | None
+
+
+class OrganizerAttemptSummary(ApiModel):
+    id: str
+    number: int
+    status: AttemptStatus
+    started_at: datetime
+    deadline_at: datetime
+    finished_at: datetime | None
+
+
+class OrganizerEnrollmentResponse(ApiModel):
+    id: str
+    contest_id: str
+    participant_id: str
+    status: EnrollmentStatus
+    participant: ParticipantResponse
+    created_at: datetime
+    latest_code: AccessCodeSummary | None
+    latest_attempt: OrganizerAttemptSummary | None
+    attempt_grant_pending: bool
+
+
+class OrganizerEnrollmentListResponse(ApiModel):
+    items: list[OrganizerEnrollmentResponse]
+
+
+class AttemptGrantResponse(ApiModel):
+    enrollment_id: str
+    pending: bool
+    created: bool
+    granted_at: datetime
 
 
 class ParticipantContextResponse(ApiModel):
@@ -215,3 +270,42 @@ class TaskAnswerRequest(ApiModel):
 class TaskActionResponse(ApiModel):
     task: TaskResponse
     message: str
+
+
+class TaskInteractionRequest(ApiModel):
+    client_action_id: str = Field(min_length=1, max_length=128)
+    action_type: Literal["move", "probe"]
+    move: str | None = Field(default=None, min_length=2, max_length=40)
+    probe: str | None = Field(default=None, min_length=1, max_length=80)
+
+    @field_validator("client_action_id")
+    @classmethod
+    def clean_interaction_id(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("value must not be blank")
+        return cleaned
+
+    @model_validator(mode="after")
+    def validate_action_payload(self):
+        if self.action_type == "move":
+            if self.move is None or not self.move.strip():
+                raise ValueError("move action requires move")
+            self.move = self.move.strip()
+            if self.probe is not None:
+                raise ValueError("move action must not contain probe")
+        else:
+            if self.probe is None or not self.probe.strip():
+                raise ValueError("probe action requires probe")
+            self.probe = self.probe.strip()
+            if self.move is not None:
+                raise ValueError("probe action must not contain move")
+        return self
+
+
+class TaskInteractionResponse(ApiModel):
+    task: TaskResponse
+    accepted: bool
+    completed: bool
+    message: str
+    client_action_id: str

@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.main import create_app
-from app.models import AccessCode, AccessCodeStatus, utc_now
+from app.models import AccessCode, AccessCodeStatus, Attempt, utc_now
 
 
 def auth(token: str) -> dict[str, str]:
@@ -122,8 +122,13 @@ def test_complete_contest_access_and_attempt_flow(tmp_path):
         attempt = first_start.json()["attempt"]
         assert attempt["number"] == 1
         assert attempt["status"] == "active"
-        assert attempt["seed"] > 0
+        assert "seed" not in attempt
         assert attempt["deadline_at"].endswith("Z")
+
+        with client.app.state.database.session_factory() as session:
+            stored_attempt = session.get(Attempt, attempt["id"])
+            assert stored_attempt is not None
+            assert stored_attempt.seed > 0
 
         second_start = client.post(
             "/api/v1/participant/attempts/start",

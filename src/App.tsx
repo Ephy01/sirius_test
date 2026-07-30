@@ -28,9 +28,12 @@ import {
   type GeneratedCodeRow,
   type ParticipantDraft,
 } from "./organizer/ContestBuilder";
+import { ContestAccessPanel } from "./organizer/ContestAccessPanel";
 import {
   ParticipantWorkspace,
   type ParticipantTask as WorkspaceParticipantTask,
+  type TaskMoveTransitionResult,
+  type TaskTransitionResult,
 } from "./participant";
 
 type Authenticate = (code: string) => Promise<void>;
@@ -243,12 +246,16 @@ function OrganizerDashboard({
   onLogout: () => void;
 }) {
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [managedContest, setManagedContest] =
+    useState<ApiContestSummary | null>(null);
   const [contests, setContests] = useState<ApiContestSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
+  const [contestPendingDeletion, setContestPendingDeletion] =
+    useState<ApiContestSummary | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   async function refreshContests() {
-    setLoading(true);
     setNotice("");
     try {
       const items = await api.listContests({ token: session.token });
@@ -259,14 +266,26 @@ function OrganizerDashboard({
           ? caught.message
           : "Не удалось загрузить контесты.",
       );
-    } finally {
-      setLoading(false);
     }
   }
 
   useEffect(() => {
     void refreshContests();
   }, [session.token]);
+
+  useEffect(() => {
+    if (!contestPendingDeletion) return;
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && !deleteBusy) {
+        setContestPendingDeletion(null);
+        setDeleteError("");
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [contestPendingDeletion, deleteBusy]);
 
   async function createContest(
     input: ContestDraftInput,
@@ -278,6 +297,18 @@ function OrganizerDashboard({
         environmentKey: input.environmentKey,
         taskConfig: {
           adaptation_threshold: input.taskConfig.adaptationThreshold,
+          trajectory: {
+            mode: "adaptive",
+            director_version:
+              input.environmentKey === "geometry_world"
+                ? "geometry-world-director-v1"
+                : "chess-world-director-v1",
+            start_family:
+              input.taskConfig.families.find((family) => family.enabled)?.key ??
+              (input.environmentKey === "geometry_world"
+                ? "geo_zendo"
+                : "chess960"),
+          },
           families: input.taskConfig.families.map((family) => ({
             key: family.key,
             enabled: family.enabled,
@@ -342,6 +373,30 @@ function OrganizerDashboard({
     };
   }
 
+  async function deleteContest() {
+    const contest = contestPendingDeletion;
+    if (!contest) return;
+
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await api.deleteContest(contest.id, { token: session.token });
+      setContests((current) =>
+        current.filter((item) => item.id !== contest.id),
+      );
+      setContestPendingDeletion(null);
+      setNotice(`Контест «${contest.title}» удалён.`);
+    } catch (caught) {
+      setDeleteError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось удалить контест.",
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   if (builderOpen) {
     return (
       <div className="dashboard-page">
@@ -364,9 +419,25 @@ function OrganizerDashboard({
     );
   }
 
-  const publishedCount = contests.filter(
-    (contest) => contest.status === "published",
-  ).length;
+  if (managedContest) {
+    return (
+      <div className="dashboard-page">
+        <AppHeader
+          role="Организатор"
+          onLogout={onLogout}
+          meta={<span className="workspace-label">Доступы участников</span>}
+        />
+        <ContestAccessPanel
+          contest={managedContest}
+          token={session.token}
+          onBack={() => {
+            setManagedContest(null);
+            void refreshContests();
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-page">
@@ -394,11 +465,6 @@ function OrganizerDashboard({
             </button>
           </nav>
 
-          <div className="sidebar-note">
-            <OrbitGlyph small />
-            <p>Первая станция готова к настройке.</p>
-            <span>Gate / control plane</span>
-          </div>
         </aside>
 
         <main className="dashboard-main">
@@ -418,24 +484,6 @@ function OrganizerDashboard({
             </button>
           </header>
 
-          <section className="dashboard-stats" aria-label="Краткая статистика">
-            <article>
-              <span>Активные контесты</span>
-              <strong>{publishedCount}</strong>
-              <small>опубликованы и доступны по кодам</small>
-            </article>
-            <article>
-              <span>Всего контестов</span>
-              <strong>{loading ? "…" : contests.length}</strong>
-              <small>черновики и опубликованные</small>
-            </article>
-            <article className="dashboard-stats__accent">
-              <span>Статус системы</span>
-              <strong>Готова</strong>
-              <small><i /> все сервисы доступны</small>
-            </article>
-          </section>
-
           {contests.length ? (
             <section className="contest-list" aria-label="Созданные контесты">
               {contests.map((contest) => (
@@ -448,10 +496,34 @@ function OrganizerDashboard({
                         ? "Опубликован"
                         : "Черновик"}
                     </span>
-                    <span className="eyebrow">Шахматный мир</span>
+                    <span className="eyebrow">
+                      {contest.environmentKey === "geometry_world"
+                        ? "Геометрический мир"
+                        : "Шахматный мир"}
+                    </span>
                   </div>
                   <h2>{contest.title}</h2>
                   <p>{contest.durationMinutes} минут · персональные коды</p>
+                  <div className="contest-list__actions">
+                    <button
+                      className="contest-list__manage"
+                      type="button"
+                      onClick={() => setManagedContest(contest)}
+                    >
+                      Управлять доступом
+                      <ArrowIcon />
+                    </button>
+                    <button
+                      className="contest-list__delete"
+                      type="button"
+                      onClick={() => {
+                        setDeleteError("");
+                        setContestPendingDeletion(contest);
+                      }}
+                    >
+                      Удалить контест
+                    </button>
+                  </div>
                 </article>
               ))}
               <p className="dashboard-notice" role="status">
@@ -471,8 +543,8 @@ function OrganizerDashboard({
                 <span className="empty-label">Пустое пространство</span>
                 <h2 id="emptyDashboardTitle">Здесь появятся ваши контесты</h2>
                 <p>
-                  Первый контест начнётся с настройки «Шахматного мира» и
-                  выпуска персональных кодов.
+                  Первый контест начнётся с выбора мира и выпуска персональных
+                  кодов.
                 </p>
                 <button
                   className="text-action"
@@ -490,6 +562,60 @@ function OrganizerDashboard({
           )}
         </main>
       </div>
+
+      {contestPendingDeletion && (
+        <div
+          className="confirm-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deleteBusy) {
+              setContestPendingDeletion(null);
+              setDeleteError("");
+            }
+          }}
+        >
+          <section
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deleteContestTitle"
+            aria-describedby="deleteContestDescription"
+          >
+            <span className="confirm-dialog__label">Удаление контеста</span>
+            <h2 id="deleteContestTitle">
+              Удалить «{contestPendingDeletion.title}»?
+            </h2>
+            <p id="deleteContestDescription">
+              Будут безвозвратно удалены персональные коды, попытки, задачи и
+              вся хронология этого контеста. Карточки участников сохранятся.
+            </p>
+            <p className="confirm-dialog__error" role="alert">
+              {deleteError}
+            </p>
+            <footer>
+              <button
+                className="confirm-dialog__cancel"
+                type="button"
+                disabled={deleteBusy}
+                autoFocus
+                onClick={() => {
+                  setContestPendingDeletion(null);
+                  setDeleteError("");
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                className="confirm-dialog__delete"
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => void deleteContest()}
+              >
+                {deleteBusy ? "Удаляем…" : "Удалить"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -506,6 +632,10 @@ function ParticipantWaitingScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const attempt = session.attempt;
+  const worldName =
+    session.contest?.environmentKey === "geometry_world"
+      ? "Геометрический мир"
+      : "Шахматный мир";
 
   if (attempt) {
     return (
@@ -556,7 +686,7 @@ function ParticipantWaitingScreen({
         <p className="eyebrow">
           Контест готов
         </p>
-        <h1>{session.contest?.title ?? "Шахматный мир"}</h1>
+        <h1>{session.contest?.title ?? worldName}</h1>
         <p>
           После старта у вас будет {session.contest?.durationMinutes ?? 60} минут.
           Таймер запускается только по кнопке.
@@ -569,7 +699,7 @@ function ParticipantWaitingScreen({
           </div>
           <div>
             <dt>Среда</dt>
-            <dd>Шахматный мир</dd>
+            <dd>{worldName}</dd>
           </div>
           <div>
             <dt>Длительность</dt>
@@ -632,39 +762,149 @@ function ParticipantContestScreen({
     return () => controller.abort();
   }, [session.attempt?.id, session.token]);
 
-  async function answerTask(answer: string) {
-    if (!task || task.status !== "active") return;
-    await runTaskAction(async () => {
+  async function answerTask(answer: string): Promise<TaskTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая задача уже закрыта.");
+    }
+    return runTaskAction(async () => {
       const response = await api.answerTask(task.id, answer, {
         token: session.token,
       });
       setTask(response.task);
+      try {
+        const next = await api.getNextTask({ token: session.token });
+        setTask(next.task);
+        return { ordinal: next.task.ordinal, advanced: true };
+      } catch {
+        return {
+          ordinal: response.task.ordinal,
+          advanced: false,
+          message:
+            "Ответ зафиксирован, но следующая задача не открылась. Используйте /next.",
+        };
+      }
     });
   }
 
-  async function skipTask() {
-    if (!task || task.status !== "active") return;
-    await runTaskAction(async () => {
+  async function moveTask(
+    move: string,
+    clientActionId: string,
+  ): Promise<TaskMoveTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая цель уже закрыта.");
+    }
+    return runTaskAction(async () => {
+      const response = await api.interactWithTask(
+        task.id,
+        {
+          actionType: "move",
+          move,
+          clientActionId,
+        },
+        { token: session.token },
+      );
+      setTask(response.task);
+
+      if (!response.completed) {
+        return {
+          ordinal: response.task.ordinal,
+          advanced: false,
+          accepted: response.accepted,
+          completed: false,
+          message: response.message,
+        };
+      }
+
+      try {
+        const next = await api.getNextTask({ token: session.token });
+        setTask(next.task);
+        return {
+          ordinal: next.task.ordinal,
+          advanced: true,
+          accepted: response.accepted,
+          completed: true,
+          message: `${response.message} Открыта следующая цель №${next.task.ordinal}.`,
+        };
+      } catch {
+        return {
+          ordinal: response.task.ordinal,
+          advanced: false,
+          accepted: response.accepted,
+          completed: true,
+          message: `${response.message} Следующая цель не открылась; используйте /next.`,
+        };
+      }
+    });
+  }
+
+  async function probeTask(
+    probe: string,
+    clientActionId: string,
+  ): Promise<TaskMoveTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая задача уже закрыта.");
+    }
+    return runTaskAction(async () => {
+      const response = await api.interactWithTask(
+        task.id,
+        {
+          actionType: "probe",
+          probe,
+          clientActionId,
+        },
+        { token: session.token },
+      );
+      setTask(response.task);
+      return {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: response.completed,
+        message: response.message,
+      };
+    });
+  }
+
+  async function skipTask(): Promise<TaskTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая задача уже закрыта.");
+    }
+    return runTaskAction(async () => {
       const response = await api.skipTask(task.id, {
         token: session.token,
       });
       setTask(response.task);
+      try {
+        const next = await api.getNextTask({ token: session.token });
+        setTask(next.task);
+        return { ordinal: next.task.ordinal, advanced: true };
+      } catch {
+        return {
+          ordinal: response.task.ordinal,
+          advanced: false,
+          message:
+            "Пропуск зафиксирован, но следующая задача не открылась. Используйте /next.",
+        };
+      }
     });
   }
 
-  async function nextTask() {
-    if (!task || task.status === "active") return;
-    await runTaskAction(async () => {
+  async function nextTask(): Promise<TaskTransitionResult> {
+    if (!task || task.status === "active") {
+      throw new Error("Сначала завершите текущую задачу.");
+    }
+    return runTaskAction(async () => {
       const response = await api.getNextTask({ token: session.token });
       setTask(response.task);
+      return { ordinal: response.task.ordinal, advanced: true };
     });
   }
 
-  async function runTaskAction(action: () => Promise<void>) {
+  async function runTaskAction<T>(action: () => Promise<T>): Promise<T> {
     setBusy(true);
     setError("");
     try {
-      await action();
+      return await action();
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -682,10 +922,94 @@ function ParticipantContestScreen({
         id: task.id,
         ordinal: task.ordinal,
         family: task.family,
+        kind: task.publicState.kind,
         difficulty: task.difficulty,
         status: task.status,
         prompt: task.publicState.prompt,
-        backRank: task.publicState.backRank as WorkspaceParticipantTask["backRank"],
+        backRank:
+          task.publicState.kind === "chess960_validation" ||
+          task.publicState.kind === "chess960_mission"
+            ? (task.publicState.backRank as WorkspaceParticipantTask["backRank"])
+            : undefined,
+        variant:
+          task.publicState.kind === "chess960_validation" ||
+          task.publicState.kind === "chess960_mission"
+            ? task.publicState.variant
+            : undefined,
+        dice:
+          task.publicState.kind === "dice_chess_probability"
+            ? (task.publicState.dice as unknown as WorkspaceParticipantTask["dice"])
+            : task.publicState.kind === "dice_chess_position_probability" ||
+                task.publicState.kind === "dice_chess_board_inventory_probability"
+              ? ([task.publicState.die] as unknown as WorkspaceParticipantTask["dice"])
+              : undefined,
+        sampleSpaceSize:
+          task.publicState.kind === "dice_chess_probability" ||
+          task.publicState.kind === "dice_chess_board_inventory_probability" ||
+          task.publicState.kind === "dice_chess_position_probability"
+            ? task.publicState.sampleSpaceSize
+            : undefined,
+        eventDescription:
+          task.publicState.kind === "dice_chess_probability" ||
+          task.publicState.kind === "dice_chess_board_inventory_probability" ||
+          task.publicState.kind === "dice_chess_position_probability"
+            ? task.publicState.eventDescription
+            : undefined,
+        board:
+          task.publicState.kind === "dice_chess_board_inventory_probability" ||
+          task.publicState.kind === "dice_chess_position_probability" ||
+          task.publicState.kind === "penultima_induction"
+            ? (task.publicState.board as WorkspaceParticipantTask["board"])
+            : undefined,
+        sideToMove:
+          task.publicState.kind === "dice_chess_position_probability"
+            ? task.publicState.sideToMove
+            : undefined,
+        pieceName:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.pieceName
+            : undefined,
+        currentSquare:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.currentSquare
+            : undefined,
+        goalSquare:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.goalSquare
+            : undefined,
+        chapterStage:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.chapterStage
+            : undefined,
+        stageTitle:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.stageTitle
+            : undefined,
+        acceptedMoves:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.acceptedMoves
+            : undefined,
+        rejectedMoves:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.rejectedMoves
+            : undefined,
+        observations:
+          task.publicState.kind === "penultima_induction"
+            ? task.publicState.observations
+            : undefined,
+        geometryScene:
+          task.publicState.kind === "geometry_atlas"
+            ? task.publicState.scene
+            : undefined,
+        geometryContent:
+          task.publicState.kind === "geometry_atlas"
+            ? task.publicState.content
+            : undefined,
+        geometryInteraction:
+          task.publicState.kind === "geometry_atlas"
+            ? task.publicState.interaction
+            : undefined,
+        worldPhase: task.publicState.worldContext?.phase,
         responseHint: task.publicState.responseHint,
       }
     : null;
@@ -709,6 +1033,8 @@ function ParticipantContestScreen({
           onAnswer={answerTask}
           onSkip={skipTask}
           onNext={nextTask}
+          onMove={moveTask}
+          onProbe={probeTask}
         />
       ) : (
         <main className="participant-waiting">

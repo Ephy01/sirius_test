@@ -167,8 +167,6 @@ function parseAttempt(value: unknown): AttemptSummary | null | undefined {
       typeof value.number === "number" && Number.isFinite(value.number)
         ? value.number
         : 1,
-    seed:
-      typeof value.seed === "number" && Number.isFinite(value.seed) ? value.seed : 0,
     status,
     startedAt: readNullableString(value, "startedAt"),
     deadlineAt: readNullableString(value, "deadlineAt"),

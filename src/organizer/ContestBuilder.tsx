@@ -1,7 +1,15 @@
 import { FormEvent, useMemo, useState } from "react";
 import "./contest-builder.css";
 
-export type TaskFamilyKey = "chess960" | "dice_chess" | "penultima";
+export type EnvironmentKey = "chess_world" | "geometry_world";
+export type TaskFamilyKey =
+  | "chess960"
+  | "dice_chess"
+  | "penultima"
+  | "geo_zendo"
+  | "geo_transform"
+  | "geo_probability"
+  | "geo_graph";
 
 export type TaskFamilyConfig = {
   key: TaskFamilyKey;
@@ -14,7 +22,7 @@ export type TaskFamilyConfig = {
 export type ContestDraftInput = {
   title: string;
   durationMinutes: number;
-  environmentKey: "chess_world";
+  environmentKey: EnvironmentKey;
   taskConfig: {
     adaptationThreshold: number;
     families: TaskFamilyConfig[];
@@ -55,19 +63,42 @@ const FAMILY_LABELS: Record<
 > = {
   chess960: {
     title: "Chess960",
-    description: "Расстановки, ограничения доски и пространственное рассуждение.",
+    description:
+      "Проверка и исправление расстановок, логические ограничения и подсчёт вариантов.",
   },
   dice_chess: {
     title: "Dice & Chess",
-    description: "Вероятностные события и решения в условиях случайности.",
+    description:
+      "Вероятностные события на доске и решения, зависящие от кубика фигур.",
   },
   penultima: {
     title: "Penultima",
-    description: "Восстановление скрытых правил по обратной связи среды.",
+    description:
+      "Связная глава: неизвестная фигура, скрытое правило и последовательность маяков.",
+  },
+  geo_zendo: {
+    title: "Геометрический Zendo",
+    description:
+      "Восстановление скрытого закона по положительным и отрицательным конфигурациям.",
+  },
+  geo_transform: {
+    title: "Инварианты",
+    description:
+      "Преобразования фигур и графов: найти то, что сохраняется, или распознать действие.",
+  },
+  geo_probability: {
+    title: "Комбинаторика",
+    description:
+      "Подсчёт конфигураций и вероятностей на сетях из точек, рёбер и областей.",
+  },
+  geo_graph: {
+    title: "Графы и конструкции",
+    description:
+      "Построить или исправить сеть с заданными степенями, связностью и пересечениями.",
   },
 };
 
-const INITIAL_FAMILIES: TaskFamilyConfig[] = [
+const CHESS_FAMILIES: TaskFamilyConfig[] = [
   {
     key: "chess960",
     enabled: true,
@@ -91,8 +122,84 @@ const INITIAL_FAMILIES: TaskFamilyConfig[] = [
   },
 ];
 
+const GEOMETRY_FAMILIES: TaskFamilyConfig[] = [
+  {
+    key: "geo_zendo",
+    enabled: true,
+    weight: 30,
+    initialDifficulty: 1,
+    maxDifficulty: 10,
+  },
+  {
+    key: "geo_transform",
+    enabled: true,
+    weight: 25,
+    initialDifficulty: 1,
+    maxDifficulty: 10,
+  },
+  {
+    key: "geo_probability",
+    enabled: true,
+    weight: 25,
+    initialDifficulty: 1,
+    maxDifficulty: 10,
+  },
+  {
+    key: "geo_graph",
+    enabled: true,
+    weight: 20,
+    initialDifficulty: 1,
+    maxDifficulty: 10,
+  },
+];
+
+const WORLD_COPY: Record<
+  EnvironmentKey,
+  { title: string; description: string }
+> = {
+  chess_world: {
+    title: "Шахматный мир",
+    description:
+      "Chess960, Dice & Chess и Penultima образуют одну адаптивную траекторию на шахматной доске.",
+  },
+  geometry_world: {
+    title: "Геометрический мир",
+    description:
+      "Скрытые правила Zendo, преобразования, вероятность и конструкции используют общий язык точек, рёбер и фигур.",
+  },
+};
+
+function cloneFamilies(families: readonly TaskFamilyConfig[]) {
+  return families.map((family) => ({ ...family }));
+}
+
 function newParticipant(): ParticipantDraft {
   return { externalRef: "", displayName: "" };
+}
+
+function EnvironmentSelector({
+  value,
+  onChange,
+}: {
+  value: EnvironmentKey;
+  onChange: (environment: EnvironmentKey) => void;
+}) {
+  return (
+    <div className="world-selector" aria-label="Выбор среды контеста">
+      {(Object.keys(WORLD_COPY) as EnvironmentKey[]).map((world) => (
+        <button
+          className={value === world ? "is-selected" : ""}
+          type="button"
+          aria-pressed={value === world}
+          onClick={() => onChange(world)}
+          key={world}
+        >
+          <strong>{WORLD_COPY[world].title}</strong>
+          <span>{WORLD_COPY[world].description}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function ContestBuilder({
@@ -105,8 +212,10 @@ export function ContestBuilder({
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [environmentKey, setEnvironmentKey] =
+    useState<EnvironmentKey>("chess_world");
   const [families, setFamilies] =
-    useState<TaskFamilyConfig[]>(INITIAL_FAMILIES);
+    useState<TaskFamilyConfig[]>(() => cloneFamilies(CHESS_FAMILIES));
   const [participants, setParticipants] = useState<ParticipantDraft[]>([
     newParticipant(),
   ]);
@@ -137,6 +246,18 @@ export function ContestBuilder({
         family.key === key ? { ...family, ...patch } : family,
       ),
     );
+  }
+
+  function selectEnvironment(nextEnvironment: EnvironmentKey) {
+    setEnvironmentKey(nextEnvironment);
+    setFamilies(
+      cloneFamilies(
+        nextEnvironment === "geometry_world"
+          ? GEOMETRY_FAMILIES
+          : CHESS_FAMILIES,
+      ),
+    );
+    setError("");
   }
 
   function updateParticipant(
@@ -183,7 +304,7 @@ export function ContestBuilder({
       const created = await onCreateContest({
         title: title.trim(),
         durationMinutes,
-        environmentKey: "chess_world",
+        environmentKey,
         taskConfig: {
           adaptationThreshold: 3,
           families,
@@ -280,7 +401,7 @@ export function ContestBuilder({
           <p className="eyebrow">Конструктор контеста</p>
           <h1>{contest?.title || "Новый контест"}</h1>
           <p>
-            Настройте «Шахматный мир», добавьте участников и выпустите
+            Выберите мир, настройте адаптивную траекторию и выпустите
             персональные коды.
           </p>
         </div>
@@ -334,14 +455,26 @@ export function ContestBuilder({
                   />
                 </label>
               </div>
+              <div className="builder-world-choice">
+                <span>Среда контеста</span>
+                <p>
+                  Выберите мир, из семейств которого будет строиться
+                  индивидуальная траектория участника.
+                </p>
+                <EnvironmentSelector
+                  value={environmentKey}
+                  onChange={selectEnvironment}
+                />
+              </div>
             </section>
           ) : (
             <section aria-labelledby="builderWorldTitle">
-              <span className="builder-section-label">02 · среда</span>
-              <h2 id="builderWorldTitle">Шахматный мир</h2>
+              <span className="builder-section-label">02 · задачи среды</span>
+              <h2 id="builderWorldTitle">{WORLD_COPY[environmentKey].title}</h2>
               <p className="builder-intro">
-                Семейства выбираются независимо. Их сложность будет
-                адаптироваться отдельно по результатам участника.
+                Семейства образуют единую адаптивную траекторию. Система
+                сначала познакомит участника с выбранными механиками, затем
+                будет менять их порядок и сложность по истории прохождения.
               </p>
               <div className="family-list">
                 {families.map((family) => {
@@ -374,7 +507,7 @@ export function ContestBuilder({
                             type="number"
                             aria-label={`Вес семейства ${copy.title}`}
                             min={1}
-                            max={10}
+                            max={100}
                             disabled={!family.enabled}
                             value={family.weight}
                             onChange={(event) =>

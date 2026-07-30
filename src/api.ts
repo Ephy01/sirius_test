@@ -68,7 +68,6 @@ export type AttemptSummary = {
   id: string;
   enrollmentId: string;
   number: number;
-  seed: number;
   status: AttemptStatus;
   startedAt?: string | null;
   deadlineAt?: string | null;
@@ -127,6 +126,51 @@ export type GenerateCodesResponse = {
   generatedCount: number;
 };
 
+export type AccessCodeOverview = {
+  id: string;
+  last4: string;
+  status: AccessCodeStatus;
+  createdAt?: string;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  redeemedAt?: string | null;
+};
+
+export type AttemptOverview = {
+  id: string;
+  number: number;
+  status: AttemptStatus;
+  startedAt?: string | null;
+  deadlineAt?: string | null;
+  finishedAt?: string | null;
+};
+
+export type ContestEnrollmentAccess = {
+  id: string;
+  contestId: string;
+  participantId: string;
+  participant: ParticipantSummary;
+  status: EnrollmentStatus;
+  createdAt?: string;
+  latestCode: AccessCodeOverview | null;
+  latestAttempt: AttemptOverview | null;
+  attemptGrantPending: boolean;
+};
+
+export type RotatedAccessCode = {
+  enrollmentId: string;
+  code: string;
+  codeLabel: string;
+  status: AccessCodeStatus;
+  expiresAt?: string | null;
+};
+
+export type AttemptGrantResponse = {
+  enrollmentId: string;
+  pending: boolean;
+  created: boolean;
+};
+
 export type ParticipantContext = {
   contest: ContestSummary;
   participant: ParticipantSummary;
@@ -141,12 +185,138 @@ export type StartAttemptResponse = {
   created: boolean;
 };
 
-export type Chess960PublicState = {
-  kind: "chess960_validation";
-  prompt: string;
-  backRank: string[];
-  responseHint: string;
+export type ChessPieceSymbol = "K" | "Q" | "R" | "B" | "N" | "P";
+export type ChessBoardPieceSymbol = `w${ChessPieceSymbol}` | `b${ChessPieceSymbol}`;
+export type ChessBoardState = (ChessBoardPieceSymbol | null)[][];
+
+export type WorldContext = {
+  world: "chess_world" | "geometry_world";
+  episode: number;
+  family: string;
+  phase: "calibration" | "chapter" | "remediation" | "rotation" | string;
 };
+
+export type Chess960PublicState = {
+  kind: "chess960_validation" | "chess960_mission";
+  variant?: "validation" | "single_swap_repair" | "repair_count";
+  prompt: string;
+  backRank: ChessPieceSymbol[];
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type DiceDefinition = {
+  id: string;
+  label: string;
+  faces: ChessPieceSymbol[];
+};
+
+export type DiceChessPublicState = {
+  kind: "dice_chess_probability";
+  prompt: string;
+  dice: DiceDefinition[];
+  sampleSpaceSize: number;
+  eventDescription?: string;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type DiceChessPositionPublicState = {
+  kind: "dice_chess_position_probability";
+  prompt: string;
+  board: ChessBoardState;
+  sideToMove: "white" | "black";
+  die: DiceDefinition;
+  sampleSpaceSize: number;
+  eventDescription: string;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type DiceChessInventoryPublicState = {
+  kind: "dice_chess_board_inventory_probability";
+  prompt: string;
+  board: ChessBoardState;
+  die: DiceDefinition;
+  sampleSpaceSize: number;
+  eventDescription: string;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type PenultimaObservation = {
+  from: string;
+  to: string;
+  accepted: boolean;
+};
+
+export type PenultimaPublicState = {
+  kind: "penultima_induction";
+  prompt: string;
+  board: ChessBoardState;
+  pieceName: string;
+  currentSquare: string;
+  goalSquare: string;
+  chapterStage: number;
+  stageTitle: string;
+  acceptedMoves: number;
+  rejectedMoves: number;
+  observations: PenultimaObservation[];
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type GeometryPoint = {
+  id: string;
+  group: string;
+  x: number;
+  y: number;
+  label?: string;
+  color?: string;
+};
+
+export type GeometryEdge = {
+  id: string;
+  group: string;
+  source: string;
+  target: string;
+  color?: string;
+};
+
+export type GeometryScene = {
+  bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  };
+  points: GeometryPoint[];
+  edges: GeometryEdge[];
+};
+
+export type GeometryPublicState = {
+  kind: "geometry_atlas";
+  family:
+    | "geo_zendo"
+    | "geo_transform"
+    | "geo_probability"
+    | "geo_graph";
+  variant: string;
+  prompt: string;
+  scene: GeometryScene;
+  content: Record<string, unknown>;
+  interaction: Record<string, unknown>;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type TaskPublicState =
+  | Chess960PublicState
+  | DiceChessPublicState
+  | DiceChessInventoryPublicState
+  | DiceChessPositionPublicState
+  | PenultimaPublicState
+  | GeometryPublicState;
 
 export type ParticipantTask = {
   id: string;
@@ -155,7 +325,7 @@ export type ParticipantTask = {
   generatorVersion: string;
   difficulty: number;
   status: TaskStatus;
-  publicState: Chess960PublicState;
+  publicState: TaskPublicState;
   createdAt?: string;
   resolvedAt?: string | null;
 };
@@ -172,6 +342,26 @@ export type NextTaskResponse = {
 export type TaskActionResponse = {
   task: ParticipantTask;
   message: string;
+};
+
+export type TaskInteractionInput =
+  | {
+      actionType: "move";
+      move: string;
+      clientActionId: string;
+    }
+  | {
+      actionType: "probe";
+      probe: string;
+      clientActionId: string;
+    };
+
+export type TaskInteractionResponse = {
+  task: ParticipantTask;
+  accepted: boolean;
+  completed: boolean;
+  message: string;
+  clientActionId: string;
 };
 
 type RequestOptions = {
@@ -245,6 +435,10 @@ function parseEnrollmentStatus(value: unknown): EnrollmentStatus {
 
 function parseAttemptStatus(value: unknown): AttemptStatus {
   return value === "completed" || value === "expired" ? value : "active";
+}
+
+function parseAccessCodeStatus(value: unknown): AccessCodeStatus {
+  return value === "revoked" || value === "expired" ? value : "active";
 }
 
 function parseContestSummary(value: unknown): ContestSummary {
@@ -346,7 +540,6 @@ function parseAttempt(value: unknown): AttemptSummary {
       "enrollment_id",
     ),
     number: readNumber(value, "number") ?? 1,
-    seed: readNumber(value, "seed") ?? 0,
     status: parseAttemptStatus(value.status),
     startedAt: readNullableString(value, "startedAt", "started_at"),
     deadlineAt: readNullableString(value, "deadlineAt", "deadline_at"),
@@ -354,9 +547,249 @@ function parseAttempt(value: unknown): AttemptSummary {
   };
 }
 
+function parseAccessCodeOverview(value: unknown): AccessCodeOverview | null {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) {
+    throw new ApiError(502, {
+      code: "invalid_api_response",
+      message: "Сервер вернул некорректные данные кода доступа.",
+      details: value,
+    });
+  }
+
+  return {
+    id: requiredString(value, "code.id", "id"),
+    last4: requiredString(value, "code.last4", "last4"),
+    status: parseAccessCodeStatus(value.status),
+    createdAt: readString(value, "createdAt", "created_at"),
+    expiresAt: readNullableString(value, "expiresAt", "expires_at"),
+    revokedAt: readNullableString(value, "revokedAt", "revoked_at"),
+    redeemedAt: readNullableString(value, "redeemedAt", "redeemed_at"),
+  };
+}
+
+function parseAttemptOverview(value: unknown): AttemptOverview | null {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) {
+    throw new ApiError(502, {
+      code: "invalid_api_response",
+      message: "Сервер вернул некорректные данные попытки.",
+      details: value,
+    });
+  }
+
+  return {
+    id: requiredString(value, "attempt.id", "id"),
+    number: readNumber(value, "number") ?? 1,
+    status: parseAttemptStatus(value.status),
+    startedAt: readNullableString(value, "startedAt", "started_at"),
+    deadlineAt: readNullableString(value, "deadlineAt", "deadline_at"),
+    finishedAt: readNullableString(value, "finishedAt", "finished_at"),
+  };
+}
+
+function parseContestEnrollmentAccess(
+  value: unknown,
+  contestId: string,
+): ContestEnrollmentAccess {
+  if (!isRecord(value)) {
+    throw new ApiError(502, {
+      code: "invalid_api_response",
+      message: "Сервер вернул некорректную строку доступа участника.",
+      details: value,
+    });
+  }
+
+  const participant = parseParticipant(value.participant);
+  const latestCode = value.latestCode ?? value.latest_code;
+  const latestAttempt = value.latestAttempt ?? value.latest_attempt;
+
+  return {
+    id: requiredString(value, "enrollment.id", "id"),
+    contestId:
+      readString(value, "contestId", "contest_id") ?? contestId,
+    participantId:
+      readString(value, "participantId", "participant_id") ?? participant.id,
+    participant,
+    status: parseEnrollmentStatus(value.status),
+    createdAt: readString(value, "createdAt", "created_at"),
+    latestCode: parseAccessCodeOverview(latestCode),
+    latestAttempt: parseAttemptOverview(latestAttempt),
+    attemptGrantPending:
+      value.attemptGrantPending === true || value.attempt_grant_pending === true,
+  };
+}
+
 function parseTaskStatus(value: unknown): TaskStatus {
   if (value === "answered" || value === "skipped") return value;
   return "active";
+}
+
+function isChessPieceSymbol(value: unknown): value is ChessPieceSymbol {
+  return (
+    value === "K" ||
+    value === "Q" ||
+    value === "R" ||
+    value === "B" ||
+    value === "N" ||
+    value === "P"
+  );
+}
+
+function isChessBoardPieceSymbol(
+  value: unknown,
+): value is ChessBoardPieceSymbol {
+  return (
+    typeof value === "string" &&
+    value.length === 2 &&
+    (value[0] === "w" || value[0] === "b") &&
+    isChessPieceSymbol(value[1])
+  );
+}
+
+function parsePieceSymbols(
+  value: unknown,
+  expectedLength: number,
+): ChessPieceSymbol[] | null {
+  const pieces =
+    typeof value === "string"
+      ? Array.from(value)
+      : Array.isArray(value)
+        ? value
+        : [];
+  return pieces.length === expectedLength && pieces.every(isChessPieceSymbol)
+    ? pieces
+    : null;
+}
+
+function parseDiceDefinition(
+  value: unknown,
+  index = 0,
+): DiceDefinition | null {
+  if (!isRecord(value)) return null;
+  const faces = parsePieceSymbols(value.faces, 6);
+  if (!faces) return null;
+  return {
+    id: readString(value, "id") ?? `die-${index + 1}`,
+    label: readString(value, "label") ?? `Кубик ${index + 1}`,
+    faces,
+  };
+}
+
+function parseChessBoard(value: unknown): ChessBoardState | null {
+  if (!Array.isArray(value) || value.length !== 8) return null;
+  const board: ChessBoardState = [];
+  for (const rank of value) {
+    if (!Array.isArray(rank) || rank.length !== 8) return null;
+    if (
+      !rank.every(
+        (piece) => piece === null || isChessBoardPieceSymbol(piece),
+      )
+    ) {
+      return null;
+    }
+    board.push([...rank] as (ChessBoardPieceSymbol | null)[]);
+  }
+  return board;
+}
+
+function parsePenultimaObservations(value: unknown): PenultimaObservation[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const compactMove = readString(item, "move")
+      ?.toLocaleLowerCase("en-US")
+      .replace(/[^a-h1-8]/g, "");
+    const from =
+      readString(item, "from") ??
+      (compactMove?.length === 4 ? compactMove.slice(0, 2) : undefined);
+    const to =
+      readString(item, "to") ??
+      (compactMove?.length === 4 ? compactMove.slice(2, 4) : undefined);
+    const accepted =
+      typeof item.accepted === "boolean"
+        ? item.accepted
+        : item.result === "accepted"
+          ? true
+          : item.result === "rejected"
+            ? false
+            : undefined;
+    if (!from || !to || accepted === undefined) return [];
+    return [{ from, to, accepted }];
+  });
+}
+
+function parseGeometryScene(value: unknown): GeometryScene | null {
+  if (!isRecord(value) || !isRecord(value.bounds)) return null;
+  const minX = readNumber(value.bounds, "minX", "min_x");
+  const maxX = readNumber(value.bounds, "maxX", "max_x");
+  const minY = readNumber(value.bounds, "minY", "min_y");
+  const maxY = readNumber(value.bounds, "maxY", "max_y");
+  if (
+    minX === undefined ||
+    maxX === undefined ||
+    minY === undefined ||
+    maxY === undefined ||
+    !Array.isArray(value.points) ||
+    !Array.isArray(value.edges)
+  ) {
+    return null;
+  }
+
+  const points = value.points.flatMap((item): GeometryPoint[] => {
+    if (!isRecord(item)) return [];
+    const id = readString(item, "id");
+    const x = readNumber(item, "x");
+    const y = readNumber(item, "y");
+    if (!id || x === undefined || y === undefined) return [];
+    return [{
+      id,
+      group: readString(item, "group") ?? "main",
+      x,
+      y,
+      label: readString(item, "label"),
+      color: readString(item, "color"),
+    }];
+  });
+  const pointIds = new Set(points.map((point) => point.id));
+  const edges = value.edges.flatMap((item): GeometryEdge[] => {
+    if (!isRecord(item)) return [];
+    const source = readString(item, "source");
+    const target = readString(item, "target");
+    if (!source || !target || !pointIds.has(source) || !pointIds.has(target)) {
+      return [];
+    }
+    return [{
+      id: readString(item, "id") ?? `${source}-${target}`,
+      group: readString(item, "group") ?? "main",
+      source,
+      target,
+      color: readString(item, "color"),
+    }];
+  });
+
+  return {
+    bounds: { minX, maxX, minY, maxY },
+    points,
+    edges,
+  };
+}
+
+function parseWorldContext(value: unknown): WorldContext | undefined {
+  if (!isRecord(value)) return undefined;
+  const world = readString(value, "world");
+  const episode = readNumber(value, "episode");
+  const family = readString(value, "family");
+  const phase = readString(value, "phase");
+  if (
+    (world !== "chess_world" && world !== "geometry_world") ||
+    episode === undefined ||
+    !family ||
+    !phase
+  ) {
+    return undefined;
+  }
+  return { world, episode, family, phase };
 }
 
 function parseParticipantTask(value: unknown): ParticipantTask {
@@ -377,23 +810,251 @@ function parseParticipantTask(value: unknown): ParticipantTask {
     });
   }
 
-  const backRankValue = publicStateValue.backRank ?? publicStateValue.back_rank;
-  const backRank =
-    typeof backRankValue === "string"
-      ? Array.from(backRankValue)
-      : Array.isArray(backRankValue)
-        ? backRankValue.filter((piece): piece is string => typeof piece === "string")
-        : [];
-  if (backRank.length !== 8) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректную позицию Chess960.",
-      details: value,
-    });
-  }
-
   const kind = readString(publicStateValue, "kind");
-  if (kind !== "chess960_validation") {
+  const prompt = requiredString(publicStateValue, "task.prompt", "prompt");
+  const responseHint = requiredString(
+    publicStateValue,
+    "task.responseHint",
+    "responseHint",
+    "response_hint",
+  );
+  const worldContext = parseWorldContext(
+    publicStateValue.worldContext ?? publicStateValue.world_context,
+  );
+  let publicState: TaskPublicState;
+
+  if (kind === "chess960_validation" || kind === "chess960_mission") {
+    const backRank = parsePieceSymbols(
+      publicStateValue.backRank ?? publicStateValue.back_rank,
+      8,
+    );
+    if (!backRank) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную позицию Chess960.",
+        details: value,
+      });
+    }
+    const variantValue = readString(publicStateValue, "variant");
+    const variant =
+      variantValue === "validation" ||
+      variantValue === "single_swap_repair" ||
+      variantValue === "repair_count"
+        ? variantValue
+        : undefined;
+    publicState = {
+      kind,
+      variant,
+      prompt,
+      backRank,
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "dice_chess_probability") {
+    const diceValue = publicStateValue.dice;
+    if (!Array.isArray(diceValue) || diceValue.length < 2 || diceValue.length > 4) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректный набор кубиков.",
+        details: value,
+      });
+    }
+    const dice = diceValue.map((die, index): DiceDefinition => {
+      const parsed = parseDiceDefinition(die, index);
+      if (!parsed) {
+        throw new ApiError(502, {
+          code: "invalid_api_response",
+          message: "Каждый кубик должен содержать шесть шахматных граней.",
+          details: die,
+        });
+      }
+      return parsed;
+    });
+    publicState = {
+      kind,
+      prompt,
+      dice,
+      sampleSpaceSize:
+        readNumber(
+          publicStateValue,
+          "sampleSpaceSize",
+          "sample_space_size",
+        ) ?? 6 ** dice.length,
+      eventDescription: readString(
+        publicStateValue,
+        "eventDescription",
+        "event_description",
+      ),
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "dice_chess_board_inventory_probability") {
+    const board = parseChessBoard(publicStateValue.board);
+    const die = parseDiceDefinition(publicStateValue.die);
+    const eventDescription = readString(
+      publicStateValue,
+      "eventDescription",
+      "event_description",
+    );
+    if (!board || !die || !eventDescription) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную задачу Dice & Chess.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      prompt,
+      board,
+      die,
+      sampleSpaceSize:
+        readNumber(
+          publicStateValue,
+          "sampleSpaceSize",
+          "sample_space_size",
+        ) ?? 6,
+      eventDescription,
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "dice_chess_position_probability") {
+    const board = parseChessBoard(publicStateValue.board);
+    const die = parseDiceDefinition(publicStateValue.die);
+    const sideToMove = readString(
+      publicStateValue,
+      "sideToMove",
+      "side_to_move",
+    );
+    const eventDescription = readString(
+      publicStateValue,
+      "eventDescription",
+      "event_description",
+    );
+    if (
+      !board ||
+      !die ||
+      !eventDescription ||
+      (sideToMove !== "white" && sideToMove !== "black")
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную позицию Dice & Chess.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      prompt,
+      board,
+      sideToMove,
+      die,
+      sampleSpaceSize:
+        readNumber(
+          publicStateValue,
+          "sampleSpaceSize",
+          "sample_space_size",
+        ) ?? 6,
+      eventDescription,
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "penultima_induction") {
+    const board = parseChessBoard(publicStateValue.board);
+    const pieceName = readString(
+      publicStateValue,
+      "pieceName",
+      "piece_name",
+    );
+    const currentSquare = readString(
+      publicStateValue,
+      "currentSquare",
+      "current_square",
+    );
+    const goalSquare = readString(
+      publicStateValue,
+      "goalSquare",
+      "goal_square",
+    );
+    if (!board || !pieceName || !currentSquare || !goalSquare) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректное состояние Penultima.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      prompt,
+      board,
+      pieceName,
+      currentSquare,
+      goalSquare,
+      chapterStage:
+        readNumber(
+          publicStateValue,
+          "chapterStage",
+          "chapter_stage",
+        ) ?? 1,
+      stageTitle:
+        readString(
+          publicStateValue,
+          "stageTitle",
+          "stage_title",
+        ) ?? "Маршрут",
+      acceptedMoves:
+        readNumber(
+          publicStateValue,
+          "acceptedMoves",
+          "accepted_moves",
+        ) ?? 0,
+      rejectedMoves:
+        readNumber(
+          publicStateValue,
+          "rejectedMoves",
+          "rejected_moves",
+        ) ?? 0,
+      observations: parsePenultimaObservations(
+        publicStateValue.observations ??
+          publicStateValue.recent_observations,
+      ),
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "geometry_atlas") {
+    const scene = parseGeometryScene(publicStateValue.scene);
+    const family = readString(publicStateValue, "family");
+    const variant = readString(publicStateValue, "variant");
+    if (
+      !scene ||
+      !variant ||
+      (family !== "geo_zendo" &&
+        family !== "geo_transform" &&
+        family !== "geo_probability" &&
+        family !== "geo_graph")
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную сцену Геометрического мира.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      family,
+      variant,
+      prompt,
+      scene,
+      content: isRecord(publicStateValue.content)
+        ? publicStateValue.content
+        : {},
+      interaction: isRecord(publicStateValue.interaction)
+        ? publicStateValue.interaction
+        : {},
+      responseHint,
+      worldContext,
+    };
+  } else {
     throw new ApiError(502, {
       code: "unsupported_task_kind",
       message: "Этот тип задачи пока не поддерживается интерфейсом.",
@@ -413,17 +1074,7 @@ function parseParticipantTask(value: unknown): ParticipantTask {
     ),
     difficulty: readNumber(value, "difficulty") ?? 1,
     status: parseTaskStatus(value.status),
-    publicState: {
-      kind,
-      prompt: requiredString(publicStateValue, "task.prompt", "prompt"),
-      backRank,
-      responseHint: requiredString(
-        publicStateValue,
-        "task.responseHint",
-        "responseHint",
-        "response_hint",
-      ),
-    },
+    publicState,
     createdAt: readString(value, "createdAt", "created_at"),
     resolvedAt: readNullableString(
       value,
@@ -613,6 +1264,16 @@ export class ApiClient {
     return items.map(parseContestSummary);
   }
 
+  async deleteContest(
+    contestId: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<void> {
+    await this.request(`/contests/${encodeURIComponent(contestId)}`, {
+      ...options,
+      method: "DELETE",
+    });
+  }
+
   async createContest(
     input: CreateContestInput,
     options: AuthenticatedRequestOptions,
@@ -685,6 +1346,99 @@ export class ApiClient {
       enrollments: items.map(parseEnrollment),
       createdCount:
         isRecord(body) ? readNumber(body, "createdCount", "created_count") ?? items.length : items.length,
+    };
+  }
+
+  async listContestEnrollments(
+    contestId: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<ContestEnrollmentAccess[]> {
+    const body = await this.request(
+      `/contests/${encodeURIComponent(contestId)}/enrollments`,
+      options,
+    );
+    const items =
+      isRecord(body) && Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body)
+          ? body
+          : null;
+
+    if (!items) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректный список доступов.",
+        details: body,
+      });
+    }
+
+    return items.map((item) => parseContestEnrollmentAccess(item, contestId));
+  }
+
+  async rotateEnrollmentCode(
+    contestId: string,
+    enrollmentId: string,
+    input: { expiresAt?: string | null },
+    options: AuthenticatedRequestOptions,
+  ): Promise<RotatedAccessCode> {
+    const body = await this.request(
+      `/contests/${encodeURIComponent(contestId)}/enrollments/${encodeURIComponent(enrollmentId)}/codes/rotate`,
+      {
+        ...options,
+        method: "POST",
+        body: { expires_at: input.expiresAt },
+      },
+    );
+    const value = isRecord(body) && isRecord(body.item) ? body.item : body;
+    if (!isRecord(value)) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректный новый код.",
+        details: body,
+      });
+    }
+
+    const last4 =
+      readString(value, "last4") ??
+      readString(value, "codeLabel", "code_label")?.slice(-4);
+
+    return {
+      enrollmentId:
+        readString(value, "enrollmentId", "enrollment_id") ?? enrollmentId,
+      code: requiredString(value, "code", "code"),
+      codeLabel:
+        readString(value, "codeLabel", "code_label") ??
+        (last4 ? `••••${last4}` : "Новый код"),
+      status: parseAccessCodeStatus(value.status),
+      expiresAt: readNullableString(value, "expiresAt", "expires_at"),
+    };
+  }
+
+  async grantNextAttempt(
+    contestId: string,
+    enrollmentId: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<AttemptGrantResponse> {
+    const body = await this.request(
+      `/contests/${encodeURIComponent(contestId)}/enrollments/${encodeURIComponent(enrollmentId)}/attempts/grant`,
+      {
+        ...options,
+        method: "POST",
+      },
+    );
+    if (!isRecord(body)) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректное подтверждение новой попытки.",
+        details: body,
+      });
+    }
+
+    return {
+      enrollmentId:
+        readString(body, "enrollmentId", "enrollment_id") ?? enrollmentId,
+      pending: body.pending === true,
+      created: body.created === true,
     };
   }
 
@@ -899,6 +1653,48 @@ export class ApiClient {
       message:
         readString(body, "message") ??
         "Ответ зафиксирован. Когда будете готовы, перейдите дальше.",
+    };
+  }
+
+  async interactWithTask(
+    taskId: string,
+    input: TaskInteractionInput,
+    options: AuthenticatedRequestOptions,
+  ): Promise<TaskInteractionResponse> {
+    const body = await this.request(
+      `/participant/tasks/${encodeURIComponent(taskId)}/interactions`,
+      {
+        ...options,
+        method: "POST",
+        body: {
+          action_type: input.actionType,
+          ...(input.actionType === "move"
+            ? { move: input.move }
+            : { probe: input.probe }),
+          client_action_id: input.clientActionId,
+        },
+      },
+    );
+    if (!isRecord(body)) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректный результат хода.",
+        details: body,
+      });
+    }
+
+    return {
+      task: parseParticipantTask(body.task),
+      accepted: body.accepted === true,
+      completed: body.completed === true,
+      message:
+        readString(body, "message") ??
+        (body.accepted === true
+          ? "Арбитр принял ход."
+          : "Арбитр отклонил ход."),
+      clientActionId:
+        readString(body, "clientActionId", "client_action_id") ??
+        input.clientActionId,
     };
   }
 
