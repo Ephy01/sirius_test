@@ -2621,3 +2621,72 @@
     grid-template-columns: 1fr;
   }
 }
+
+.token-shelf {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  justify-self: stretch;
+}
+
+.token-shelf__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 8px;
+}
+
+.token-card {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #d5dcdd;
+  background: #fff;
+}
+
+.token-card > header {
+  margin-bottom: 6px;
+  color: #5f686b;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.token-card__shelf {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+  padding: 7px;
+  border: 1px solid #e0e5e5;
+  background: #f8faf9;
+  list-style: none;
+}
+
+.token-chip {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 25%);
+}
+
+.token-chip--b {
+  color: #004278;
+  text-shadow: none;
+}
+
+.token-shelf figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  color: #6f7678;
+  font-size: 8px;
+  line-height: 1.5;
+}

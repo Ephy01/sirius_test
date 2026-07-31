@@ -11,6 +11,7 @@ import type {
   LeaperBoardPublicState,
   MachinePanelPublicState,
   MachineState,
+  TokenCard,
 } from "../api";
 import "./participant-workspace.css";
 
@@ -95,6 +96,7 @@ export type ParticipantTask = {
   geometryScene?: GeometryScene;
   geometryContent?: Record<string, unknown>;
   geometryInteraction?: Record<string, unknown>;
+  tokenCards?: Record<string, TokenCard[]>;
   machinePanel?: MachinePanelPublicState;
   leaperBoard?: LeaperBoardPublicState;
   responseHint?: string;
@@ -435,7 +437,7 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
       },
     ];
   }
-  if (task.kind === "geometry_atlas") {
+  if (task.kind === "geometry_atlas" || task.kind === "token_zendo") {
     return [
       {
         id: 1,
@@ -443,8 +445,8 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
         content: (
           <>
             Открыта задача{" "}
-            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>{" "}
-            Геометрического мира.
+            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>
+            {task.kind === "geometry_atlas" ? " Геометрического мира" : ""}.
           </>
         ),
       },
@@ -452,7 +454,7 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
         id: 2,
         author: "system",
         content:
-          task.family === "geo_zendo" ? (
+          task.family === "geo_zendo" || task.kind === "token_zendo" ? (
             <>
               Можно проверить доступную карточку командой{" "}
               <code>/test &lt;код&gt;</code>, затем отправить итоговый ответ.
@@ -540,7 +542,9 @@ export function ParticipantWorkspace({
     task.kind === "dice_chess_position_probability" ||
     task.kind === "dice_chess_board_inventory_probability";
   const isGeometry = task.kind === "geometry_atlas";
-  const isZendo = isGeometry && task.family === "geo_zendo";
+  const isZendo =
+    (isGeometry && task.family === "geo_zendo") ||
+    task.kind === "token_zendo";
   const isMachine =
     task.kind === "machine_panel" ||
     (task.kind === "chess" && task.family === "machine_reach");
@@ -1147,6 +1151,11 @@ export function ParticipantWorkspace({
             <MachinePanel state={task.machinePanel} />
           ) : isLeaperBoard && task.leaperBoard ? (
             <LeaperBoardScene state={task.leaperBoard} />
+          ) : task.tokenCards ? (
+            <TokenShelfScene
+              cards={task.tokenCards}
+              content={task.geometryContent ?? {}}
+            />
           ) : isGeometry && task.geometryScene ? (
             <GeometryAtlasScene
               scene={task.geometryScene}
@@ -1447,6 +1456,60 @@ function GeometryAtlasScene({
           <span>Все рисунки даны в одной системе обозначений</span>
         </figcaption>
       )}
+    </figure>
+  );
+}
+
+const TOKEN_COLOR_STYLES: Record<TokenCard["color"], { fill: string; label: string }> = {
+  R: { fill: "#e5857b", label: "красная" },
+  G: { fill: "#4f9d79", label: "зелёная" },
+  B: { fill: "#4bbecf", label: "синяя" },
+};
+
+function TokenShelfScene({
+  cards,
+  content,
+}: {
+  cards: Record<string, TokenCard[]>;
+  content: Record<string, unknown>;
+}) {
+  const remaining =
+    typeof content.probes_remaining === "number"
+      ? content.probes_remaining
+      : undefined;
+
+  return (
+    <figure className="token-shelf" aria-label="Полки с фишками">
+      <div className="token-shelf__cards">
+        {Object.entries(cards).map(([cardId, tokens]) => (
+          <section className="token-card" key={cardId}>
+            <header>{geometryGroupLabel(cardId, content)}</header>
+            <ol
+              className="token-card__shelf"
+              aria-label={`Карточка ${cardId}`}
+            >
+              {tokens.map((token, index) => (
+                <li
+                  className={`token-chip token-chip--${token.color.toLowerCase()}`}
+                  style={{ background: TOKEN_COLOR_STYLES[token.color].fill }}
+                  aria-label={`Фишка ${index + 1}: ${token.num}, ${
+                    TOKEN_COLOR_STYLES[token.color].label
+                  }`}
+                  key={index}
+                >
+                  {token.num}
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+      </div>
+      <figcaption>
+        {remaining !== undefined && (
+          <span>Проверок у оракула осталось: {remaining}</span>
+        )}
+        <span>Цвет и число каждой фишки видны на полке</span>
+      </figcaption>
     </figure>
   );
 }

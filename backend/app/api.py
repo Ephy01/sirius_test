@@ -29,6 +29,7 @@ from .environments import (
     GEOMETRY_GENERATOR_VERSION,
     INTERACTIVE_FAMILIES,
     MACHINE_REACH_FAMILY,
+    TOKEN_ZENDO_FAMILY,
     derive_task_seed,
     evaluate_task,
     generate_task,
@@ -128,6 +129,8 @@ FAMILY_ALIASES = {
     "geometry_probability": GEO_PROBABILITY_FAMILY,
     "machine_reach": MACHINE_REACH_FAMILY,
     "machine-reach": MACHINE_REACH_FAMILY,
+    "token_zendo": TOKEN_ZENDO_FAMILY,
+    "token-zendo": TOKEN_ZENDO_FAMILY,
 }
 WORLD_FAMILIES = {
     "chess_world": frozenset({DICE_CHESS_FAMILY}),
@@ -143,6 +146,7 @@ WORLD_FAMILIES["mixed"] = frozenset(
     {
         *frozenset().union(*WORLD_FAMILIES.values()),
         MACHINE_REACH_FAMILY,
+        TOKEN_ZENDO_FAMILY,
     }
 )
 WORLD_DEFAULT_FAMILY = {
@@ -157,8 +161,12 @@ WORLD_DIRECTOR_VERSION = {
 }
 FAMILY_INTERACTION_ACTIONS = {
     GEO_ZENDO_FAMILY: frozenset({"probe"}),
+    TOKEN_ZENDO_FAMILY: frozenset({"probe"}),
     MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
 }
+# Families whose accepted probes append a ``zendo_probe`` event with exact
+# ΔH telemetry to the attempt journal.
+ZENDO_PROBE_FAMILIES = frozenset({GEO_ZENDO_FAMILY, TOKEN_ZENDO_FAMILY})
 FAMILY_ROUTE_VERSION = "weighted-family-route-v1"
 ADAPTIVE_TRAJECTORY_MODE = "adaptive"
 
@@ -2381,7 +2389,7 @@ def interact_with_task(
         },
     )
     if (
-        task.family == GEO_ZENDO_FAMILY
+        task.family in ZENDO_PROBE_FAMILIES
         and payload.action_type == "probe"
         and transition.accepted
         and isinstance(transition.evaluation_state, dict)

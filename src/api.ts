@@ -304,6 +304,23 @@ export type GeometryPublicState = {
   worldContext?: WorldContext;
 };
 
+export type TokenCard = {
+  num: number;
+  color: "R" | "G" | "B";
+};
+
+export type TokenZendoPublicState = {
+  kind: "token_zendo";
+  family: "token_zendo";
+  variant: string;
+  prompt: string;
+  cards: Record<string, TokenCard[]>;
+  content: Record<string, unknown>;
+  interaction: Record<string, unknown>;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
 export type MachineSubKind =
   | "lamps_gf2"
   | "numeric_machine"
@@ -363,6 +380,7 @@ export type TaskPublicState =
   | DiceChessInventoryPublicState
   | DiceChessPositionPublicState
   | GeometryPublicState
+  | TokenZendoPublicState
   | MachinePanelPublicState
   | LeaperBoardPublicState;
 
@@ -1047,6 +1065,53 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       variant,
       prompt,
       scene,
+      content: isRecord(publicStateValue.content)
+        ? publicStateValue.content
+        : {},
+      interaction: isRecord(publicStateValue.interaction)
+        ? publicStateValue.interaction
+        : {},
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "token_zendo") {
+    const cardsValue = publicStateValue.cards;
+    const variant = readString(publicStateValue, "variant");
+    const cards: Record<string, TokenCard[]> = {};
+    if (isRecord(cardsValue)) {
+      for (const [cardId, tokens] of Object.entries(cardsValue)) {
+        if (!Array.isArray(tokens)) continue;
+        const parsedTokens = tokens.flatMap((item): TokenCard[] => {
+          if (!isRecord(item)) return [];
+          const num = readNumber(item, "num");
+          const color = readString(item, "color");
+          if (
+            num === undefined ||
+            !Number.isInteger(num) ||
+            (color !== "R" && color !== "G" && color !== "B")
+          ) {
+            return [];
+          }
+          return [{ num, color }];
+        });
+        if (parsedTokens.length === tokens.length) {
+          cards[cardId] = parsedTokens;
+        }
+      }
+    }
+    if (!variant || Object.keys(cards).length === 0) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректные карточки token_zendo.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      family: "token_zendo",
+      variant,
+      prompt,
+      cards,
       content: isRecord(publicStateValue.content)
         ? publicStateValue.content
         : {},

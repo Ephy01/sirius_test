@@ -50,20 +50,29 @@ from .machines import (
     generate_machine_reach_task,
     transition_machine_action,
 )
+from .zendo import (
+    TOKEN_ZENDO_FAMILY,
+    TOKEN_ZENDO_GENERATOR_VERSION,
+    evaluate_token_zendo_answer,
+    generate_token_zendo_task,
+    transition_token_zendo_probe,
+)
 
 IMPLEMENTED_FAMILIES = frozenset(
     {
         DICE_CHESS_FAMILY,
         MACHINE_REACH_FAMILY,
+        TOKEN_ZENDO_FAMILY,
         *GEOMETRY_FAMILIES,
     }
 )
 INTERACTIVE_FAMILIES = frozenset(
-    {GEO_ZENDO_FAMILY, MACHINE_REACH_FAMILY}
+    {GEO_ZENDO_FAMILY, MACHINE_REACH_FAMILY, TOKEN_ZENDO_FAMILY}
 )
 GENERATOR_VERSIONS = {
     DICE_CHESS_FAMILY: DICE_CHESS_GENERATOR_VERSION,
     MACHINE_REACH_FAMILY: MACHINE_REACH_GENERATOR_VERSION,
+    TOKEN_ZENDO_FAMILY: TOKEN_ZENDO_GENERATOR_VERSION,
     **{
         family: (
             GEO_ZENDO_GENERATOR_VERSION
@@ -207,6 +216,18 @@ def generate_task(
             public_state=public_state,
             private_state=private_state,
         )
+    if (
+        family == TOKEN_ZENDO_FAMILY
+        and generator_version == TOKEN_ZENDO_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_token_zendo_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         public_state, private_state = generate_geometry_atlas_task(
             family=family,
@@ -271,6 +292,14 @@ def evaluate_task(
             answer=answer,
             private_state=private_state,
         )
+    if (
+        family == TOKEN_ZENDO_FAMILY
+        and generator_version == TOKEN_ZENDO_GENERATOR_VERSION
+    ):
+        return evaluate_token_zendo_answer(
+            answer=answer,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         return evaluate_geometry_atlas_answer(
             family=family,
@@ -300,6 +329,29 @@ def interact_task(
         if not isinstance(probe, str):
             raise ValueError("Geometry probe payload must contain a string probe")
         transition = transition_geo_zendo_v2_probe(
+            card_id=probe,
+            public_state=public_state,
+            private_state=private_state,
+        )
+        return InteractionTransition(
+            public_state=transition.public_state,
+            private_state=transition.private_state,
+            accepted=transition.accepted,
+            completed=False,
+            reason=transition.reason,
+            message=transition.message,
+            normalized_input=transition.normalized_card_id,
+            evaluation_state=transition.telemetry,
+        )
+    if (
+        family == TOKEN_ZENDO_FAMILY
+        and generator_version == TOKEN_ZENDO_GENERATOR_VERSION
+        and action_type == "probe"
+    ):
+        probe = action_payload.get("probe")
+        if not isinstance(probe, str):
+            raise ValueError("Token probe payload must contain a string probe")
+        transition = transition_token_zendo_probe(
             card_id=probe,
             public_state=public_state,
             private_state=private_state,
