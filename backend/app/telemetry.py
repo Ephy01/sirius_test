@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from .environments import IMPLEMENTED_FAMILIES
 from .models import Attempt, Contest, Enrollment, TaskInstance, utc_now
 
 TELEMETRY_FORMAT_VERSION = "1"
@@ -85,11 +86,24 @@ def _payload_text(value: object) -> str:
     )
 
 
+def _family_text(family: object) -> str:
+    """Label rows of families that were removed from the content rotation.
+
+    The export must stay readable for historical attempts whose family no
+    longer exists in the registry.
+    """
+
+    text = _header_text(family)
+    if str(family) not in IMPLEMENTED_FAMILIES:
+        return f"{text} (retired)"
+    return text
+
+
 def _task_lines(task: TaskInstance) -> list[str]:
     return [
         f"--- TASK ordinal={task.ordinal} ---",
         f"task_id: {task.id}",
-        f"family: {_header_text(task.family)}",
+        f"family: {_family_text(task.family)}",
         f"generator_version: {_header_text(task.generator_version)}",
         f"difficulty: {task.difficulty}",
         f"status: {task.status.value}",

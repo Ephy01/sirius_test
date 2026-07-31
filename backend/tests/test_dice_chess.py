@@ -17,7 +17,7 @@ from app.environments import (
 )
 from app.environments.chess_world.dice_chess import parse_probability_answer
 from app.main import create_app
-from app.models import Attempt, AttemptEvent, TaskInstance
+from app.models import Attempt, AttemptEvent, Contest, TaskInstance
 
 
 def auth(token: str) -> dict[str, str]:
@@ -384,7 +384,7 @@ def test_legacy_family_list_remains_usable(tmp_path):
             client,
             external_ref="legacy",
             task_config={
-                "families": ["dice_chess", "chess_960", "penultima"],
+                "families": ["dice-chess", "machine-reach"],
             },
         )
         client.post(
@@ -395,7 +395,7 @@ def test_legacy_family_list_remains_usable(tmp_path):
             "/api/v1/participant/tasks/current",
             headers=auth(participant),
         ).json()["task"]
-        assert task["family"] in {"chess960", "dice_chess", "penultima"}
+        assert task["family"] in {"dice_chess", "machine_reach"}
         assert task["difficulty"] == 1
 
 
@@ -409,7 +409,7 @@ def _run_mixed_sequence(database_path) -> tuple[list[str], list[int]]:
                 "adaptation_threshold": 2,
                 "families": [
                     {
-                        "key": "chess960",
+                        "key": "geo_transform",
                         "enabled": True,
                         "weight": 1,
                         "initial_difficulty": 1,
@@ -420,8 +420,20 @@ def _run_mixed_sequence(database_path) -> tuple[list[str], list[int]]:
                         "enabled": True,
                         "weight": 3,
                         "initial_difficulty": 3,
-                        "max_difficulty": 7,
+                        "max_difficulty": 5,
                     },
+                ],
+            },
+        )
+        # Unknown families stored in older configs must be skipped at
+        # runtime, while new configs are rejected at creation time.
+        with application.state.database.session_factory() as session:
+            contest = session.scalar(select(Contest))
+            assert contest is not None
+            contest.task_config = {
+                **contest.task_config,
+                "families": [
+                    *contest.task_config["families"],
                     {
                         "key": "future_family",
                         "enabled": True,
@@ -430,8 +442,8 @@ def _run_mixed_sequence(database_path) -> tuple[list[str], list[int]]:
                         "max_difficulty": 10,
                     },
                 ],
-            },
-        )
+            }
+            session.commit()
         started = client.post(
             "/api/v1/participant/attempts/start",
             headers=auth(participant),
@@ -445,9 +457,9 @@ def _run_mixed_sequence(database_path) -> tuple[list[str], list[int]]:
 
         families: list[str] = []
         difficulties: list[int] = []
-        seen = {"chess960": 0, "dice_chess": 0}
-        initial = {"chess960": 1, "dice_chess": 3}
-        maximum = {"chess960": 5, "dice_chess": 7}
+        seen = {"geo_transform": 0, "dice_chess": 0}
+        initial = {"geo_transform": 1, "dice_chess": 3}
+        maximum = {"geo_transform": 5, "dice_chess": 5}
 
         for ordinal in range(1, 25):
             endpoint = (
@@ -473,17 +485,8 @@ def _run_mixed_sequence(database_path) -> tuple[list[str], list[int]]:
             with application.state.database.session_factory() as session:
                 stored = session.get(TaskInstance, task["id"])
                 assert stored is not None
-                if family == "chess960":
-                    variant = stored.private_state["variant"]
-                    if variant == "validation":
-                        answer = (
-                            "Да" if stored.private_state["is_valid"] else "Нет"
-                        )
-                    elif variant == "single_swap_repair":
-                        first, second = stored.private_state["valid_repairs"][0]
-                        answer = f"{first} {second}"
-                    else:
-                        answer = str(stored.private_state["repair_count"])
+                if family == "geo_transform":
+                    answer = str(stored.private_state["correct_card_id"])
                 else:
                     probability = stored.private_state["probability"]
                     answer = (
@@ -528,5 +531,5 @@ def test_weighted_mixed_route_is_reproducible_and_adapts_per_family(tmp_path):
 
     assert first_families == second_families
     assert first_difficulties == second_difficulties
-    assert set(first_families) == {"chess960", "dice_chess"}
-    assert first_families.count("dice_chess") > first_families.count("chess960")
+    assert set(first_families) == {"geo_transform", "dice_chess"}
+    assert first_families.count("dice_chess") > first_families.count("geo_transform")

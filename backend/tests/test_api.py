@@ -46,7 +46,7 @@ def test_complete_contest_access_and_attempt_flow(tmp_path):
                 "duration_minutes": 60,
                 "environment_key": "chess_world",
                 "task_config": {
-                    "families": ["dice_chess", "chess_960", "penultima"]
+                    "families": ["dice_chess", "dice-chess"]
                 },
             },
         )

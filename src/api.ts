@@ -222,15 +222,6 @@ export type WorldContext = {
   phase: "calibration" | "chapter" | "remediation" | "rotation" | string;
 };
 
-export type Chess960PublicState = {
-  kind: "chess960_validation" | "chess960_mission";
-  variant?: "validation" | "single_swap_repair" | "repair_count";
-  prompt: string;
-  backRank: ChessPieceSymbol[];
-  responseHint: string;
-  worldContext?: WorldContext;
-};
-
 export type DiceDefinition = {
   id: string;
   label: string;
@@ -270,28 +261,6 @@ export type DiceChessInventoryPublicState = {
   worldContext?: WorldContext;
 };
 
-export type PenultimaObservation = {
-  from: string;
-  to: string;
-  accepted: boolean;
-};
-
-export type PenultimaPublicState = {
-  kind: "penultima_induction";
-  prompt: string;
-  board: ChessBoardState;
-  pieceName: string;
-  currentSquare: string;
-  goalSquare: string;
-  chapterStage: number;
-  stageTitle: string;
-  acceptedMoves: number;
-  rejectedMoves: number;
-  observations: PenultimaObservation[];
-  responseHint: string;
-  worldContext?: WorldContext;
-};
-
 export type GeometryPoint = {
   id: string;
   group: string;
@@ -325,8 +294,7 @@ export type GeometryPublicState = {
   family:
     | "geo_zendo"
     | "geo_transform"
-    | "geo_probability"
-    | "geo_graph";
+    | "geo_probability";
   variant: string;
   prompt: string;
   scene: GeometryScene;
@@ -390,33 +358,13 @@ export type LeaperBoardPublicState = {
   worldContext?: WorldContext;
 };
 
-export type CounterHeap = {
-  id: string;
-  label: string;
-  count: number;
-};
-
-export type CountersPublicState = {
-  kind: "counters";
-  prompt: string;
-  heaps: CounterHeap[];
-  rules: Record<string, unknown>;
-  rulesByHeap: Record<string, number[]>;
-  misere: boolean;
-  responseHint: string;
-  worldContext?: WorldContext;
-};
-
 export type TaskPublicState =
-  | Chess960PublicState
   | DiceChessPublicState
   | DiceChessInventoryPublicState
   | DiceChessPositionPublicState
-  | PenultimaPublicState
   | GeometryPublicState
   | MachinePanelPublicState
-  | LeaperBoardPublicState
-  | CountersPublicState;
+  | LeaperBoardPublicState;
 
 export type ParticipantTask = {
   id: string;
@@ -445,11 +393,6 @@ export type TaskActionResponse = {
 };
 
 export type TaskInteractionInput =
-  | {
-      actionType: "move";
-      move: string;
-      clientActionId: string;
-    }
   | {
       actionType: "probe";
       probe: string;
@@ -508,17 +451,6 @@ function readNumber(record: UnknownRecord, ...keys: string[]): number | undefine
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;
-  }
-  return undefined;
-}
-
-function readBoolean(
-  record: UnknownRecord,
-  ...keys: string[]
-): boolean | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "boolean") return value;
   }
   return undefined;
 }
@@ -880,107 +812,6 @@ function parseBoardPoint(value: unknown): BoardPoint | null {
   return { row, col };
 }
 
-function parseCounterHeaps(value: unknown): CounterHeap[] | null {
-  const parseHeap = (
-    item: unknown,
-    index: number,
-    fallbackId?: string,
-  ): CounterHeap | null => {
-    if (typeof item === "number" && Number.isInteger(item) && item >= 0) {
-      const id = fallbackId ?? String(index + 1);
-      return { id, label: `Куча ${id}`, count: item };
-    }
-    if (!isRecord(item)) return null;
-    const count = readNumber(item, "count", "size", "value");
-    if (count === undefined || !Number.isInteger(count) || count < 0) return null;
-    const id = readString(item, "id", "key", "heap") ?? fallbackId ?? String(index + 1);
-    return {
-      id,
-      label: readString(item, "label", "name") ?? `Куча ${id}`,
-      count,
-    };
-  };
-
-  if (Array.isArray(value)) {
-    const heaps = value.map((item, index) => parseHeap(item, index));
-    return heaps.length > 0 && heaps.every((heap) => heap !== null)
-      ? (heaps as CounterHeap[])
-      : null;
-  }
-  if (isRecord(value)) {
-    const heaps = Object.entries(value).map(([id, item], index) =>
-      parseHeap(item, index, id),
-    );
-    return heaps.length > 0 && heaps.every((heap) => heap !== null)
-      ? (heaps as CounterHeap[])
-      : null;
-  }
-  return null;
-}
-
-function parseRulesByHeap(value: unknown): Record<string, number[]> {
-  if (Array.isArray(value)) {
-    return Object.fromEntries(
-      value.flatMap((item) => {
-        if (!isRecord(item)) return [];
-        const heap = readNumber(item, "heap") ?? readString(item, "heap", "id");
-        const rawTakes =
-          item.take ?? item.takes ?? item.allowed_takes ?? item.allowedTakes;
-        if (heap === undefined || !Array.isArray(rawTakes)) return [];
-        const takes = rawTakes.filter(
-          (take): take is number =>
-            typeof take === "number" && Number.isInteger(take) && take > 0,
-        );
-        return takes.length > 0 ? [[String(heap), takes]] : [];
-      }),
-    );
-  }
-  if (!isRecord(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([heapId, rawRule]) => {
-      const rule = isRecord(rawRule)
-        ? rawRule.allowedTakes ??
-          rawRule.allowed_takes ??
-          rawRule.take ??
-          rawRule.takes ??
-          rawRule.moves
-        : rawRule;
-      if (!Array.isArray(rule)) return [];
-      const takes = rule.filter(
-        (take): take is number =>
-          typeof take === "number" && Number.isInteger(take) && take > 0,
-      );
-      return takes.length > 0 ? [[heapId, takes]] : [];
-    }),
-  );
-}
-
-function parsePenultimaObservations(value: unknown): PenultimaObservation[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!isRecord(item)) return [];
-    const compactMove = readString(item, "move")
-      ?.toLocaleLowerCase("en-US")
-      .replace(/[^a-h1-8]/g, "");
-    const from =
-      readString(item, "from") ??
-      (compactMove?.length === 4 ? compactMove.slice(0, 2) : undefined);
-    const to =
-      readString(item, "to") ??
-      (compactMove?.length === 4 ? compactMove.slice(2, 4) : undefined);
-    const accepted =
-      typeof item.accepted === "boolean"
-        ? item.accepted
-        : item.result === "accepted"
-          ? true
-          : item.result === "rejected"
-            ? false
-            : undefined;
-    if (!from || !to || accepted === undefined) return [];
-    return [{ from, to, accepted }];
-  });
-}
-
 function parseGeometryScene(value: unknown): GeometryScene | null {
   if (!isRecord(value) || !isRecord(value.bounds)) return null;
   const minX = readNumber(value.bounds, "minX", "min_x");
@@ -1078,42 +909,13 @@ function parseParticipantTask(value: unknown): ParticipantTask {
     readString(publicStateValue, "responseHint", "response_hint") ??
     (kind === "machine_panel" || kind === "chess"
       ? "/op op1 · /undo · done / impossible"
-      : kind === "counters"
-        ? "take <куча> <число> · проигрышная"
-        : "/answer ваш ответ");
+      : "/answer ваш ответ");
   const worldContext = parseWorldContext(
     publicStateValue.worldContext ?? publicStateValue.world_context,
   );
   let publicState: TaskPublicState;
 
-  if (kind === "chess960_validation" || kind === "chess960_mission") {
-    const backRank = parsePieceSymbols(
-      publicStateValue.backRank ?? publicStateValue.back_rank,
-      8,
-    );
-    if (!backRank) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную позицию Chess960.",
-        details: value,
-      });
-    }
-    const variantValue = readString(publicStateValue, "variant");
-    const variant =
-      variantValue === "validation" ||
-      variantValue === "single_swap_repair" ||
-      variantValue === "repair_count"
-        ? variantValue
-        : undefined;
-    publicState = {
-      kind,
-      variant,
-      prompt,
-      backRank,
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "dice_chess_probability") {
+  if (kind === "dice_chess_probability") {
     const diceValue = publicStateValue.dice;
     if (!Array.isArray(diceValue) || diceValue.length < 2 || diceValue.length > 4) {
       throw new ApiError(502, {
@@ -1222,68 +1024,6 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       responseHint,
       worldContext,
     };
-  } else if (kind === "penultima_induction") {
-    const board = parseChessBoard(publicStateValue.board);
-    const pieceName = readString(
-      publicStateValue,
-      "pieceName",
-      "piece_name",
-    );
-    const currentSquare = readString(
-      publicStateValue,
-      "currentSquare",
-      "current_square",
-    );
-    const goalSquare = readString(
-      publicStateValue,
-      "goalSquare",
-      "goal_square",
-    );
-    if (!board || !pieceName || !currentSquare || !goalSquare) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректное состояние Penultima.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      prompt,
-      board,
-      pieceName,
-      currentSquare,
-      goalSquare,
-      chapterStage:
-        readNumber(
-          publicStateValue,
-          "chapterStage",
-          "chapter_stage",
-        ) ?? 1,
-      stageTitle:
-        readString(
-          publicStateValue,
-          "stageTitle",
-          "stage_title",
-        ) ?? "Маршрут",
-      acceptedMoves:
-        readNumber(
-          publicStateValue,
-          "acceptedMoves",
-          "accepted_moves",
-        ) ?? 0,
-      rejectedMoves:
-        readNumber(
-          publicStateValue,
-          "rejectedMoves",
-          "rejected_moves",
-        ) ?? 0,
-      observations: parsePenultimaObservations(
-        publicStateValue.observations ??
-          publicStateValue.recent_observations,
-      ),
-      responseHint,
-      worldContext,
-    };
   } else if (kind === "geometry_atlas") {
     const scene = parseGeometryScene(publicStateValue.scene);
     const family = readString(publicStateValue, "family");
@@ -1293,8 +1033,7 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       !variant ||
       (family !== "geo_zendo" &&
         family !== "geo_transform" &&
-        family !== "geo_probability" &&
-        family !== "geo_graph")
+        family !== "geo_probability")
     ) {
       throw new ApiError(502, {
         code: "invalid_api_response",
@@ -1424,43 +1163,6 @@ function parseParticipantTask(value: unknown): ParticipantTask {
           ? undefined
           : { a: jumpA, b: jumpB },
       board,
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "counters") {
-    const heaps = parseCounterHeaps(publicStateValue.heaps);
-    if (!heaps) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную позицию игры с кучами.",
-        details: value,
-      });
-    }
-    const rulesValue = publicStateValue.rules;
-    const rules = isRecord(rulesValue)
-      ? rulesValue
-      : Array.isArray(rulesValue)
-        ? { allowed_takes: rulesValue }
-        : typeof rulesValue === "string"
-          ? { description: rulesValue }
-          : {};
-    const rulesByHeap = parseRulesByHeap(
-      publicStateValue.rulesByHeap ??
-        publicStateValue.rules_by_heap ??
-        rules.by_heap ??
-        rules.rules_by_heap ??
-        rules.rulesByHeap,
-    );
-    publicState = {
-      kind,
-      prompt,
-      heaps,
-      rules,
-      rulesByHeap,
-      misere:
-        readBoolean(publicStateValue, "misere", "misère") ??
-        readBoolean(rules, "misere", "misère") ??
-        readString(publicStateValue, "mode") === "misere",
       responseHint,
       worldContext,
     };
@@ -2221,13 +1923,11 @@ export class ApiClient {
         method: "POST",
         body: {
           action_type: input.actionType,
-          ...(input.actionType === "move"
-            ? { move: input.move }
-            : input.actionType === "probe"
-              ? { probe: input.probe }
-              : input.actionType === "apply_op"
-                ? { op_id: input.opId }
-                : {}),
+          ...(input.actionType === "probe"
+            ? { probe: input.probe }
+            : input.actionType === "apply_op"
+              ? { op_id: input.opId }
+              : {}),
           client_action_id: input.clientActionId,
         },
       },

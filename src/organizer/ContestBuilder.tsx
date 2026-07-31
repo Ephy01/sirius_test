@@ -3,15 +3,11 @@ import "./contest-builder.css";
 
 export type EnvironmentKey = "mixed" | "chess_world" | "geometry_world";
 export type TaskFamilyKey =
-  | "chess960"
   | "dice_chess"
-  | "penultima"
   | "geo_zendo"
   | "geo_transform"
   | "geo_probability"
-  | "geo_graph"
-  | "machine_reach"
-  | "nim_like";
+  | "machine_reach";
 
 export type TaskFamilyConfig = {
   key: TaskFamilyKey;
@@ -67,20 +63,10 @@ const FAMILY_LABELS: Record<
   TaskFamilyKey,
   { title: string; description: string }
 > = {
-  chess960: {
-    title: "Chess960",
-    description:
-      "Проверка и исправление расстановок, логические ограничения и подсчёт вариантов.",
-  },
   dice_chess: {
     title: "Dice & Chess",
     description:
       "Вероятностные события на доске и решения, зависящие от кубика фигур.",
-  },
-  penultima: {
-    title: "Penultima",
-    description:
-      "Связная глава: неизвестная фигура, скрытое правило и последовательность маяков.",
   },
   geo_zendo: {
     title: "Геометрический Zendo",
@@ -97,32 +83,14 @@ const FAMILY_LABELS: Record<
     description:
       "Подсчёт конфигураций и вероятностей на сетях из точек, рёбер и областей.",
   },
-  geo_graph: {
-    title: "Графы и конструкции",
-    description:
-      "Построить или исправить сеть с заданными степенями, связностью и пересечениями.",
-  },
   machine_reach: {
     title: "Машины и инварианты",
     description:
       "Лампы, числовые операции, перестановки и прыгуны: достигните цели или докажите недостижимость.",
   },
-  nim_like: {
-    title: "Игры Гранди",
-    description:
-      "Один решающий ход в игре с кучами: найдите выигрышный переход или распознайте проигрышную позицию.",
-  },
 };
 
 const CONTENT_FAMILIES: TaskFamilyConfig[] = [
-  {
-    key: "chess960",
-    skin: "chess",
-    enabled: true,
-    weight: 10,
-    initialDifficulty: 1,
-    maxDifficulty: 5,
-  },
   {
     key: "dice_chess",
     skin: "chess",
@@ -130,15 +98,6 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
     weight: 10,
     initialDifficulty: 1,
     maxDifficulty: 5,
-  },
-  {
-    key: "penultima",
-    skin: "chess",
-    enabled: true,
-    weight: 15,
-    initialDifficulty: 1,
-    maxDifficulty: 5,
-    lockedChapter: true,
   },
   {
     key: "geo_zendo",
@@ -165,14 +124,6 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
     maxDifficulty: 5,
   },
   {
-    key: "geo_graph",
-    skin: "graph",
-    enabled: true,
-    weight: 10,
-    initialDifficulty: 1,
-    maxDifficulty: 5,
-  },
-  {
     key: "machine_reach",
     skin: "machine_panel",
     enabled: true,
@@ -185,14 +136,6 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
       "perm_puzzle",
       "leaper_board",
     ],
-  },
-  {
-    key: "nim_like",
-    skin: "counters",
-    enabled: true,
-    weight: 15,
-    initialDifficulty: 1,
-    maxDifficulty: 5,
   },
 ];
 

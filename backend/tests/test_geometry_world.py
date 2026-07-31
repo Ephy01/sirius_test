@@ -9,7 +9,6 @@ import pytest
 from app.environments.geometry_world.atlas import (
     FAMILY_WEIGHTS,
     GENERATOR_VERSION,
-    GEO_GRAPH_FAMILY,
     GEO_PROBABILITY_FAMILY,
     GEO_TRANSFORM_FAMILY,
     GEO_ZENDO_FAMILY,
@@ -97,10 +96,9 @@ def _assert_scene_contract(scene: dict) -> None:
 def test_family_contract_weights_determinism_and_privacy() -> None:
     assert GENERATOR_VERSION == "geometry-atlas-v1"
     assert FAMILY_WEIGHTS == {
-        GEO_ZENDO_FAMILY: 30,
-        GEO_TRANSFORM_FAMILY: 25,
-        GEO_PROBABILITY_FAMILY: 25,
-        GEO_GRAPH_FAMILY: 20,
+        GEO_ZENDO_FAMILY: 40,
+        GEO_TRANSFORM_FAMILY: 30,
+        GEO_PROBABILITY_FAMILY: 30,
     }
     assert sum(FAMILY_WEIGHTS.values()) == 100
     assert set(FAMILY_WEIGHTS) == SUPPORTED_FAMILIES
@@ -136,10 +134,6 @@ def test_family_contract_weights_determinism_and_privacy() -> None:
     }
     assert observed[GEO_TRANSFORM_FAMILY] == {"identify_d4_transform"}
     assert len(observed[GEO_PROBABILITY_FAMILY]) >= 4
-    assert observed[GEO_GRAPH_FAMILY] == {
-        "add_edge_to_connect",
-        "remove_edge_to_make_tree",
-    }
 
 
 @pytest.mark.parametrize("difficulty", (1, 3, 5))
@@ -419,58 +413,6 @@ def test_probability_uses_individual_graph_and_requires_exact_fraction() -> None
     }
 
 
-def test_graph_accepts_every_formally_valid_edit_not_one_stored_answer() -> None:
-    observed_operations: set[str] = set()
-    for seed in range(50):
-        _public, private = generate_geometry_atlas_task(
-            family=GEO_GRAPH_FAMILY,
-            seed=seed,
-            difficulty=4,
-        )
-        operation = private["operation"]
-        observed_operations.add(operation)
-        point_ids = private["point_ids"]
-        edges = {
-            tuple(sorted((first, second)))
-            for first, second in private["edges"]
-        }
-        candidates = (
-            list(itertools.combinations(point_ids, 2))
-            if operation == "add"
-            else sorted(edges)
-        )
-        accepted = []
-        for first, second in candidates:
-            evaluation = evaluate_geometry_atlas_answer(
-                family=GEO_GRAPH_FAMILY,
-                answer=f"/answer {operation} {second} {first}",
-                private_state=private,
-            )
-            if evaluation["correct"]:
-                accepted.append(tuple(sorted((first, second))))
-        assert len(accepted) == private["valid_solution_count"]
-        assert len(accepted) >= 2
-
-        first, second = accepted[0]
-        russian_operation = "добавить" if operation == "add" else "удалить"
-        assert evaluate_geometry_atlas_answer(
-            family=GEO_GRAPH_FAMILY,
-            answer=f"{russian_operation} {first} {second}",
-            private_state=private,
-        )["correct"] is True
-        opposite = "remove" if operation == "add" else "add"
-        wrong_operation = evaluate_geometry_atlas_answer(
-            family=GEO_GRAPH_FAMILY,
-            answer=f"{opposite} {first} {second}",
-            private_state=private,
-        )
-        assert wrong_operation["parsed"] is True
-        assert wrong_operation["correct"] is False
-        assert wrong_operation["reason"] == "wrong_operation"
-
-    assert observed_operations == {"add", "remove"}
-
-
 def test_invalid_family_difficulty_and_private_state_mismatch_are_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported Geometry Atlas family"):
         generate_geometry_atlas_task(
@@ -493,7 +435,7 @@ def test_invalid_family_difficulty_and_private_state_mismatch_are_rejected() -> 
     )
     with pytest.raises(ValueError, match="does not match"):
         evaluate_geometry_atlas_answer(
-            family=GEO_GRAPH_FAMILY,
-            answer="add A B",
+            family=GEO_PROBABILITY_FAMILY,
+            answer="1/2",
             private_state=private,
         )

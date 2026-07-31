@@ -12,7 +12,6 @@ export {
   type ParticipantTelemetryEvent,
   type ParticipantTelemetryEventType,
   type ParticipantWorkspaceProps,
-  type PenultimaObservation,
   type TaskMoveTransitionResult,
   type TaskTransitionResult,
 } from "./ParticipantWorkspace";

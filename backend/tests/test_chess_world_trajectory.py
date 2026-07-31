@@ -26,11 +26,18 @@ def _prepare_participant(
     *,
     families: list[dict],
     start_family: str,
+    director_version: str | None = "chess-world-director-v1",
 ) -> tuple[str, str]:
     organizer = client.post(
         "/api/v1/access/redeem",
         json={"code": "ORBIT-ADMIN"},
     ).json()["access_token"]
+    trajectory: dict = {
+        "mode": "adaptive",
+        "start_family": start_family,
+    }
+    if director_version is not None:
+        trajectory["director_version"] = director_version
     contest = client.post(
         "/api/v1/contests",
         headers=auth(organizer),
@@ -38,11 +45,7 @@ def _prepare_participant(
             "title": "Adaptive Chess World",
             "task_config": {
                 "adaptation_threshold": 3,
-                "trajectory": {
-                    "mode": "adaptive",
-                    "director_version": "chess-world-director-v1",
-                    "start_family": start_family,
-                },
+                "trajectory": trajectory,
                 "families": families,
             },
         },
@@ -88,18 +91,10 @@ def _correct_answer(application, task_id: str) -> str:
         task = session.get(TaskInstance, task_id)
         assert task is not None
         private = task.private_state
-        if task.family == "chess960":
-            variant = private["variant"]
-            if variant == "validation":
-                return "да" if private["is_valid"] else "нет"
-            if variant == "single_swap_repair":
-                first, second = private["valid_repairs"][0]
-                return f"{first} {second}"
-            return str(private["repair_count"])
         if task.family == "dice_chess":
             probability = private["probability"]
             return f"{probability['numerator']}/{probability['denominator']}"
-    raise AssertionError("Interactive Penultima tasks must be solved with moves")
+    raise AssertionError(f"No oracle for family {task.family!r}")
 
 
 def _answer_correctly(
@@ -116,40 +111,11 @@ def _answer_correctly(
     assert response.status_code == 200
 
 
-def _solve_penultima(
-    client: TestClient,
-    application,
-    participant: str,
-    task: dict,
-) -> dict:
-    with application.state.database.session_factory() as session:
-        stored = session.get(TaskInstance, task["id"])
-        assert stored is not None
-        moves = list(stored.private_state["shortest_solution"])
-
-    response_task = task
-    for index, move in enumerate(moves, start=1):
-        response = client.post(
-            f"/api/v1/participant/tasks/{task['id']}/interactions",
-            headers=auth(participant),
-            json={
-                "client_action_id": f"{task['id']}-{index}",
-                "action_type": "move",
-                "move": move,
-            },
-        )
-        assert response.status_code == 200
-        assert response.json()["accepted"] is True
-        response_task = response.json()["task"]
-    assert response_task["status"] == "answered"
-    return response_task
-
-
 def test_adaptive_route_uses_snapshot_and_promotes_one_family(tmp_path):
     application = create_app(_settings(tmp_path / "adaptive-level.db"))
     families = [
         {
-            "key": "chess960",
+            "key": "dice_chess",
             "enabled": True,
             "weight": 1,
             "initial_difficulty": 2,
@@ -160,7 +126,7 @@ def test_adaptive_route_uses_snapshot_and_promotes_one_family(tmp_path):
         participant, contest_id = _prepare_participant(
             client,
             families=families,
-            start_family="chess960",
+            start_family="dice_chess",
         )
         started = client.post(
             "/api/v1/participant/attempts/start",
@@ -182,7 +148,7 @@ def test_adaptive_route_uses_snapshot_and_promotes_one_family(tmp_path):
             )
             task = request.json()["task"]
             observed.append(task)
-            assert task["family"] == "chess960"
+            assert task["family"] == "dice_chess"
             assert task["difficulty"] == 2
             assert task["public_state"]["world_context"]["episode"] == ordinal
             _answer_correctly(client, application, participant, task)
@@ -193,7 +159,7 @@ def test_adaptive_route_uses_snapshot_and_promotes_one_family(tmp_path):
             contest.task_config = {
                 "families": [
                     {
-                        "key": "chess960",
+                        "key": "dice_chess",
                         "enabled": True,
                         "weight": 1,
                         "initial_difficulty": 1,
@@ -208,7 +174,7 @@ def test_adaptive_route_uses_snapshot_and_promotes_one_family(tmp_path):
             headers=auth(participant),
         ).json()["task"]
         assert promoted["difficulty"] == 3
-        assert promoted["public_state"]["variant"] == "single_swap_repair"
+        assert promoted["public_state"]["kind"] == "dice_chess_position_probability"
 
         with application.state.database.session_factory() as session:
             events = list(
@@ -236,14 +202,14 @@ def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
     application = create_app(_settings(tmp_path / "adaptive-remediation.db"))
     families = [
         {
-            "key": "chess960",
+            "key": "dice_chess",
             "enabled": True,
             "weight": 1,
             "initial_difficulty": 1,
             "max_difficulty": 5,
         },
         {
-            "key": "dice_chess",
+            "key": "machine_reach",
             "enabled": True,
             "weight": 1,
             "initial_difficulty": 1,
@@ -254,7 +220,8 @@ def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
         participant, _contest_id = _prepare_participant(
             client,
             families=families,
-            start_family="chess960",
+            start_family="dice_chess",
+            director_version=None,
         )
         started = client.post(
             "/api/v1/participant/attempts/start",
@@ -262,25 +229,16 @@ def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
         ).json()["attempt"]
         _fix_attempt_seed(application, started["id"])
 
-        first = client.get(
+        failed = client.get(
             "/api/v1/participant/tasks/current",
             headers=auth(participant),
         ).json()["task"]
-        _answer_correctly(client, application, participant, first)
-        second = client.post(
-            "/api/v1/participant/tasks/next",
-            headers=auth(participant),
-        ).json()["task"]
-        _answer_correctly(client, application, participant, second)
-
-        failed = client.post(
-            "/api/v1/participant/tasks/next",
-            headers=auth(participant),
-        ).json()["task"]
+        assert failed["family"] == "dice_chess"
+        correct = _correct_answer(application, failed["id"])
         wrong = client.post(
             f"/api/v1/participant/tasks/{failed['id']}/answer",
             headers=auth(participant),
-            json={"answer": "это намеренно неверный ответ"},
+            json={"answer": "1/6" if correct != "1/6" else "5/6"},
         )
         assert wrong.status_code == 200
 
@@ -300,83 +258,7 @@ def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
             headers=auth(participant),
         ).json()["task"]
         assert switched["family"] != remediation["family"]
-        assert switched["public_state"]["world_context"]["phase"] == "rotation"
-
-
-def test_penultima_chapter_stays_consecutive_and_preserves_state(tmp_path):
-    application = create_app(_settings(tmp_path / "adaptive-penultima.db"))
-    families = [
-        {
-            "key": "chess960",
-            "enabled": True,
-            "weight": 1,
-            "initial_difficulty": 1,
-            "max_difficulty": 5,
-        },
-        {
-            "key": "penultima",
-            "enabled": True,
-            "weight": 1,
-            "initial_difficulty": 1,
-            "max_difficulty": 5,
-        },
-    ]
-    with TestClient(application) as client:
-        participant, _contest_id = _prepare_participant(
-            client,
-            families=families,
-            start_family="penultima",
-        )
-        started = client.post(
-            "/api/v1/participant/attempts/start",
-            headers=auth(participant),
-        ).json()["attempt"]
-        _fix_attempt_seed(application, started["id"])
-
-        tasks: list[dict] = []
-        previous_private: dict | None = None
-        for stage in range(1, 4):
-            request = (
-                client.get(
-                    "/api/v1/participant/tasks/current",
-                    headers=auth(participant),
-                )
-                if stage == 1
-                else client.post(
-                    "/api/v1/participant/tasks/next",
-                    headers=auth(participant),
-                )
-            )
-            task = request.json()["task"]
-            tasks.append(task)
-            assert task["family"] == "penultima"
-            assert task["public_state"]["chapter_stage"] == stage
-            assert task["public_state"]["world_context"]["phase"] in {
-                "calibration",
-                "chapter",
-            }
-
-            with application.state.database.session_factory() as session:
-                stored = session.get(TaskInstance, task["id"])
-                assert stored is not None
-                current_private = dict(stored.private_state)
-            if previous_private is not None:
-                assert current_private["rule_key"] == previous_private["rule_key"]
-                assert current_private["blockers"] == previous_private["blockers"]
-                assert (
-                    current_private["current_square"]
-                    == previous_private["goal_square"]
-                )
-
-            _solve_penultima(client, application, participant, task)
-            with application.state.database.session_factory() as session:
-                completed = session.get(TaskInstance, task["id"])
-                assert completed is not None
-                previous_private = dict(completed.private_state)
-
-        after_chapter = client.post(
-            "/api/v1/participant/tasks/next",
-            headers=auth(participant),
-        ).json()["task"]
-        assert after_chapter["family"] == "chess960"
-        assert [task["family"] for task in tasks] == ["penultima"] * 3
+        # The second family has not been calibrated yet, so leaving the
+        # capped remediation lands on its seeded calibration task.
+        assert switched["family"] == "machine_reach"
+        assert switched["public_state"]["world_context"]["phase"] == "calibration"

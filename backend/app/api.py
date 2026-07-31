@@ -22,18 +22,13 @@ from .dependencies import (
     api_error,
 )
 from .environments import (
-    CHESS960_FAMILY,
     DICE_CHESS_FAMILY,
-    GEO_GRAPH_FAMILY,
     GEO_PROBABILITY_FAMILY,
     GEO_TRANSFORM_FAMILY,
     GEO_ZENDO_FAMILY,
     GEOMETRY_GENERATOR_VERSION,
     INTERACTIVE_FAMILIES,
     MACHINE_REACH_FAMILY,
-    NIM_LIKE_FAMILY,
-    PENULTIMA_FAMILY,
-    PENULTIMA_LEGACY_GENERATOR_VERSION,
     derive_task_seed,
     evaluate_task,
     generate_task,
@@ -122,35 +117,25 @@ _EVENT_SEQUENCE_RESERVATION_LOCK = threading.Lock()
 _EVENT_SEQUENCE_RESERVATIONS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 FAMILY_ALIASES = {
-    "chess960": "chess960",
-    "chess_960": "chess960",
     "dice_chess": DICE_CHESS_FAMILY,
     "dice-chess": DICE_CHESS_FAMILY,
     "dice&chess": DICE_CHESS_FAMILY,
-    "penultima": PENULTIMA_FAMILY,
-    "micro_penultima": PENULTIMA_FAMILY,
-    "micro-penultima": PENULTIMA_FAMILY,
     "geo_zendo": GEO_ZENDO_FAMILY,
     "geometry_zendo": GEO_ZENDO_FAMILY,
     "geo_transform": GEO_TRANSFORM_FAMILY,
     "geometry_transform": GEO_TRANSFORM_FAMILY,
     "geo_probability": GEO_PROBABILITY_FAMILY,
     "geometry_probability": GEO_PROBABILITY_FAMILY,
-    "geo_graph": GEO_GRAPH_FAMILY,
-    "geometry_graph": GEO_GRAPH_FAMILY,
     "machine_reach": MACHINE_REACH_FAMILY,
     "machine-reach": MACHINE_REACH_FAMILY,
-    "nim_like": NIM_LIKE_FAMILY,
-    "nim-like": NIM_LIKE_FAMILY,
 }
 WORLD_FAMILIES = {
-    "chess_world": frozenset({"chess960", DICE_CHESS_FAMILY, PENULTIMA_FAMILY}),
+    "chess_world": frozenset({DICE_CHESS_FAMILY}),
     "geometry_world": frozenset(
         {
             GEO_ZENDO_FAMILY,
             GEO_TRANSFORM_FAMILY,
             GEO_PROBABILITY_FAMILY,
-            GEO_GRAPH_FAMILY,
         }
     ),
 }
@@ -158,13 +143,12 @@ WORLD_FAMILIES["mixed"] = frozenset(
     {
         *frozenset().union(*WORLD_FAMILIES.values()),
         MACHINE_REACH_FAMILY,
-        NIM_LIKE_FAMILY,
     }
 )
 WORLD_DEFAULT_FAMILY = {
-    "chess_world": "chess960",
+    "chess_world": DICE_CHESS_FAMILY,
     "geometry_world": GEO_ZENDO_FAMILY,
-    "mixed": "chess960",
+    "mixed": DICE_CHESS_FAMILY,
 }
 WORLD_DIRECTOR_VERSION = {
     "chess_world": CHESS_DIRECTOR_VERSION,
@@ -172,7 +156,6 @@ WORLD_DIRECTOR_VERSION = {
     "mixed": SHARED_DIRECTOR_VERSION,
 }
 FAMILY_INTERACTION_ACTIONS = {
-    PENULTIMA_FAMILY: frozenset({"move"}),
     GEO_ZENDO_FAMILY: frozenset({"probe"}),
     MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
 }
@@ -528,9 +511,9 @@ def _task_family_settings_from_config(
     if isinstance(families, list):
         raw_families = families
     else:
-        # Empty and older contests predate the family constructor; Chess960 is
-        # their safe default.
-        raw_families = [WORLD_DEFAULT_FAMILY.get(environment_key, "chess960")]
+        # Empty and older contests predate the family constructor and fall
+        # back to the world default.
+        raw_families = [WORLD_DEFAULT_FAMILY.get(environment_key, DICE_CHESS_FAMILY)]
 
     parsed: dict[str, FamilyTaskSettings] = {}
     for raw_family in raw_families:
@@ -939,83 +922,6 @@ def _contextual_task_seed(base_seed: int, context_hash: str) -> int:
     ) & ((1 << 63) - 1)
 
 
-def _penultima_generation_context(
-    session: SessionDependency,
-    *,
-    attempt_id: str,
-) -> dict:
-    previous = session.scalar(
-        select(TaskInstance)
-        .where(
-            TaskInstance.attempt_id == attempt_id,
-            TaskInstance.family == PENULTIMA_FAMILY,
-        )
-        .order_by(TaskInstance.ordinal.desc())
-        .limit(1)
-    )
-    if previous is None:
-        payload: dict = {
-            "parent_task_id": None,
-            "branch": "initial",
-        }
-        return {**payload, "context_hash": _canonical_hash(payload)}
-
-    private = previous.private_state if isinstance(previous.private_state, dict) else {}
-    evaluation = (
-        previous.evaluation_state
-        if isinstance(previous.evaluation_state, dict)
-        else {}
-    )
-    chapter_stage_value = private.get("chapter_stage")
-    chapter_stage = (
-        chapter_stage_value
-        if isinstance(chapter_stage_value, int)
-        and not isinstance(chapter_stage_value, bool)
-        else 1
-    )
-
-    if previous.status == TaskStatus.SKIPPED or evaluation.get("skipped") is True:
-        branch = "remediate"
-        next_stage = chapter_stage
-    elif evaluation.get("correct") is True and chapter_stage >= 3:
-        branch = "new_chapter"
-        next_stage = 1
-    elif evaluation.get("correct") is True and evaluation.get("efficient") is True:
-        branch = "advance"
-        next_stage = min(3, chapter_stage + 1)
-    elif evaluation.get("correct") is True:
-        branch = "consolidate"
-        next_stage = min(3, chapter_stage + 1)
-    else:
-        branch = "remediate"
-        next_stage = chapter_stage
-
-    payload = {
-        "parent_task_id": previous.id,
-        "branch": branch,
-        "previous_shortest_path_length": private.get(
-            "initial_shortest_path_length"
-        ),
-        "recent_observations": private.get("recent_observations", []),
-    }
-    if branch == "new_chapter":
-        payload["exclude_rule_key"] = private.get("rule_key")
-        payload["exclude_rule_fingerprint"] = private.get(
-            "rule_fingerprint"
-        )
-    if branch != "new_chapter":
-        payload["chapter"] = {
-            "chapter_id": private.get("chapter_id"),
-            "chapter_stage": next_stage,
-            "rule_key": private.get("rule_key"),
-            "rule_spec": private.get("rule_spec"),
-            "blockers": private.get("blockers", []),
-            "current_square": private.get("current_square"),
-            "piece_name": private.get("piece_name"),
-        }
-    return {**payload, "context_hash": _canonical_hash(payload)}
-
-
 def _task_state_hash(task: TaskInstance) -> str:
     return _canonical_hash(
         {
@@ -1121,11 +1027,6 @@ def _create_or_get_current_task(
         )
     generator_version = generator_version_for(selected_family.family)
     if (
-        environment_key == "chess_world"
-        and selected_family.family == PENULTIMA_FAMILY
-    ):
-        generator_version = PENULTIMA_LEGACY_GENERATOR_VERSION
-    elif (
         environment_key == "geometry_world"
         and selected_family.family == GEO_ZENDO_FAMILY
     ):
@@ -1145,11 +1046,7 @@ def _create_or_get_current_task(
         seed_family,
         generator_version,
     )
-    generation_context = (
-        _penultima_generation_context(session, attempt_id=attempt.id)
-        if selected_family.family == PENULTIMA_FAMILY
-        else None
-    )
+    generation_context: dict | None = None
     generator_context = dict(generation_context or {})
     if selected_family.skin is not None:
         generator_context["skin"] = selected_family.skin
@@ -1502,6 +1399,7 @@ def create_contest(
             environment_key = "geometry_world"
     allowed_families = WORLD_FAMILIES[environment_key]
     foreign_families: list[str] = []
+    unknown_families: list[str] = []
     if isinstance(configured_families, list):
         for configured in configured_families:
             raw_key = (
@@ -1514,8 +1412,28 @@ def create_contest(
             if not isinstance(raw_key, str):
                 continue
             family = FAMILY_ALIASES.get(raw_key.strip().casefold())
-            if family is not None and family not in allowed_families:
+            if family is None:
+                unknown_families.append(raw_key)
+            elif family not in allowed_families:
                 foreign_families.append(raw_key)
+    raw_start_family = (
+        task_config.get("trajectory", {}).get("start_family")
+        if isinstance(task_config.get("trajectory"), dict)
+        else None
+    )
+    if (
+        isinstance(raw_start_family, str)
+        and FAMILY_ALIASES.get(raw_start_family.strip().casefold()) is None
+    ):
+        unknown_families.append(raw_start_family)
+    if unknown_families:
+        listed = ", ".join(sorted(set(unknown_families)))
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "TASK_FAMILY_UNKNOWN",
+            "Семейства неизвестны или выведены из ротации контента: "
+            f"{listed}.",
+        )
     if foreign_families:
         raise api_error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -2321,9 +2239,7 @@ def interact_with_task(
             "Задача не найдена в текущей попытке.",
         )
 
-    if payload.action_type == "move":
-        request_payload = {"move": payload.move}
-    elif payload.action_type == "probe":
+    if payload.action_type == "probe":
         request_payload = {"probe": payload.probe}
     elif payload.action_type == "apply_op":
         request_payload = {"op_id": payload.op_id}
@@ -2426,11 +2342,6 @@ def interact_with_task(
             "reason": transition.reason,
             "message": transition.message,
             "normalized_input": transition.normalized_input,
-            "normalized_move": (
-                transition.normalized_input
-                if payload.action_type == "move"
-                else None
-            ),
         },
     )
     session.add(interaction)
@@ -2487,14 +2398,7 @@ def interact_with_task(
                 **transition.evaluation_state,
             },
         )
-    if (
-        transition.completed
-        and isinstance(task.evaluation_state, dict)
-        and not (
-            task.family == PENULTIMA_FAMILY
-            and task.generator_version == PENULTIMA_LEGACY_GENERATOR_VERSION
-        )
-    ):
+    if transition.completed and isinstance(task.evaluation_state, dict):
         _append_event(
             session,
             attempt_id=attempt.id,
@@ -2552,12 +2456,6 @@ def answer_task(
 ) -> TaskActionResponse:
     attempt = _require_active_attempt(session, enrollment)
     task = _get_active_task_or_error(session, attempt=attempt, task_id=task_id)
-    if task.family == PENULTIMA_FAMILY:
-        raise api_error(
-            status.HTTP_409_CONFLICT,
-            "INTERACTIVE_TASK_REQUIRES_MOVE",
-            "Эта задача решается ходами. Используйте команду /move.",
-        )
     _require_task_input_available(task)
     if task.family == MACHINE_REACH_FAMILY:
         next_private = dict(
@@ -2683,37 +2581,15 @@ def skip_task(
 ) -> TaskActionResponse:
     attempt = _require_active_attempt(session, enrollment)
     task = _get_active_task_or_error(session, attempt=attempt, task_id=task_id)
-    event_payload: dict = {}
-    if task.family == PENULTIMA_FAMILY:
-        private = task.private_state if isinstance(task.private_state, dict) else {}
-        task.evaluation_state = {
-            "correct": False,
-            "completed": False,
-            "skipped": True,
-            "efficient": False,
-            "director_signal": "struggle",
-            "accepted_moves": int(private.get("accepted_moves") or 0),
-            "rejected_moves": int(private.get("rejected_moves") or 0),
-            "shortest_path_length": int(
-                private.get("initial_shortest_path_length") or 0
-            ),
-        }
-        task.evaluation_state = _evaluation_with_telemetry(
-            task,
-            task.evaluation_state,
-        )
-        event_payload = dict(task.evaluation_state)
-    else:
-        task.evaluation_state = {
+    task.evaluation_state = _evaluation_with_telemetry(
+        task,
+        {
             "correct": False,
             "skipped": True,
             "director_signal": "struggle",
-        }
-        task.evaluation_state = _evaluation_with_telemetry(
-            task,
-            task.evaluation_state,
-        )
-        event_payload = dict(task.evaluation_state)
+        },
+    )
+    event_payload = dict(task.evaluation_state)
     task.status = TaskStatus.SKIPPED
     task.active_slot = None
     task.completed_at = utc_now()

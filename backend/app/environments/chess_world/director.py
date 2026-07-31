@@ -12,7 +12,6 @@ from ..director import (
 )
 
 DIRECTOR_VERSION = "chess-world-director-v1"
-PENULTIMA_FAMILY = "penultima"
 
 
 def decide_next_task(
@@ -24,32 +23,14 @@ def decide_next_task(
 ) -> DirectorDecision:
     """Compatibility shim for contests pinned to the Chess World v1 route."""
 
-    legacy_families = [
-        replace(
-            settings,
-            locked_chapter=(
-                settings.locked_chapter
-                or settings.family == PENULTIMA_FAMILY
-            ),
-        )
-        for settings in families
-    ]
     decision = decide_v2_next_task(
         seed=seed,
-        families=legacy_families,
+        families=families,
         history=history,
         start_family=start_family,
         version=DIRECTOR_VERSION,
     )
-    legacy_reason = {
-        "locked_chapter_remediation": "penultima_chapter_remediation",
-        "locked_chapter_continuation": "penultima_chapter_continuation",
-    }.get(decision.reason, decision.reason)
-    return replace(
-        decision,
-        version=DIRECTOR_VERSION,
-        reason=legacy_reason,
-    )
+    return replace(decision, version=DIRECTOR_VERSION)
 
 
 __all__ = [

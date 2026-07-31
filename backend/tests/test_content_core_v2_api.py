@@ -284,8 +284,8 @@ def test_machine_reach_api_is_idempotent_and_freezes_false_impossible(tmp_path):
             )
 
 
-def test_cohort_seed_reproduces_nim_trajectory_and_logs_regret(tmp_path):
-    application = create_app(settings(tmp_path / "nim-cohort.db"))
+def test_cohort_seed_reproduces_trajectory_and_logs_evaluation(tmp_path):
+    application = create_app(settings(tmp_path / "dice-cohort.db"))
     with TestClient(application) as client:
         _contest, tokens = prepare_contest(
             client,
@@ -294,8 +294,8 @@ def test_cohort_seed_reproduces_nim_trajectory_and_logs_regret(tmp_path):
             adaptive=True,
             families=[
                 {
-                    "family": "nim_like",
-                    "skin": "counters",
+                    "family": "dice_chess",
+                    "skin": "chess",
                     "weight": 1,
                     "initial_difficulty": 3,
                     "max_difficulty": 5,
@@ -327,11 +327,9 @@ def test_cohort_seed_reproduces_nim_trajectory_and_logs_regret(tmp_path):
         assert tasks[0]["public_state"] == tasks[1]["public_state"]
         assert nested_keys(tasks[0]["public_state"]).isdisjoint(
             {
-                "winning",
-                "winning_moves",
-                "legal_moves",
-                "grundy_values",
-                "nim_sum",
+                "probability",
+                "favorable_outcomes",
+                "total_outcomes",
                 "private_state",
             }
         )
@@ -343,11 +341,10 @@ def test_cohort_seed_reproduces_nim_trajectory_and_logs_regret(tmp_path):
             assert stored_attempts[0].seed == stored_attempts[1].seed
             stored_task = session.get(TaskInstance, tasks[0]["id"])
             assert stored_task is not None
-            if stored_task.private_state["winning"]:
-                move = stored_task.private_state["winning_moves"][0]
-                answer = f"take {move['heap']} {move['count']}"
-            else:
-                answer = "проигрышная"
+            probability = stored_task.private_state["probability"]
+            answer = (
+                f"{probability['numerator']}/{probability['denominator']}"
+            )
 
         for token, task in zip(tokens, tasks, strict=True):
             answered = client.post(
@@ -379,11 +376,10 @@ def test_cohort_seed_reproduces_nim_trajectory_and_logs_regret(tmp_path):
             assert stored is not None
             evaluation = stored.evaluation_state
             assert evaluation["correct"] is True
-            assert evaluation["regret"] == 0
             assert evaluation["continuous_score"] == 1
             assert evaluation["difficulty"] == 3
-            assert evaluation["family"] == "nim_like"
-            assert evaluation["generator_version"] == "nim-like-v1"
+            assert evaluation["family"] == "dice_chess"
+            assert evaluation["generator_version"] == "dice-chess-world-v3"
 
 
 def test_mixed_contest_uses_zendo_v2_and_logs_probe_information(tmp_path):

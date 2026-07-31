@@ -15,13 +15,11 @@ GENERATOR_VERSION = "geometry-atlas-v1"
 GEO_ZENDO_FAMILY = "geo_zendo"
 GEO_TRANSFORM_FAMILY = "geo_transform"
 GEO_PROBABILITY_FAMILY = "geo_probability"
-GEO_GRAPH_FAMILY = "geo_graph"
 
 FAMILY_WEIGHTS = {
-    GEO_ZENDO_FAMILY: 30,
-    GEO_TRANSFORM_FAMILY: 25,
-    GEO_PROBABILITY_FAMILY: 25,
-    GEO_GRAPH_FAMILY: 20,
+    GEO_ZENDO_FAMILY: 40,
+    GEO_TRANSFORM_FAMILY: 30,
+    GEO_PROBABILITY_FAMILY: 30,
 }
 SUPPORTED_FAMILIES = frozenset(FAMILY_WEIGHTS)
 
@@ -1125,276 +1123,6 @@ def evaluate_geo_probability_answer(
     }
 
 
-def _component_graph(
-    *,
-    rng: random.Random,
-    point_count: int,
-    point_offset: int,
-    extra_edges: int,
-) -> set[tuple[int, int]]:
-    local_order = list(range(point_count))
-    rng.shuffle(local_order)
-    edges: set[tuple[int, int]] = set()
-    for position in range(1, point_count):
-        child = local_order[position] + point_offset
-        parent = rng.choice(local_order[:position]) + point_offset
-        edges.add((min(child, parent), max(child, parent)))
-    possible = [
-        (first + point_offset, second + point_offset)
-        for first, second in itertools.combinations(range(point_count), 2)
-        if (first + point_offset, second + point_offset) not in edges
-    ]
-    edges.update(rng.sample(possible, min(extra_edges, len(possible))))
-    return edges
-
-
-def _add_edge_graph(rng: random.Random, difficulty: int) -> MiniGraph:
-    point_count = min(8, 6 + max(0, difficulty - 1) // 2)
-    left_count = point_count // 2
-    right_count = point_count - left_count
-    edges = _component_graph(
-        rng=rng,
-        point_count=left_count,
-        point_offset=0,
-        extra_edges=min(2, difficulty // 2),
-    )
-    edges.update(
-        _component_graph(
-            rng=rng,
-            point_count=right_count,
-            point_offset=left_count,
-            extra_edges=min(2, difficulty // 2),
-        )
-    )
-    left_coordinates = ((-4, 0), (-3, 2), (-3, -2), (-4, 4))
-    right_coordinates = ((4, 0), (3, 2), (3, -2), (4, 4))
-    points = (*left_coordinates[:left_count], *right_coordinates[:right_count])
-    colors = tuple("cyan" if index < left_count else "plum" for index in range(point_count))
-    return _graph_from_components(points=points, edges=edges, colors=colors)
-
-
-def _remove_edge_graph(rng: random.Random, difficulty: int) -> MiniGraph:
-    point_count = min(8, 5 + max(0, difficulty - 1) // 2)
-    cycle_length = rng.randint(3, min(5, point_count))
-    edges: set[tuple[int, int]] = {
-        (
-            min(index, (index + 1) % cycle_length),
-            max(index, (index + 1) % cycle_length),
-        )
-        for index in range(cycle_length)
-    }
-    for vertex in range(cycle_length, point_count):
-        parent = rng.randrange(vertex)
-        edges.add((min(vertex, parent), max(vertex, parent)))
-    colors = tuple(rng.choice(POINT_COLORS[:2]) for _ in range(point_count))
-    return _graph_from_components(
-        points=GRAPH_COORDINATES[:point_count],
-        edges=edges,
-        colors=colors,
-    )
-
-
-def _is_connected_from_edges(
-    point_ids: Sequence[str],
-    edges: set[tuple[str, str]],
-) -> bool:
-    if not point_ids:
-        return False
-    neighbors = {point_id: set() for point_id in point_ids}
-    for first, second in edges:
-        neighbors[first].add(second)
-        neighbors[second].add(first)
-    reached = {point_ids[0]}
-    queue: deque[str] = deque([point_ids[0]])
-    while queue:
-        current = queue.popleft()
-        for neighbor in neighbors[current]:
-            if neighbor not in reached:
-                reached.add(neighbor)
-                queue.append(neighbor)
-    return len(reached) == len(point_ids)
-
-
-def _private_edge_set(private_state: dict[str, Any]) -> set[tuple[str, str]]:
-    return {
-        tuple(sorted((str(first).upper(), str(second).upper())))
-        for first, second in private_state["edges"]
-    }
-
-
-def _valid_graph_edits(
-    *,
-    point_ids: Sequence[str],
-    edges: set[tuple[str, str]],
-    operation: str,
-) -> tuple[tuple[str, str], ...]:
-    if operation == "add":
-        candidates = [
-            tuple(sorted(pair))
-            for pair in itertools.combinations(point_ids, 2)
-            if tuple(sorted(pair)) not in edges
-        ]
-        return tuple(
-            pair
-            for pair in candidates
-            if _is_connected_from_edges(point_ids, edges | {pair})
-        )
-    if operation == "remove":
-        return tuple(
-            edge
-            for edge in sorted(edges)
-            if _is_connected_from_edges(point_ids, edges - {edge})
-            and len(edges) - 1 == len(point_ids) - 1
-        )
-    raise ValueError(f"Unsupported graph edit operation: {operation!r}")
-
-
-def generate_geo_graph_task(
-    *,
-    seed: int,
-    difficulty: int,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    if difficulty < 1:
-        raise ValueError("difficulty must be at least 1")
-    rng = random.Random(seed)
-    operation = rng.choice(("add", "remove"))
-    graph = (
-        _add_edge_graph(rng, difficulty)
-        if operation == "add"
-        else _remove_edge_graph(rng, difficulty)
-    )
-    point_ids = list(POINT_LABELS[: len(graph.points)])
-    edge_ids = [
-        [POINT_LABELS[first], POINT_LABELS[second]]
-        for first, second in graph.edges
-    ]
-    valid_edits = _valid_graph_edits(
-        point_ids=point_ids,
-        edges={
-            tuple(sorted((first, second)))
-            for first, second in edge_ids
-        },
-        operation=operation,
-    )
-    if len(valid_edits) < 2:
-        raise RuntimeError("A geometry graph task must admit multiple valid edits")
-
-    if operation == "add":
-        variant = "add_edge_to_connect"
-        prompt = (
-            "Граф состоит из двух связных частей. Добавьте ровно одно новое ребро "
-            "так, чтобы весь граф стал связным."
-        )
-        response_hint = "Например: /answer add A F."
-    else:
-        variant = "remove_edge_to_make_tree"
-        prompt = (
-            "В связном графе имеется ровно один цикл. Удалите ровно одно ребро "
-            "так, чтобы граф остался связным и не содержал циклов."
-        )
-        response_hint = "Например: /answer remove B C."
-
-    public = _public_state(
-        family=GEO_GRAPH_FAMILY,
-        variant=variant,
-        prompt=prompt,
-        scene=_scene(graphs=[("graph", graph, "violet")]),
-        content={
-            "operation": operation,
-            "goal": "connected" if operation == "add" else "tree",
-            "vertex_ids": point_ids,
-        },
-        mode="single_answer",
-        commands=[f"/answer {operation} <vertex_a> <vertex_b>"],
-        response_hint=response_hint,
-    )
-    private = {
-        "family": GEO_GRAPH_FAMILY,
-        "variant": variant,
-        "difficulty": difficulty,
-        "operation": operation,
-        "point_ids": point_ids,
-        "points": [list(point) for point in graph.points],
-        "edges": edge_ids,
-        "valid_solution_count": len(valid_edits),
-    }
-    return public, private
-
-
-def _parse_graph_edit(answer: str) -> tuple[str, str, str] | None:
-    normalized = re.sub(
-        r"^\s*/?answer\b",
-        "",
-        answer.strip().casefold(),
-    ).strip()
-    match = re.fullmatch(
-        r"(add|remove|delete|добавить|удалить)\s+([a-l])(?:\s+|-)([a-l])",
-        normalized,
-    )
-    if match is None:
-        return None
-    operation_token, first, second = match.groups()
-    if first == second:
-        return None
-    operation = "add" if operation_token in {"add", "добавить"} else "remove"
-    first_id, second_id = sorted((first.upper(), second.upper()))
-    return operation, first_id, second_id
-
-
-def evaluate_geo_graph_answer(
-    *,
-    answer: str,
-    private_state: dict[str, Any],
-) -> dict[str, Any]:
-    parsed_edit = _parse_graph_edit(answer)
-    if parsed_edit is None:
-        return {
-            "correct": False,
-            "parsed": False,
-            "operation": None,
-            "edge": None,
-            "reason": "invalid_format",
-        }
-    submitted_operation, first, second = parsed_edit
-    expected_operation = str(private_state["operation"])
-    point_ids = [str(item) for item in private_state["point_ids"]]
-    edges = _private_edge_set(private_state)
-    edge = (first, second)
-    if first not in point_ids or second not in point_ids:
-        correct = False
-        reason = "unknown_vertex"
-    elif submitted_operation != expected_operation:
-        correct = False
-        reason = "wrong_operation"
-    elif expected_operation == "add" and edge in edges:
-        correct = False
-        reason = "edge_already_exists"
-    elif expected_operation == "remove" and edge not in edges:
-        correct = False
-        reason = "edge_does_not_exist"
-    else:
-        updated_edges = (
-            edges | {edge}
-            if expected_operation == "add"
-            else edges - {edge}
-        )
-        if expected_operation == "add":
-            correct = _is_connected_from_edges(point_ids, updated_edges)
-        else:
-            correct = (
-                _is_connected_from_edges(point_ids, updated_edges)
-                and len(updated_edges) == len(point_ids) - 1
-            )
-        reason = "accepted" if correct else "goal_not_reached"
-    return {
-        "correct": correct,
-        "parsed": True,
-        "operation": submitted_operation,
-        "edge": [first, second],
-        "reason": reason,
-    }
-
-
 def generate_geometry_atlas_task(
     *,
     family: str,
@@ -1405,7 +1133,6 @@ def generate_geometry_atlas_task(
         GEO_ZENDO_FAMILY: generate_geo_zendo_task,
         GEO_TRANSFORM_FAMILY: generate_geo_transform_task,
         GEO_PROBABILITY_FAMILY: generate_geo_probability_task,
-        GEO_GRAPH_FAMILY: generate_geo_graph_task,
     }
     try:
         generator = generators[family]
@@ -1424,7 +1151,6 @@ def evaluate_geometry_atlas_answer(
         GEO_ZENDO_FAMILY: evaluate_geo_zendo_answer,
         GEO_TRANSFORM_FAMILY: evaluate_geo_transform_answer,
         GEO_PROBABILITY_FAMILY: evaluate_geo_probability_answer,
-        GEO_GRAPH_FAMILY: evaluate_geo_graph_answer,
     }
     try:
         evaluator = evaluators[family]
@@ -1440,19 +1166,16 @@ def evaluate_geometry_atlas_answer(
 __all__ = [
     "FAMILY_WEIGHTS",
     "GENERATOR_VERSION",
-    "GEO_GRAPH_FAMILY",
     "GEO_PROBABILITY_FAMILY",
     "GEO_TRANSFORM_FAMILY",
     "GEO_ZENDO_FAMILY",
     "GeometryProbeTransition",
     "PUBLIC_KIND",
     "SUPPORTED_FAMILIES",
-    "evaluate_geo_graph_answer",
     "evaluate_geo_probability_answer",
     "evaluate_geo_transform_answer",
     "evaluate_geo_zendo_answer",
     "evaluate_geometry_atlas_answer",
-    "generate_geo_graph_task",
     "generate_geo_probability_task",
     "generate_geo_transform_task",
     "generate_geo_zendo_task",

@@ -10,9 +10,14 @@ from app.environments.chess_world.director import (
 
 
 FAMILIES = (
-    FamilySettings(family="chess960", weight=1, max_difficulty=5),
-    FamilySettings(family="dice_chess", weight=2, max_difficulty=5),
-    FamilySettings(family="penultima", weight=1, max_difficulty=5),
+    FamilySettings(family="dice_chess", weight=1, max_difficulty=5),
+    FamilySettings(family="machine_reach", weight=2, max_difficulty=5),
+    FamilySettings(
+        family="geo_zendo",
+        weight=1,
+        max_difficulty=5,
+        locked_chapter=True,
+    ),
 )
 
 
@@ -20,7 +25,7 @@ def test_decision_is_deterministic_for_seed_and_history() -> None:
     history = (
         CompletedTask(
             task_id="task-1",
-            family="chess960",
+            family="dice_chess",
             difficulty=1,
             evidence=1,
             phase=DirectorPhase.CALIBRATION,
@@ -54,7 +59,7 @@ def test_seeded_calibration_covers_every_enabled_family_once() -> None:
                 evidence=1,
                 phase=decision.phase,
                 # A calibration task represents a complete miniature chapter.
-                chapter_stage=3 if decision.family == "penultima" else None,
+                chapter_stage=3 if decision.family == "geo_zendo" else None,
             )
         )
 
@@ -67,19 +72,19 @@ def test_configured_start_family_is_used_before_seeded_calibration() -> None:
         seed=9191,
         families=FAMILIES,
         history=(),
-        start_family="dice_chess",
+        start_family="machine_reach",
     )
 
-    assert first.family == "dice_chess"
+    assert first.family == "machine_reach"
     assert first.phase == DirectorPhase.CALIBRATION
     assert first.reason == "configured_start_family"
 
 
-def test_penultima_chapter_is_locked_until_stage_three() -> None:
+def test_locked_chapter_family_stays_locked_until_stage_three() -> None:
     history = (
         CompletedTask(
-            task_id="penultima-stage-2",
-            family="penultima",
+            task_id="chapter-stage-2",
+            family="geo_zendo",
             difficulty=3,
             evidence=1,
             phase=DirectorPhase.CHAPTER,
@@ -89,26 +94,19 @@ def test_penultima_chapter_is_locked_until_stage_three() -> None:
 
     decision = decide_next_task(seed=7, families=FAMILIES, history=history)
 
-    assert decision.family == "penultima"
+    assert decision.family == "geo_zendo"
     assert decision.difficulty == 3
     assert decision.phase == DirectorPhase.CHAPTER
-    assert decision.reason == "penultima_chapter_continuation"
-    assert decision.parent_task_id == "penultima-stage-2"
+    assert decision.reason == "locked_chapter_continuation"
+    assert decision.parent_task_id == "chapter-stage-2"
 
 
 def test_failure_gets_one_remediation_then_returns_to_rotation() -> None:
     families = (
-        FamilySettings(family="chess960"),
         FamilySettings(family="dice_chess"),
+        FamilySettings(family="machine_reach"),
     )
     history = [
-        CompletedTask(
-            task_id="chess-calibration",
-            family="chess960",
-            difficulty=1,
-            evidence=1,
-            phase=DirectorPhase.CALIBRATION,
-        ),
         CompletedTask(
             task_id="dice-calibration",
             family="dice_chess",
@@ -117,8 +115,15 @@ def test_failure_gets_one_remediation_then_returns_to_rotation() -> None:
             phase=DirectorPhase.CALIBRATION,
         ),
         CompletedTask(
-            task_id="chess-failure",
-            family="chess960",
+            task_id="machine-calibration",
+            family="machine_reach",
+            difficulty=1,
+            evidence=1,
+            phase=DirectorPhase.CALIBRATION,
+        ),
+        CompletedTask(
+            task_id="dice-failure",
+            family="dice_chess",
             difficulty=1,
             evidence=-1,
             phase=DirectorPhase.ROTATION,
@@ -126,13 +131,13 @@ def test_failure_gets_one_remediation_then_returns_to_rotation() -> None:
     ]
 
     remediation = decide_next_task(seed=88, families=families, history=history)
-    assert remediation.family == "chess960"
+    assert remediation.family == "dice_chess"
     assert remediation.phase == DirectorPhase.REMEDIATION
-    assert remediation.parent_task_id == "chess-failure"
+    assert remediation.parent_task_id == "dice-failure"
 
     history.append(
         CompletedTask(
-            task_id="chess-remediation",
+            task_id="dice-remediation",
             family=remediation.family,
             difficulty=remediation.difficulty,
             evidence=-1,
@@ -147,18 +152,11 @@ def test_failure_gets_one_remediation_then_returns_to_rotation() -> None:
 
     assert after_remediation.phase == DirectorPhase.ROTATION
     assert after_remediation.reason == "remediation_cap_weighted_rotation"
-    assert after_remediation.family == "dice_chess"
+    assert after_remediation.family == "machine_reach"
 
 
-def test_failed_penultima_remediation_can_leave_the_chapter_temporarily() -> None:
+def test_failed_chapter_remediation_can_leave_the_chapter_temporarily() -> None:
     history = [
-        CompletedTask(
-            task_id="chess-calibration",
-            family="chess960",
-            difficulty=1,
-            evidence=1,
-            phase=DirectorPhase.CALIBRATION,
-        ),
         CompletedTask(
             task_id="dice-calibration",
             family="dice_chess",
@@ -167,8 +165,15 @@ def test_failed_penultima_remediation_can_leave_the_chapter_temporarily() -> Non
             phase=DirectorPhase.CALIBRATION,
         ),
         CompletedTask(
-            task_id="penultima-remediation",
-            family="penultima",
+            task_id="machine-calibration",
+            family="machine_reach",
+            difficulty=1,
+            evidence=1,
+            phase=DirectorPhase.CALIBRATION,
+        ),
+        CompletedTask(
+            task_id="chapter-remediation",
+            family="geo_zendo",
             difficulty=2,
             evidence=-1,
             phase=DirectorPhase.REMEDIATION,
@@ -180,25 +185,25 @@ def test_failed_penultima_remediation_can_leave_the_chapter_temporarily() -> Non
 
     assert decision.phase == DirectorPhase.ROTATION
     assert decision.reason == "remediation_cap_weighted_rotation"
-    assert decision.family != "penultima"
+    assert decision.family != "geo_zendo"
 
 
 def test_rotation_uses_weighted_coverage_debt() -> None:
     families = (
-        FamilySettings(family="chess960", weight=3),
-        FamilySettings(family="dice_chess", weight=1),
+        FamilySettings(family="dice_chess", weight=3),
+        FamilySettings(family="machine_reach", weight=1),
     )
     history = (
         CompletedTask(
-            task_id="chess-calibration",
-            family="chess960",
+            task_id="dice-calibration",
+            family="dice_chess",
             difficulty=1,
             evidence=1,
             phase=DirectorPhase.CALIBRATION,
         ),
         CompletedTask(
-            task_id="dice-calibration",
-            family="dice_chess",
+            task_id="machine-calibration",
+            family="machine_reach",
             difficulty=1,
             evidence=1,
             phase=DirectorPhase.CALIBRATION,
@@ -209,16 +214,22 @@ def test_rotation_uses_weighted_coverage_debt() -> None:
 
     assert decision.phase == DirectorPhase.ROTATION
     assert decision.reason == "weighted_coverage_debt"
-    assert decision.family == "chess960"
-    assert decision.parent_task_id == "chess-calibration"
+    assert decision.family == "dice_chess"
+    assert decision.parent_task_id == "dice-calibration"
 
 
 def test_recent_evidence_raises_and_lowers_per_family_level() -> None:
-    family = (FamilySettings(family="chess960", initial_difficulty=2, max_difficulty=3),)
+    family = (
+        FamilySettings(
+            family="dice_chess",
+            initial_difficulty=2,
+            max_difficulty=3,
+        ),
+    )
     promotion_history = tuple(
         CompletedTask(
             task_id=f"success-{index}",
-            family="chess960",
+            family="dice_chess",
             difficulty=2,
             evidence=evidence,
         )
@@ -227,7 +238,7 @@ def test_recent_evidence_raises_and_lowers_per_family_level() -> None:
     demotion_history = tuple(
         CompletedTask(
             task_id=f"failure-{index}",
-            family="chess960",
+            family="dice_chess",
             difficulty=2,
             evidence=evidence,
             phase=(
@@ -247,11 +258,11 @@ def test_recent_evidence_raises_and_lowers_per_family_level() -> None:
 
 
 def test_difficulty_stays_within_one_and_configured_maximum() -> None:
-    family = (FamilySettings(family="chess960", max_difficulty=3),)
+    family = (FamilySettings(family="dice_chess", max_difficulty=3),)
     upper_history = tuple(
         CompletedTask(
             task_id=f"upper-{index}",
-            family="chess960",
+            family="dice_chess",
             difficulty=3,
             evidence=1,
         )
@@ -260,7 +271,7 @@ def test_difficulty_stays_within_one_and_configured_maximum() -> None:
     lower_history = tuple(
         CompletedTask(
             task_id=f"lower-{index}",
-            family="chess960",
+            family="dice_chess",
             difficulty=1,
             evidence=-1,
             phase=DirectorPhase.REMEDIATION,

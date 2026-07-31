@@ -5,14 +5,10 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.environments import (
-    CHESS960_FAMILY,
-    CHESS960_GENERATOR_VERSION,
+    DICE_CHESS_FAMILY,
+    DICE_CHESS_GENERATOR_VERSION,
     derive_task_seed,
     generate_task,
-)
-from app.environments.chess_world.chess960 import (
-    enumerate_chess960_repairs,
-    is_valid_chess960,
 )
 from app.main import create_app
 from app.models import Attempt, AttemptEvent, AttemptStatus, TaskInstance, utc_now
@@ -40,12 +36,12 @@ def _prepare_participant(client: TestClient) -> str:
         "/api/v1/contests",
         headers=auth(organizer),
         json={
-            "title": "Chess960",
+            "title": "Dice & Chess",
             "task_config": {
                 "adaptation_threshold": 3,
                 "families": [
                     {
-                        "key": "chess960",
+                        "key": "dice_chess",
                         "enabled": True,
                         "weight": 1,
                         "initial_difficulty": 2,
@@ -79,64 +75,67 @@ def _prepare_participant(client: TestClient) -> str:
     ).json()["access_token"]
 
 
-def test_chess960_generator_is_deterministic_and_preserves_invariants():
+def test_dice_chess_generator_is_deterministic_and_preserves_invariants():
     first_seed = derive_task_seed(
         attempt_seed=9_001,
         ordinal=7,
-        family=CHESS960_FAMILY,
-        generator_version=CHESS960_GENERATOR_VERSION,
+        family=DICE_CHESS_FAMILY,
+        generator_version=DICE_CHESS_GENERATOR_VERSION,
     )
     assert first_seed == derive_task_seed(
         attempt_seed=9_001,
         ordinal=7,
-        family=CHESS960_FAMILY,
-        generator_version=CHESS960_GENERATOR_VERSION,
+        family=DICE_CHESS_FAMILY,
+        generator_version=DICE_CHESS_GENERATOR_VERSION,
     )
     assert first_seed != derive_task_seed(
         attempt_seed=9_001,
         ordinal=8,
-        family=CHESS960_FAMILY,
-        generator_version=CHESS960_GENERATOR_VERSION,
+        family=DICE_CHESS_FAMILY,
+        generator_version=DICE_CHESS_GENERATOR_VERSION,
     )
     assert first_seed != derive_task_seed(
         attempt_seed=9_001,
         ordinal=7,
-        family=CHESS960_FAMILY,
-        generator_version="chess960-validation-v2",
+        family=DICE_CHESS_FAMILY,
+        generator_version="dice-chess-world-v2",
     )
 
     for source_seed in range(500):
         task_seed = derive_task_seed(
             attempt_seed=source_seed,
             ordinal=1,
-            family=CHESS960_FAMILY,
-            generator_version=CHESS960_GENERATOR_VERSION,
+            family=DICE_CHESS_FAMILY,
+            generator_version=DICE_CHESS_GENERATOR_VERSION,
         )
         generated = generate_task(
-            family=CHESS960_FAMILY,
-            generator_version=CHESS960_GENERATOR_VERSION,
+            family=DICE_CHESS_FAMILY,
+            generator_version=DICE_CHESS_GENERATOR_VERSION,
             seed=task_seed,
             difficulty=1,
         )
         repeated = generate_task(
-            family=CHESS960_FAMILY,
-            generator_version=CHESS960_GENERATOR_VERSION,
+            family=DICE_CHESS_FAMILY,
+            generator_version=DICE_CHESS_GENERATOR_VERSION,
             seed=task_seed,
             difficulty=1,
         )
         assert generated == repeated
 
-        back_rank = generated.public_state["back_rank"]
-        assert len(back_rank) == 8
-        assert generated.public_state["kind"] == "chess960_mission"
-        assert generated.public_state["variant"] == "single_swap_repair"
-        assert generated.private_state["variant"] == "single_swap_repair"
-        assert not is_valid_chess960(back_rank)
-        repairs = enumerate_chess960_repairs(back_rank)
-        assert repairs
-        assert tuple(
-            tuple(pair) for pair in generated.private_state["valid_repairs"]
-        ) == repairs
+        public = generated.public_state
+        assert public["kind"] == "dice_chess_board_inventory_probability"
+        board = public["board"]
+        assert len(board) == 8
+        assert all(len(row) == 8 for row in board)
+        assert len(public["die"]["faces"]) == 6
+        probability = generated.private_state["probability"]
+        assert 1 <= probability["numerator"] < probability["denominator"] <= 6
+        assert (
+            generated.private_state["favorable_faces"]
+            * probability["denominator"]
+            == probability["numerator"]
+            * generated.private_state["total_faces"]
+        )
 
 
 def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
@@ -175,19 +174,22 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
             "completed_at",
         }
         assert task["ordinal"] == 1
-        assert task["family"] == "chess960"
+        assert task["family"] == "dice_chess"
         assert task["difficulty"] == 2
         assert task["status"] == "active"
         assert set(task["public_state"]) == {
             "kind",
-            "variant",
             "prompt",
-            "back_rank",
+            "board",
+            "die",
+            "event_description",
+            "sample_space_size",
             "response_hint",
         }
-        assert task["public_state"]["kind"] == "chess960_mission"
-        assert task["public_state"]["variant"] == "single_swap_repair"
-        assert len(task["public_state"]["back_rank"]) == 8
+        assert task["public_state"]["kind"] == (
+            "dice_chess_board_inventory_probability"
+        )
+        assert len(task["public_state"]["board"]) == 8
 
         same_current = client.get(
             "/api/v1/participant/tasks/current",
@@ -205,8 +207,10 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
         with application.state.database.session_factory() as session:
             stored_before_answer = session.get(TaskInstance, task["id"])
             assert stored_before_answer is not None
-            first_repair = stored_before_answer.private_state["valid_repairs"][0]
-            correct_answer = f"{first_repair[0]} {first_repair[1]}"
+            probability = stored_before_answer.private_state["probability"]
+            correct_answer = (
+                f"{probability['numerator']}/{probability['denominator']}"
+            )
         answered = client.post(
             f"/api/v1/participant/tasks/{task['id']}/answer",
             headers=auth(participant),
@@ -225,7 +229,7 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
         repeated_answer = client.post(
             f"/api/v1/participant/tasks/{task['id']}/answer",
             headers=auth(participant),
-            json={"answer": "Да"},
+            json={"answer": "1/2"},
         )
         assert repeated_answer.status_code == 409
         assert repeated_answer.json()["detail"]["code"] == "TASK_ALREADY_CLOSED"
@@ -254,7 +258,10 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
                     select(TaskInstance).order_by(TaskInstance.ordinal)
                 ).all()
             )
-            assert stored_tasks[0].private_state["variant"] == "single_swap_repair"
+            assert (
+                stored_tasks[0].private_state["mission_variant"]
+                == "board_inventory_probability"
+            )
             assert stored_tasks[0].evaluation_state["correct"] is True
             assert stored_tasks[0].participant_answer
             assert stored_tasks[1].evaluation_state["skipped"] is True
@@ -283,6 +290,28 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
             assert events[3].payload["correct"] is True
 
 
+def test_contest_with_retired_family_is_rejected(tmp_path):
+    application = create_app(_settings(tmp_path / "retired.db"))
+    with TestClient(application) as client:
+        organizer = client.post(
+            "/api/v1/access/redeem",
+            json={"code": "ORBIT-ADMIN"},
+        ).json()["access_token"]
+        for retired_key in ("chess960", "chess_960", "penultima", "nim_like", "geo_graph"):
+            rejected = client.post(
+                "/api/v1/contests",
+                headers=auth(organizer),
+                json={
+                    "title": "Retired",
+                    "task_config": {"families": [retired_key]},
+                },
+            )
+            assert rejected.status_code == 422, retired_key
+            detail = rejected.json()["detail"]
+            assert detail["code"] == "TASK_FAMILY_UNKNOWN"
+            assert retired_key in detail["message"]
+
+
 def test_expired_attempt_cannot_generate_or_submit_tasks(tmp_path):
     application = create_app(_settings(tmp_path / "deadline.db"))
     with TestClient(application) as client:
@@ -305,7 +334,7 @@ def test_expired_attempt_cannot_generate_or_submit_tasks(tmp_path):
         rejected = client.post(
             f"/api/v1/participant/tasks/{task['id']}/answer",
             headers=auth(participant),
-            json={"answer": "Да"},
+            json={"answer": "1/2"},
         )
         assert rejected.status_code == 409
         assert rejected.json()["detail"]["code"] == "ACTIVE_ATTEMPT_REQUIRED"

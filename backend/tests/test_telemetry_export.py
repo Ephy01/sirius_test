@@ -15,6 +15,7 @@ from app.models import (
     AttemptStatus,
     ClientTelemetryReceipt,
     TaskInstance,
+    TaskStatus,
     utc_now,
 )
 
@@ -56,7 +57,7 @@ def prepare_contest(
         json={
             "title": "Телеметрия: Юникод",
             "duration_minutes": 60,
-            "task_config": {"families": ["chess960"]},
+            "task_config": {"families": ["dice_chess"]},
         },
     )
     assert contest_response.status_code == 201
@@ -850,3 +851,56 @@ def test_parallel_exports_expire_attempt_exactly_once(tmp_path):
                 )
             )
             assert len(expiry_events) == 1
+
+
+def test_export_survives_and_marks_tasks_of_retired_families(tmp_path):
+    application = create_app(settings(tmp_path / "telemetry-retired.db"))
+    with TestClient(application) as client:
+        organizer = organizer_token(client)
+        contest, enrollments, codes = prepare_contest(
+            client,
+            organizer,
+            participants=[("retired-001", "Участник")],
+        )
+        participant = participant_token(client, codes[0])
+        attempt, _task = start_with_task(client, participant)
+
+        with application.state.database.session_factory() as session:
+            retired_task = TaskInstance(
+                attempt_id=attempt["id"],
+                ordinal=99,
+                family="chess960",
+                generator_version="chess960-mission-v2",
+                seed=123,
+                difficulty=2,
+                status=TaskStatus.ANSWERED,
+                # ``None`` would re-trigger the Python-side default; ``False``
+                # keeps the answered row outside the unique active slot.
+                active_slot=False,
+                public_state={"kind": "chess960_mission"},
+                private_state={"variant": "single_swap_repair"},
+                evaluation_state={"correct": True},
+                completed_at=utc_now(),
+            )
+            session.add(retired_task)
+            stored_attempt = session.get(Attempt, attempt["id"])
+            assert stored_attempt is not None
+            session.add(
+                AttemptEvent(
+                    attempt_id=attempt["id"],
+                    sequence=90,
+                    event_type="answer_evaluated",
+                    payload={"family": "chess960", "correct": True},
+                )
+            )
+            session.commit()
+
+        export = client.get(
+            f"/api/v1/contests/{contest['id']}"
+            f"/enrollments/{enrollments[0]['id']}/telemetry",
+            headers=auth(organizer),
+        )
+        assert export.status_code == 200
+        assert "family: chess960 (retired)" in export.text
+        assert "family: dice_chess\n" in export.text
+        assert '"family":"chess960"' in export.text

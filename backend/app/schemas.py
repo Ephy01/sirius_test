@@ -359,8 +359,7 @@ class TaskActionResponse(ApiModel):
 
 class TaskInteractionRequest(ApiModel):
     client_action_id: str = Field(min_length=1, max_length=128)
-    action_type: Literal["move", "probe", "apply_op", "undo"]
-    move: str | None = Field(default=None, min_length=2, max_length=40)
+    action_type: Literal["probe", "apply_op", "undo"]
     probe: str | None = Field(default=None, min_length=1, max_length=80)
     op_id: str | None = Field(default=None, min_length=1, max_length=80)
 
@@ -374,25 +373,19 @@ class TaskInteractionRequest(ApiModel):
 
     @model_validator(mode="after")
     def validate_action_payload(self):
-        if self.action_type == "move":
-            if self.move is None or not self.move.strip():
-                raise ValueError("move action requires move")
-            self.move = self.move.strip()
-            if self.probe is not None or self.op_id is not None:
-                raise ValueError("move action contains an unrelated payload")
-        elif self.action_type == "probe":
+        if self.action_type == "probe":
             if self.probe is None or not self.probe.strip():
                 raise ValueError("probe action requires probe")
             self.probe = self.probe.strip()
-            if self.move is not None or self.op_id is not None:
+            if self.op_id is not None:
                 raise ValueError("probe action contains an unrelated payload")
         elif self.action_type == "apply_op":
             if self.op_id is None or not self.op_id.strip():
                 raise ValueError("apply_op action requires op_id")
             self.op_id = self.op_id.strip()
-            if self.move is not None or self.probe is not None:
+            if self.probe is not None:
                 raise ValueError("apply_op action contains an unrelated payload")
-        elif any(value is not None for value in (self.move, self.probe, self.op_id)):
+        elif any(value is not None for value in (self.probe, self.op_id)):
             raise ValueError("undo action must not contain a payload")
         return self
 

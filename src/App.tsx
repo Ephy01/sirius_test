@@ -760,57 +760,6 @@ function ParticipantContestScreen({
     });
   }
 
-  async function moveTask(
-    move: string,
-    clientActionId: string,
-  ): Promise<TaskMoveTransitionResult> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая цель уже закрыта.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.interactWithTask(
-        task.id,
-        {
-          actionType: "move",
-          move,
-          clientActionId,
-        },
-        { token: session.token },
-      );
-      setTask(response.task);
-
-      if (!response.completed) {
-        return {
-          ordinal: response.task.ordinal,
-          advanced: false,
-          accepted: response.accepted,
-          completed: false,
-          message: response.message,
-        };
-      }
-
-      try {
-        const next = await api.getNextTask({ token: session.token });
-        setTask(next.task);
-        return {
-          ordinal: next.task.ordinal,
-          advanced: true,
-          accepted: response.accepted,
-          completed: true,
-          message: `${response.message} Открыта следующая цель №${next.task.ordinal}.`,
-        };
-      } catch {
-        return {
-          ordinal: response.task.ordinal,
-          advanced: false,
-          accepted: response.accepted,
-          completed: true,
-          message: `${response.message} Следующая цель не открылась; используйте /next.`,
-        };
-      }
-    });
-  }
-
   async function probeTask(
     probe: string,
     clientActionId: string,
@@ -962,16 +911,6 @@ function ParticipantContestScreen({
         difficulty: task.difficulty,
         status: task.status,
         prompt: task.publicState.prompt,
-        backRank:
-          task.publicState.kind === "chess960_validation" ||
-          task.publicState.kind === "chess960_mission"
-            ? (task.publicState.backRank as WorkspaceParticipantTask["backRank"])
-            : undefined,
-        variant:
-          task.publicState.kind === "chess960_validation" ||
-          task.publicState.kind === "chess960_mission"
-            ? task.publicState.variant
-            : undefined,
         dice:
           task.publicState.kind === "dice_chess_probability"
             ? (task.publicState.dice as unknown as WorkspaceParticipantTask["dice"])
@@ -993,45 +932,12 @@ function ParticipantContestScreen({
             : undefined,
         board:
           task.publicState.kind === "dice_chess_board_inventory_probability" ||
-          task.publicState.kind === "dice_chess_position_probability" ||
-          task.publicState.kind === "penultima_induction"
+          task.publicState.kind === "dice_chess_position_probability"
             ? (task.publicState.board as WorkspaceParticipantTask["board"])
             : undefined,
         sideToMove:
           task.publicState.kind === "dice_chess_position_probability"
             ? task.publicState.sideToMove
-            : undefined,
-        pieceName:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.pieceName
-            : undefined,
-        currentSquare:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.currentSquare
-            : undefined,
-        goalSquare:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.goalSquare
-            : undefined,
-        chapterStage:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.chapterStage
-            : undefined,
-        stageTitle:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.stageTitle
-            : undefined,
-        acceptedMoves:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.acceptedMoves
-            : undefined,
-        rejectedMoves:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.rejectedMoves
-            : undefined,
-        observations:
-          task.publicState.kind === "penultima_induction"
-            ? task.publicState.observations
             : undefined,
         geometryScene:
           task.publicState.kind === "geometry_atlas"
@@ -1051,10 +957,6 @@ function ParticipantContestScreen({
             : undefined,
         leaperBoard:
           task.publicState.kind === "chess"
-            ? task.publicState
-            : undefined,
-        counters:
-          task.publicState.kind === "counters"
             ? task.publicState
             : undefined,
         worldPhase: task.publicState.worldContext?.phase,
@@ -1082,7 +984,6 @@ function ParticipantContestScreen({
           onAnswer={answerTask}
           onSkip={skipTask}
           onNext={nextTask}
-          onMove={moveTask}
           onProbe={probeTask}
           onApplyOperation={applyOperationTask}
           onUndo={undoMachineTask}

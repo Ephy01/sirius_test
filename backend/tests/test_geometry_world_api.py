@@ -439,14 +439,14 @@ def test_geometry_world_rejects_family_from_chess_world(tmp_path):
                 "task_config": _geometry_config(
                     families=[
                         {
-                            "key": "chess960",
+                            "key": "dice_chess",
                             "enabled": True,
                             "weight": 1,
                             "initial_difficulty": 1,
                             "max_difficulty": 4,
                         }
                     ],
-                    start_family="chess960",
+                    start_family="dice_chess",
                 ),
             },
         )
