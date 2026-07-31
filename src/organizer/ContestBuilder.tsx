@@ -3,11 +3,17 @@ import "./contest-builder.css";
 
 export type EnvironmentKey = "mixed" | "chess_world" | "geometry_world";
 export type TaskFamilyKey =
-  | "dice_chess"
   | "geo_zendo"
+  | "token_zendo"
+  | "point_zendo"
+  | "grid_zendo"
+  | "hidden_wiring"
+  | "machine_reach"
+  | "fold_punch"
+  | "spatial_bank"
+  | "dice_chess"
   | "geo_transform"
-  | "geo_probability"
-  | "machine_reach";
+  | "geo_probability";
 
 export type TaskFamilyConfig = {
   key: TaskFamilyKey;
@@ -63,15 +69,50 @@ const FAMILY_LABELS: Record<
   TaskFamilyKey,
   { title: string; description: string }
 > = {
-  dice_chess: {
-    title: "Dice & Chess",
-    description:
-      "Вероятностные события на доске и решения, зависящие от кубика фигур.",
-  },
   geo_zendo: {
     title: "Геометрический Zendo",
     description:
       "Восстановление скрытого закона по положительным и отрицательным конфигурациям.",
+  },
+  token_zendo: {
+    title: "Zendo: фишки",
+    description:
+      "Скрытое правило про последовательности числовых фишек трёх цветов.",
+  },
+  point_zendo: {
+    title: "Zendo: точки",
+    description:
+      "Скрытое правило про наборы точек на решётке: прямые, симметрия, окружности.",
+  },
+  grid_zendo: {
+    title: "Zendo: узоры",
+    description:
+      "Скрытое правило про узоры 5×5: симметрии, связность, чётности; пробы рисуются.",
+  },
+  hidden_wiring: {
+    title: "Скрытая проводка",
+    description:
+      "Панель с лампами: кнопки срабатывают только парами, проводку нужно восстановить.",
+  },
+  machine_reach: {
+    title: "Машины и инварианты",
+    description:
+      "Лампы, числовые операции, перестановки и прыгуны: достигните цели или докажите недостижимость.",
+  },
+  fold_punch: {
+    title: "Дырокол",
+    description:
+      "Лист складывают и пробивают дырки; отметьте, где они окажутся после разворота.",
+  },
+  spatial_bank: {
+    title: "Повороты и сборка",
+    description:
+      "Single-select: найти правильный поворот фигуры или пару частей, собирающих цель.",
+  },
+  dice_chess: {
+    title: "Dice & Chess",
+    description:
+      "Вероятностные события на доске и решения, зависящие от кубика фигур.",
   },
   geo_transform: {
     title: "Инварианты",
@@ -83,43 +124,47 @@ const FAMILY_LABELS: Record<
     description:
       "Подсчёт конфигураций и вероятностей на сетях из точек, рёбер и областей.",
   },
-  machine_reach: {
-    title: "Машины и инварианты",
-    description:
-      "Лампы, числовые операции, перестановки и прыгуны: достигните цели или докажите недостижимость.",
-  },
 };
 
+// Веса coverage дефолтного контеста (ТЗ v3 §7); правится организатором.
 const CONTENT_FAMILIES: TaskFamilyConfig[] = [
-  {
-    key: "dice_chess",
-    skin: "chess",
-    enabled: true,
-    weight: 10,
-    initialDifficulty: 1,
-    maxDifficulty: 5,
-  },
   {
     key: "geo_zendo",
     skin: "graph",
     enabled: true,
-    weight: 15,
+    weight: 14,
     initialDifficulty: 1,
     maxDifficulty: 5,
   },
   {
-    key: "geo_transform",
-    skin: "graph",
+    key: "token_zendo",
+    skin: "tokens",
     enabled: true,
-    weight: 10,
+    weight: 12,
     initialDifficulty: 1,
     maxDifficulty: 5,
   },
   {
-    key: "geo_probability",
-    skin: "graph",
+    key: "point_zendo",
+    skin: "points",
     enabled: true,
-    weight: 10,
+    weight: 12,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
+  },
+  {
+    key: "grid_zendo",
+    skin: "grid",
+    enabled: true,
+    weight: 12,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
+  },
+  {
+    key: "hidden_wiring",
+    skin: "panel",
+    enabled: true,
+    weight: 14,
     initialDifficulty: 1,
     maxDifficulty: 5,
   },
@@ -127,7 +172,7 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
     key: "machine_reach",
     skin: "machine_panel",
     enabled: true,
-    weight: 15,
+    weight: 12,
     initialDifficulty: 1,
     maxDifficulty: 5,
     subKinds: [
@@ -136,6 +181,46 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
       "perm_puzzle",
       "leaper_board",
     ],
+  },
+  {
+    key: "fold_punch",
+    skin: "sheet",
+    enabled: true,
+    weight: 8,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
+  },
+  {
+    key: "spatial_bank",
+    skin: "shapes",
+    enabled: true,
+    weight: 6,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
+  },
+  {
+    key: "dice_chess",
+    skin: "chess",
+    enabled: true,
+    weight: 6,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
+  },
+  {
+    key: "geo_transform",
+    skin: "graph",
+    enabled: true,
+    weight: 2,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
+  },
+  {
+    key: "geo_probability",
+    skin: "graph",
+    enabled: true,
+    weight: 2,
+    initialDifficulty: 1,
+    maxDifficulty: 5,
   },
 ];
 
