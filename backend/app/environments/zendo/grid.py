@@ -29,7 +29,9 @@ from ..core.zendo_engine import (
     PROBE_BUDGET,
     evaluate_zendo_answer,
     get_universe_space,
+    rule_hint_category,
     select_material,
+    transition_zendo_hint,
 )
 
 FAMILY_KEY = "grid_zendo"
@@ -227,6 +229,23 @@ GRID_ATOMS: tuple[Atom, ...] = (
     Atom("component_count_even", 4, _component_count_even),
     Atom("domino_tileable", 4, _domino_tileable),
 )
+
+
+ATOM_HINT_CATEGORIES = {
+    "cell_count_even": "count",
+    "all_rows_even": "count",
+    "all_columns_even": "count",
+    "sym_rotate_90": "symmetry",
+    "sym_rotate_180": "symmetry",
+    "sym_rotate_270": "symmetry",
+    "sym_reflect_h": "symmetry",
+    "sym_reflect_v": "symmetry",
+    "sym_reflect_main": "symmetry",
+    "sym_reflect_anti": "symmetry",
+    "connected": "connectivity",
+    "component_count_even": "connectivity",
+    "domino_tileable": "connectivity",
+}
 
 
 def grid_key(pattern: GridPattern) -> Hashable:
@@ -533,8 +552,24 @@ def generate_grid_zendo_task(
             card_id for card_id, _pattern in target_cards
         ],
         "target_answers": material.target_answers,
+        "hint_category": rule_hint_category(
+            space.rules[material.rule_index],
+            ATOM_HINT_CATEGORIES,
+        ),
     }
     return public, private
+
+
+def transition_grid_zendo_hint(
+    *,
+    public_state: dict[str, Any],
+    private_state: dict[str, Any],
+):
+    return transition_zendo_hint(
+        public_state=public_state,
+        private_state=private_state,
+        category=str(private_state["hint_category"]),
+    )
 
 
 def transition_grid_zendo_probe(
@@ -659,5 +694,6 @@ __all__ = [
     "parse_pattern",
     "sampler_build_log",
     "serialize_pattern",
+    "transition_grid_zendo_hint",
     "transition_grid_zendo_probe",
 ]

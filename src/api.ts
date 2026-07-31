@@ -516,6 +516,10 @@ export type TaskInteractionInput =
       clientActionId: string;
     }
   | {
+      actionType: "hint";
+      clientActionId: string;
+    }
+  | {
       actionType: "apply_op";
       opId: string;
       clientActionId: string;

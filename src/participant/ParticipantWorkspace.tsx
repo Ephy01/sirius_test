@@ -159,6 +159,7 @@ export type ParticipantWorkspaceProps = {
     probe: string,
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
+  onHint?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
   onApplyOperation?: (
     opId: string,
     clientActionId: string,
@@ -549,6 +550,7 @@ export function ParticipantWorkspace({
   onSkip,
   onNext,
   onProbe,
+  onHint,
   onApplyOperation,
   onUndo,
   onMessage,
@@ -874,6 +876,8 @@ export function ParticipantWorkspace({
                 Кнопки срабатывают только парами; первая проба обучающая
                 и не тратит лимит.
                 <br />
+                <code>/hint</code> — платная подсказка (скор ×0.7)
+                <br />
                 <code>/skip</code> — пропустить задачу
               </>
             ) : isMachine ? (
@@ -892,6 +896,8 @@ export function ParticipantWorkspace({
                 <br />
                 <code>/answer &lt;ответ&gt;</code> — классифицировать целевые
                 конфигурации
+                <br />
+                <code>/hint</code> — платная подсказка о типе правила (скор ×0.7)
                 <br />
                 <code>/skip</code> — пропустить и открыть следующую задачу
               </>
@@ -934,6 +940,37 @@ export function ParticipantWorkspace({
             break;
           }
           await submitZendoProbe(payload);
+          break;
+
+        case "/hint":
+          if (!isZendo && !isWiring) {
+            appendEntry(
+              "system",
+              "Подсказка доступна только в задачах со скрытым правилом.",
+            );
+            break;
+          }
+          if (task.status !== "active") {
+            appendEntry(
+              "system",
+              "Текущая задача уже закрыта. Используйте /next.",
+            );
+            break;
+          }
+          if (!onHint) {
+            appendEntry("system", "Подсказка сейчас недоступна.");
+            break;
+          }
+          {
+            const transition = await onHint(createClientActionId());
+            appendEntry(
+              "system",
+              transition.message ??
+                (transition.accepted
+                  ? "Подсказка получена."
+                  : "Подсказка недоступна."),
+            );
+          }
           break;
 
         case "/op":

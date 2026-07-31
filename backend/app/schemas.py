@@ -359,7 +359,7 @@ class TaskActionResponse(ApiModel):
 
 class TaskInteractionRequest(ApiModel):
     client_action_id: str = Field(min_length=1, max_length=128)
-    action_type: Literal["probe", "apply_op", "undo"]
+    action_type: Literal["probe", "apply_op", "undo", "hint"]
     probe: str | None = Field(default=None, min_length=1, max_length=80)
     op_id: str | None = Field(default=None, min_length=1, max_length=80)
 
@@ -386,7 +386,9 @@ class TaskInteractionRequest(ApiModel):
             if self.probe is not None:
                 raise ValueError("apply_op action contains an unrelated payload")
         elif any(value is not None for value in (self.probe, self.op_id)):
-            raise ValueError("undo action must not contain a payload")
+            raise ValueError(
+                f"{self.action_type} action must not contain a payload"
+            )
         return self
 
 

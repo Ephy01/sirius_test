@@ -99,6 +99,52 @@ def _family_text(family: object) -> str:
     return text
 
 
+def _continuous_score(task: TaskInstance) -> float | None:
+    evaluation = (
+        task.evaluation_state
+        if isinstance(task.evaluation_state, dict)
+        else {}
+    )
+    value = evaluation.get("continuous_score")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _learning_slopes(tasks: list[TaskInstance]) -> list[tuple[str, float | None]]:
+    """Per-family OLS slope of continuous_score over the encounter index.
+
+    A research export only (never part of season-one scoring): the slope
+    is ``null`` while a family has fewer than two scored encounters.
+    """
+
+    scores_by_family: dict[str, list[float]] = {}
+    for task in tasks:
+        score = _continuous_score(task)
+        if score is None:
+            continue
+        scores_by_family.setdefault(task.family, []).append(score)
+    slopes: list[tuple[str, float | None]] = []
+    for family in sorted(scores_by_family):
+        scores = scores_by_family[family]
+        if len(scores) < 2:
+            slopes.append((family, None))
+            continue
+        count = len(scores)
+        mean_x = (count + 1) / 2
+        mean_y = sum(scores) / count
+        covariance = sum(
+            (index - mean_x) * (score - mean_y)
+            for index, score in enumerate(scores, start=1)
+        )
+        variance = sum(
+            (index - mean_x) ** 2
+            for index in range(1, count + 1)
+        )
+        slopes.append((family, covariance / variance))
+    return slopes
+
+
 def _task_lines(task: TaskInstance) -> list[str]:
     return [
         f"--- TASK ordinal={task.ordinal} ---",
@@ -136,6 +182,19 @@ def _attempt_lines(attempt: Attempt) -> list[str]:
             lines.append("")
     else:
         lines.extend(["--- NO TASKS ---", ""])
+
+    lines.append("--- LEARNING SLOPES ---")
+    slopes = _learning_slopes(tasks)
+    if slopes:
+        for family, slope in slopes:
+            lines.append(
+                "learning_slope "
+                f"{_family_text(family)}: "
+                + ("null" if slope is None else f"{slope:+.4f}")
+            )
+    else:
+        lines.append("(no scored tasks)")
+    lines.append("")
 
     lines.append("--- EVENT TIMELINE ---")
     previous_timestamp: datetime | None = None

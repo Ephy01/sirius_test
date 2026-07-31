@@ -180,11 +180,11 @@ WORLD_DIRECTOR_VERSION = {
     "mixed": SHARED_DIRECTOR_VERSION,
 }
 FAMILY_INTERACTION_ACTIONS = {
-    GEO_ZENDO_FAMILY: frozenset({"probe"}),
-    TOKEN_ZENDO_FAMILY: frozenset({"probe"}),
-    POINT_ZENDO_FAMILY: frozenset({"probe"}),
-    GRID_ZENDO_FAMILY: frozenset({"probe"}),
-    HIDDEN_WIRING_FAMILY: frozenset({"apply_op"}),
+    GEO_ZENDO_FAMILY: frozenset({"probe", "hint"}),
+    TOKEN_ZENDO_FAMILY: frozenset({"probe", "hint"}),
+    POINT_ZENDO_FAMILY: frozenset({"probe", "hint"}),
+    GRID_ZENDO_FAMILY: frozenset({"probe", "hint"}),
+    HIDDEN_WIRING_FAMILY: frozenset({"apply_op", "hint"}),
     MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
 }
 # Family → action whose accepted interactions append a ``zendo_probe``
@@ -922,6 +922,38 @@ def _director_history(
     return history
 
 
+# The learning-slope soft quota: with enough remaining time every active
+# family gets at least this many exposures per attempt.
+MIN_FAMILY_EXPOSURES = 3
+# A conservative per-missing-exposure time allowance used to decide
+# whether the quota still fits into the attempt.
+QUOTA_SECONDS_PER_TASK = 90
+
+
+def _soft_quota_exposures(
+    *,
+    settings: list[FamilyTaskSettings],
+    history: list[CompletedTask],
+    deadline_at: datetime | None,
+) -> int | None:
+    if deadline_at is None:
+        return None
+    counts = {item.family: 0 for item in settings}
+    for task in history:
+        if task.family in counts:
+            counts[task.family] += 1
+    missing = sum(
+        max(0, MIN_FAMILY_EXPOSURES - count)
+        for count in counts.values()
+    )
+    if missing == 0:
+        return MIN_FAMILY_EXPOSURES
+    remaining_seconds = (_as_utc(deadline_at) - utc_now()).total_seconds()
+    if remaining_seconds < missing * QUOTA_SECONDS_PER_TASK:
+        return None
+    return MIN_FAMILY_EXPOSURES
+
+
 def _adaptive_director_decision(
     *,
     environment_key: str = "chess_world",
@@ -929,6 +961,7 @@ def _adaptive_director_decision(
     settings: list[FamilyTaskSettings],
     history: list[CompletedTask],
     start_family: str | None,
+    min_family_exposures: int | None = None,
 ) -> DirectorDecision:
     enabled = {item.family for item in settings}
     decide = {
@@ -950,6 +983,7 @@ def _adaptive_director_decision(
         ],
         history=history,
         start_family=start_family if start_family in enabled else None,
+        min_family_exposures=min_family_exposures,
     )
 
 
@@ -1042,6 +1076,11 @@ def _create_or_get_current_task(
             settings=family_settings,
             history=director_history,
             start_family=start_family,
+            min_family_exposures=_soft_quota_exposures(
+                settings=family_settings,
+                history=director_history,
+                deadline_at=attempt.deadline_at,
+            ),
         )
         selected_family = next(
             item
@@ -2433,6 +2472,23 @@ def interact_with_task(
                 "interaction_id": interaction.id,
                 "client_action_id": payload.client_action_id,
                 "card_id": transition.normalized_input,
+                **transition.evaluation_state,
+            },
+        )
+    if (
+        payload.action_type == "hint"
+        and transition.accepted
+        and isinstance(transition.evaluation_state, dict)
+    ):
+        _append_event(
+            session,
+            attempt_id=attempt.id,
+            task_instance_id=task.id,
+            event_type="prompt_used",
+            payload={
+                "interaction_id": interaction.id,
+                "client_action_id": payload.client_action_id,
+                "family": task.family,
                 **transition.evaluation_state,
             },
         )

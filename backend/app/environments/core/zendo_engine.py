@@ -597,6 +597,10 @@ def evaluate_zendo_answer(
         * (1 + 0.05 * unused_probes)
     )
     exact = bool(valid and correct_count == len(expected))
+    hint_used = bool(private_state.get("hint_used"))
+    continuous_score = min(1.0, zendo_score)
+    if hint_used:
+        continuous_score *= HINT_SCORE_MULTIPLIER
     return {
         "correct": exact,
         "parsed": valid,
@@ -606,7 +610,8 @@ def evaluate_zendo_answer(
         "accuracy": accuracy,
         "unused_probes": unused_probes,
         "zendo_score": zendo_score,
-        "continuous_score": min(1.0, zendo_score),
+        "hint_used": hint_used,
+        "continuous_score": continuous_score,
         "efficient": exact and unused_probes > 0,
         "evidence": 1 if exact else -1,
     }
@@ -618,9 +623,93 @@ def entropy_bits(count: int) -> float:
     return math.log2(count) if count > 0 else 0.0
 
 
+# Fixed dictionary of graduated-prompt categories (stage C.2). Season one
+# treats /hint as a research metric only.
+HINT_SCORE_MULTIPLIER = 0.7
+HINT_CATEGORY_LABELS = {
+    "count": "правило про количество",
+    "symmetry": "правило про симметрию",
+    "neighbors": "правило про соседние элементы",
+    "color": "правило про цвет",
+    "arrangement": "правило про взаимное расположение",
+    "connectivity": "правило про связность и форму области",
+    "combination": "правило-комбинация двух условий",
+}
+
+
+def rule_hint_category(rule: Rule, atom_categories: dict[str, str]) -> str:
+    """Resolve the fixed hint-dictionary label for a hidden rule."""
+
+    def category_key(current: Rule) -> str:
+        if current.op == "atom":
+            if current.atom_key is None:
+                raise RuntimeError("Atom rule has no atom key")
+            return atom_categories[current.atom_key]
+        if current.op == "not":
+            return category_key(current.children[0])
+        return "combination"
+
+    return HINT_CATEGORY_LABELS[category_key(rule)]
+
+
+@dataclass(frozen=True)
+class ZendoHintTransition:
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    accepted: bool
+    reason: str
+    message: str
+    telemetry: dict[str, Any] | None
+
+
+def transition_zendo_hint(
+    *,
+    public_state: dict[str, Any],
+    private_state: dict[str, Any],
+    category: str,
+) -> ZendoHintTransition:
+    """Consume the single paid hint: category reveal at 0.7 score cost."""
+
+    from copy import deepcopy
+
+    next_public = deepcopy(public_state)
+    next_private = deepcopy(private_state)
+    if next_private.get("hint_used"):
+        return ZendoHintTransition(
+            next_public,
+            next_private,
+            False,
+            "hint_already_used",
+            "Подсказка уже использована в этой задаче.",
+            None,
+        )
+    next_private["hint_used"] = True
+    next_private["hint_category_used"] = category
+    next_public["hint"] = {"category": category}
+    return ZendoHintTransition(
+        public_state=next_public,
+        private_state=next_private,
+        accepted=True,
+        reason="accepted",
+        message=(
+            f"Подсказка: это {category}. "
+            f"Скор задачи будет умножен на {HINT_SCORE_MULTIPLIER}."
+        ),
+        telemetry={
+            "hint_category": category,
+            "score_multiplier": HINT_SCORE_MULTIPLIER,
+        },
+    )
+
+
 __all__ = [
     "EXAMPLE_NEGATIVE_COUNT",
     "EXAMPLE_POSITIVE_COUNT",
+    "HINT_CATEGORY_LABELS",
+    "HINT_SCORE_MULTIPLIER",
+    "ZendoHintTransition",
+    "rule_hint_category",
+    "transition_zendo_hint",
     "NEAR_MISS_TOGGLED_COUNT",
     "NEAR_MISS_UNCHANGED_COUNT",
     "PROBE_BUDGET",

@@ -788,6 +788,32 @@ function ParticipantContestScreen({
     });
   }
 
+  async function hintTask(
+    clientActionId: string,
+  ): Promise<TaskMoveTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая задача уже закрыта.");
+    }
+    return runTaskAction(async () => {
+      const response = await api.interactWithTask(
+        task.id,
+        {
+          actionType: "hint",
+          clientActionId,
+        },
+        { token: session.token },
+      );
+      setTask(response.task);
+      return {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: response.completed,
+        message: response.message,
+      };
+    });
+  }
+
   async function applyOperationTask(
     opId: string,
     clientActionId: string,
@@ -1012,6 +1038,7 @@ function ParticipantContestScreen({
           onSkip={skipTask}
           onNext={nextTask}
           onProbe={probeTask}
+          onHint={hintTask}
           onApplyOperation={applyOperationTask}
           onUndo={undoMachineTask}
           onTelemetry={recordTelemetry}

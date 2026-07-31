@@ -35,6 +35,14 @@ EXAM_CHORD_COUNT = 3
 REACH_VARIANT = "reach_target"
 PREDICT_VARIANT = "predict_chords"
 
+# Fixed hint dictionary for the wiring panel (stage C.2): a structural
+# category of the hidden matrix, recorded in private at generation time.
+HINT_SCORE_MULTIPLIER = 0.7
+WIRING_HINT_CATEGORIES = {
+    "sparse_wiring": "каждая кнопка переключает не больше двух ламп",
+    "dense_wiring": "есть кнопка, переключающая три и более ламп",
+}
+
 
 def _chord_id(first: int, second: int) -> str:
     return f"b{first + 1}+b{second + 1}"
@@ -272,11 +280,17 @@ def generate_hidden_wiring_task(
                 for chord in exam_chords
             ]
 
+        hint_key = (
+            "dense_wiring"
+            if any(column.bit_count() >= 3 for column in columns)
+            else "sparse_wiring"
+        )
         private: dict[str, Any] = {
             "family": FAMILY_KEY,
             "generator_version": GENERATOR_VERSION,
             "difficulty": difficulty,
             "variant": variant,
+            "hint_category": WIRING_HINT_CATEGORIES[hint_key],
             "lamp_count": lamp_count,
             "button_count": button_count,
             "columns": columns,
@@ -440,6 +454,8 @@ def transition_hidden_wiring_chord(
         completed = True
         min_len = max(1, int(next_private.get("min_len") or 1))
         used_total = int(next_private["chords_used"])
+        hint_used = bool(next_private.get("hint_used"))
+        raw_score = min(1.0, 0.6 + 0.4 * min_len / used_total)
         evaluation = {
             **telemetry,
             "correct": True,
@@ -447,7 +463,10 @@ def transition_hidden_wiring_chord(
             "chords_used": used_total,
             "min_len": min_len,
             "len_ratio": used_total / min_len,
-            "continuous_score": min(1.0, 0.6 + 0.4 * min_len / used_total),
+            "hint_used": hint_used,
+            "continuous_score": (
+                raw_score * HINT_SCORE_MULTIPLIER if hint_used else raw_score
+            ),
             "efficient": used_total <= min_len,
             "evidence": 1 if used_total <= min_len + 1 else 0,
         }
@@ -551,6 +570,8 @@ def evaluate_hidden_wiring_answer(
     )
     accuracy = correct_bits / total_bits
     exact = correct_bits == total_bits
+    hint_used = bool(private_state.get("hint_used"))
+    raw_score = max(0.0, accuracy - 0.5) * 2
     return {
         **base,
         "correct": exact,
@@ -563,7 +584,10 @@ def evaluate_hidden_wiring_answer(
         "correct_bits": correct_bits,
         "total_bits": total_bits,
         "unused_chords": unused,
-        "continuous_score": max(0.0, accuracy - 0.5) * 2,
+        "hint_used": hint_used,
+        "continuous_score": (
+            raw_score * HINT_SCORE_MULTIPLIER if hint_used else raw_score
+        ),
         "efficient": exact and unused > 0,
         "evidence": 1 if exact else -1,
     }

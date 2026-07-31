@@ -3,6 +3,7 @@ from .grid import (
     GENERATOR_VERSION as GRID_ZENDO_GENERATOR_VERSION,
     evaluate_grid_zendo_answer,
     generate_grid_zendo_task,
+    transition_grid_zendo_hint,
     transition_grid_zendo_probe,
 )
 from .point import (
@@ -10,6 +11,7 @@ from .point import (
     GENERATOR_VERSION as POINT_ZENDO_GENERATOR_VERSION,
     evaluate_point_zendo_answer,
     generate_point_zendo_task,
+    transition_point_zendo_hint,
     transition_point_zendo_probe,
 )
 from .token import (
@@ -17,6 +19,7 @@ from .token import (
     GENERATOR_VERSION as TOKEN_ZENDO_GENERATOR_VERSION,
     evaluate_token_zendo_answer,
     generate_token_zendo_task,
+    transition_token_zendo_hint,
     transition_token_zendo_probe,
 )
 
@@ -33,7 +36,10 @@ __all__ = [
     "generate_grid_zendo_task",
     "generate_point_zendo_task",
     "generate_token_zendo_task",
+    "transition_grid_zendo_hint",
     "transition_grid_zendo_probe",
+    "transition_point_zendo_hint",
     "transition_point_zendo_probe",
+    "transition_token_zendo_hint",
     "transition_token_zendo_probe",
 ]

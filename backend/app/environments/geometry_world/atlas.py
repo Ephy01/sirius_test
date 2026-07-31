@@ -716,12 +716,17 @@ def evaluate_geo_zendo_answer(
     parsed = _parse_boolean_sequence(answer)
     expected = [bool(value) for value in private_state["target_answers"]]
     valid_length = parsed is not None and len(parsed) == len(expected)
-    return {
-        "correct": bool(valid_length and parsed == expected),
+    correct = bool(valid_length and parsed == expected)
+    evaluation = {
+        "correct": correct,
         "parsed": valid_length,
         "submitted_sequence": parsed if valid_length else None,
         "target_count": len(expected),
     }
+    if private_state.get("hint_used"):
+        evaluation["hint_used"] = True
+        evaluation["continuous_score"] = 0.7 if correct else 0.0
+    return evaluation
 
 
 def _transform_keys_for_difficulty(difficulty: int) -> tuple[str, ...]:

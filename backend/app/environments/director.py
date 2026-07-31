@@ -209,6 +209,7 @@ def decide_next_task(
     history: Sequence[CompletedTask],
     start_family: str | None = None,
     version: str = DIRECTOR_VERSION,
+    min_family_exposures: int | None = None,
 ) -> DirectorDecision:
     """Choose the next task from completed-task history.
 
@@ -218,6 +219,12 @@ def decide_next_task(
     2. a failed or skipped task receives at most one immediate remediation;
     3. every enabled family receives a seeded calibration task;
     4. later tasks follow weighted coverage debt.
+
+    ``min_family_exposures`` is the learning-slope soft quota: while any
+    active family has fewer exposures, rotation prefers those families
+    (still ordered by coverage debt). The caller enables it only when the
+    attempt has enough remaining time, so it is an operational signal —
+    like remediation — rather than part of the versioned route identity.
     """
 
     active = _active_settings(families)
@@ -339,6 +346,16 @@ def decide_next_task(
             and family == latest.family
         )
     ]
+    quota_applied = False
+    if min_family_exposures is not None and min_family_exposures > 0:
+        under_quota = [
+            family
+            for family in route_candidates
+            if counts[family] < min_family_exposures
+        ]
+        if under_quota and len(under_quota) < len(route_candidates):
+            route_candidates = under_quota
+            quota_applied = True
     selected_family = min(
         route_candidates,
         key=lambda family: (
@@ -360,6 +377,8 @@ def decide_next_task(
         reason=(
             "remediation_cap_weighted_rotation"
             if capped_remediation
+            else "soft_exposure_quota"
+            if quota_applied
             else "weighted_coverage_debt"
         ),
         parent_task_id=_latest_parent(relevant_history, selected_family),

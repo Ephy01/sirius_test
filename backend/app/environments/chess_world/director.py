@@ -20,6 +20,7 @@ def decide_next_task(
     families: Sequence[FamilySettings],
     history: Sequence[CompletedTask],
     start_family: str | None = None,
+    min_family_exposures: int | None = None,
 ) -> DirectorDecision:
     """Compatibility shim for contests pinned to the Chess World v1 route."""
 
@@ -29,6 +30,7 @@ def decide_next_task(
         history=history,
         start_family=start_family,
         version=DIRECTOR_VERSION,
+        min_family_exposures=min_family_exposures,
     )
     return replace(decision, version=DIRECTOR_VERSION)
 

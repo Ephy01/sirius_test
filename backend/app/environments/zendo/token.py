@@ -17,7 +17,9 @@ from ..core.zendo_engine import (
     PROBE_BUDGET,
     evaluate_zendo_answer,
     get_universe_space,
+    rule_hint_category,
     select_material,
+    transition_zendo_hint,
     transition_zendo_probe,
 )
 
@@ -101,6 +103,19 @@ TOKEN_ATOMS: tuple[Atom, ...] = (
     Atom("adjacent_coprime", 4, _adjacent_coprime),
     Atom("exactly_two_colors", 4, _exactly_two_colors),
 )
+
+
+ATOM_HINT_CATEGORIES = {
+    "odd_count_even": "count",
+    "sum_divisible_by_3": "count",
+    "sum_of_squares_divisible_by_4": "count",
+    "max_minus_min_equals_length": "count",
+    "palindrome": "symmetry",
+    "adjacent_coprime": "neighbors",
+    "all_same_color": "color",
+    "has_red": "color",
+    "exactly_two_colors": "color",
+}
 
 
 def token_key(sequence: TokenSequence) -> Hashable:
@@ -323,8 +338,24 @@ def generate_token_zendo_task(
             card_id for card_id, _sequence in target_cards
         ],
         "target_answers": material.target_answers,
+        "hint_category": rule_hint_category(
+            space.rules[material.rule_index],
+            ATOM_HINT_CATEGORIES,
+        ),
     }
     return public, private
+
+
+def transition_token_zendo_hint(
+    *,
+    public_state: dict[str, Any],
+    private_state: dict[str, Any],
+):
+    return transition_zendo_hint(
+        public_state=public_state,
+        private_state=private_state,
+        category=str(private_state["hint_category"]),
+    )
 
 
 def transition_token_zendo_probe(
@@ -363,5 +394,6 @@ __all__ = [
     "evaluate_token_zendo_answer",
     "generate_token_zendo_task",
     "token_mutations",
+    "transition_token_zendo_hint",
     "transition_token_zendo_probe",
 ]

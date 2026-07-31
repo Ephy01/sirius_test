@@ -18,7 +18,9 @@ from ..core.zendo_engine import (
     PROBE_BUDGET,
     evaluate_zendo_answer,
     get_universe_space,
+    rule_hint_category,
     select_material,
+    transition_zendo_hint,
     transition_zendo_probe,
 )
 
@@ -169,6 +171,16 @@ POINT_ATOMS: tuple[Atom, ...] = (
     Atom("four_parallelogram", 4, _four_parallelogram),
     Atom("four_concyclic", 4, _four_concyclic),
 )
+
+
+ATOM_HINT_CATEGORIES = {
+    "three_collinear": "arrangement",
+    "convex_position": "arrangement",
+    "distances_distinct": "arrangement",
+    "central_symmetry": "symmetry",
+    "four_parallelogram": "arrangement",
+    "four_concyclic": "arrangement",
+}
 
 
 def point_key(config: PointConfig) -> Hashable:
@@ -534,8 +546,24 @@ def generate_point_zendo_task(
             card_id for card_id, _config in target_cards
         ],
         "target_answers": material.target_answers,
+        "hint_category": rule_hint_category(
+            space.rules[material.rule_index],
+            ATOM_HINT_CATEGORIES,
+        ),
     }
     return public, private
+
+
+def transition_point_zendo_hint(
+    *,
+    public_state: dict[str, Any],
+    private_state: dict[str, Any],
+):
+    return transition_zendo_hint(
+        public_state=public_state,
+        private_state=private_state,
+        category=str(private_state["hint_category"]),
+    )
 
 
 def transition_point_zendo_probe(
@@ -578,5 +606,6 @@ __all__ = [
     "generate_point_zendo_task",
     "point_mutations",
     "sampler_build_log",
+    "transition_point_zendo_hint",
     "transition_point_zendo_probe",
 ]

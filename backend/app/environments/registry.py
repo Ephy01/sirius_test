@@ -38,8 +38,10 @@ from .geometry_world import (
 )
 from .geometry_world.zendo_v2 import (
     GENERATOR_VERSION as GEO_ZENDO_GENERATOR_VERSION,
+    GRAPH_ATOM_HINT_CATEGORIES,
     evaluate_geo_zendo_v2_answer,
     generate_geo_zendo_v2_task,
+    transition_geo_zendo_v2_hint,
     transition_geo_zendo_v2_probe,
 )
 from .machines import (
@@ -73,6 +75,7 @@ from .zendo import (
     GRID_ZENDO_GENERATOR_VERSION,
     evaluate_grid_zendo_answer,
     generate_grid_zendo_task,
+    transition_grid_zendo_hint,
     transition_grid_zendo_probe,
 )
 from .zendo import (
@@ -84,7 +87,9 @@ from .zendo import (
     evaluate_token_zendo_answer,
     generate_point_zendo_task,
     generate_token_zendo_task,
+    transition_point_zendo_hint,
     transition_point_zendo_probe,
+    transition_token_zendo_hint,
     transition_token_zendo_probe,
 )
 
@@ -467,6 +472,15 @@ def interact_task(
     public_state: dict[str, Any],
     private_state: dict[str, Any],
 ) -> InteractionTransition:
+    if action_type == "hint":
+        hint_transition = _hint_transition(
+            family=family,
+            generator_version=generator_version,
+            public_state=public_state,
+            private_state=private_state,
+        )
+        if hint_transition is not None:
+            return hint_transition
     if (
         family == GEO_ZENDO_FAMILY
         and generator_version == GEO_ZENDO_GENERATOR_VERSION
@@ -645,4 +659,71 @@ def interact_task(
     raise ValueError(
         "Unsupported task interaction: "
         f"family={family!r}, version={generator_version!r}, action={action_type!r}"
+    )
+
+def _hint_transition(
+    *,
+    family: str,
+    generator_version: str,
+    public_state: dict[str, Any],
+    private_state: dict[str, Any],
+) -> InteractionTransition | None:
+    """Dispatch the paid /hint interaction for families that support it."""
+
+    if family == TOKEN_ZENDO_FAMILY and generator_version == TOKEN_ZENDO_GENERATOR_VERSION:
+        transition = transition_token_zendo_hint(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    elif family == POINT_ZENDO_FAMILY and generator_version == POINT_ZENDO_GENERATOR_VERSION:
+        transition = transition_point_zendo_hint(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    elif family == GRID_ZENDO_FAMILY and generator_version == GRID_ZENDO_GENERATOR_VERSION:
+        transition = transition_grid_zendo_hint(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    elif family == GEO_ZENDO_FAMILY and generator_version == GEO_ZENDO_GENERATOR_VERSION:
+        transition = transition_geo_zendo_v2_hint(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    elif family == GEO_ZENDO_FAMILY and generator_version == GEOMETRY_GENERATOR_VERSION:
+        from .core.zendo_engine import (
+            HINT_CATEGORY_LABELS,
+            transition_zendo_hint,
+        )
+
+        category = HINT_CATEGORY_LABELS[
+            GRAPH_ATOM_HINT_CATEGORIES[str(private_state["rule_key"])]
+        ]
+        transition = transition_zendo_hint(
+            public_state=public_state,
+            private_state=private_state,
+            category=category,
+        )
+    elif (
+        family == HIDDEN_WIRING_FAMILY
+        and generator_version == HIDDEN_WIRING_GENERATOR_VERSION
+    ):
+        from .core.zendo_engine import transition_zendo_hint
+
+        transition = transition_zendo_hint(
+            public_state=public_state,
+            private_state=private_state,
+            category=str(private_state["hint_category"]),
+        )
+    else:
+        return None
+    return InteractionTransition(
+        public_state=transition.public_state,
+        private_state=transition.private_state,
+        accepted=transition.accepted,
+        completed=False,
+        reason=transition.reason,
+        message=transition.message,
+        normalized_input="hint",
+        evaluation_state=transition.telemetry,
     )

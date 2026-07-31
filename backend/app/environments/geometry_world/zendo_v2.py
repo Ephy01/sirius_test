@@ -14,14 +14,37 @@ from ..core.zendo_engine import (
     PROBE_CARD_COUNT,
     TARGET_COUNT,
     evaluate_zendo_answer,
+    rule_hint_category,
     select_material,
+    transition_zendo_hint,
     transition_zendo_probe,
     transpose_truth_masks,
 )
+
 from .atlas import GEO_ZENDO_FAMILY, _public_state, _scene
 from .universe import graph_key, graph_mutations, serialize_graph
 
 GENERATOR_VERSION = "geometry-zendo-v2"
+
+# Hint categories for the frozen graph DSL. The category is derived from
+# ``rule_index`` on demand: geometry-zendo-v2 private payloads are locked
+# byte-for-byte by the golden fixture, so nothing new is stored there.
+GRAPH_ATOM_HINT_CATEGORIES = {
+    "vertex_count_even": "count",
+    "edge_count_even": "count",
+    "edges_at_least_vertices": "count",
+    "density_at_least_half": "count",
+    "all_degrees_even": "count",
+    "exactly_two_odd_degrees": "count",
+    "max_degree_at_least_three": "count",
+    "has_isolated_vertex": "connectivity",
+    "has_leaf": "connectivity",
+    "connected": "connectivity",
+    "has_triangle": "connectivity",
+    "has_cycle": "connectivity",
+    "bipartite": "connectivity",
+    "has_crossing": "arrangement",
+}
 
 
 @dataclass(frozen=True)
@@ -167,6 +190,23 @@ def _universe_graph_truth_masks(dsl_version: str) -> tuple[int, ...]:
     return transpose_truth_masks(space.truth_masks, len(space.universe))
 
 
+def transition_geo_zendo_v2_hint(
+    *,
+    public_state: dict[str, Any],
+    private_state: dict[str, Any],
+):
+    space = get_rule_space(str(private_state["dsl_version"]))
+    category = rule_hint_category(
+        space.rules[int(private_state["rule_index"])],
+        GRAPH_ATOM_HINT_CATEGORIES,
+    )
+    return transition_zendo_hint(
+        public_state=public_state,
+        private_state=private_state,
+        category=category,
+    )
+
+
 def transition_geo_zendo_v2_probe(
     *,
     card_id: str,
@@ -207,5 +247,6 @@ __all__ = [
     "ZendoV2ProbeTransition",
     "evaluate_geo_zendo_v2_answer",
     "generate_geo_zendo_v2_task",
+    "transition_geo_zendo_v2_hint",
     "transition_geo_zendo_v2_probe",
 ]
