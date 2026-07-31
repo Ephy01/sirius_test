@@ -13,6 +13,7 @@ from .rule_dsl import (
     MAX_BASE_RATE,
     MIN_BASE_RATE,
     Rule,
+    clear_graph_features_cache,
     compile_truth_masks,
     distill_rules,
     enumerate_rules,
@@ -224,6 +225,7 @@ def clear_rule_space_cache() -> None:
 
     with _CACHE_LOCK:
         _CACHE.clear()
+    clear_graph_features_cache()
 
 
 __all__ = [

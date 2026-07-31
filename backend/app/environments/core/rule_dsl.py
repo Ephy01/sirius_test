@@ -16,12 +16,33 @@ import itertools
 import math
 from collections import deque
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Callable, Iterable, Mapping, Sequence
 
 from ..geometry_world.atlas import MiniGraph
 
 MIN_BASE_RATE = 0.12
 MAX_BASE_RATE = 0.88
+
+
+@dataclass(frozen=True, slots=True)
+class GraphFeatures:
+    """Once-per-graph bundle of everything the atom predicates consume.
+
+    Every atom used to rebuild the adjacency structure on each call, which
+    dominated warm generation profiles. ``MiniGraph`` is frozen and
+    hashable, so the bundle is memoized per graph instead.
+    """
+
+    adjacency: tuple[frozenset[int], ...]
+    degrees: tuple[int, ...]
+    odd_degree_count: int
+    max_degree: int
+    connected: bool
+    has_cycle: bool
+    has_triangle: bool
+    bipartite: bool
+    has_crossing: bool
 
 
 def _adjacency(graph: MiniGraph) -> tuple[frozenset[int], ...]:
@@ -33,30 +54,24 @@ def _adjacency(graph: MiniGraph) -> tuple[frozenset[int], ...]:
     return tuple(frozenset(items) for items in neighbors)
 
 
-def _vertex_count_even(graph: MiniGraph) -> bool:
-    return len(graph.points) % 2 == 0
-
-
-def _edge_count_even(graph: MiniGraph) -> bool:
-    return len(graph.edges) % 2 == 0
-
-
-def _is_connected(graph: MiniGraph) -> bool:
+def _compute_connected(
+    graph: MiniGraph,
+    adjacency: tuple[frozenset[int], ...],
+) -> bool:
     if not graph.points:
         return False
-    neighbors = _adjacency(graph)
     reached = {0}
     queue: deque[int] = deque([0])
     while queue:
         current = queue.popleft()
-        for neighbor in neighbors[current]:
+        for neighbor in adjacency[current]:
             if neighbor not in reached:
                 reached.add(neighbor)
                 queue.append(neighbor)
     return len(reached) == len(graph.points)
 
 
-def _has_triangle(graph: MiniGraph) -> bool:
+def _compute_has_triangle(graph: MiniGraph) -> bool:
     edge_set = set(graph.edges)
     return any(
         {
@@ -69,13 +84,15 @@ def _has_triangle(graph: MiniGraph) -> bool:
     )
 
 
-def _has_cycle(graph: MiniGraph) -> bool:
-    neighbors = _adjacency(graph)
+def _compute_has_cycle(
+    graph: MiniGraph,
+    adjacency: tuple[frozenset[int], ...],
+) -> bool:
     seen: set[int] = set()
 
     def visit(current: int, parent: int) -> bool:
         seen.add(current)
-        for neighbor in neighbors[current]:
+        for neighbor in adjacency[current]:
             if neighbor == parent:
                 continue
             if neighbor in seen or visit(neighbor, current):
@@ -89,31 +106,10 @@ def _has_cycle(graph: MiniGraph) -> bool:
     )
 
 
-def _has_isolated_vertex(graph: MiniGraph) -> bool:
-    return any(not neighbors for neighbors in _adjacency(graph))
-
-
-def _has_leaf(graph: MiniGraph) -> bool:
-    return any(len(neighbors) == 1 for neighbors in _adjacency(graph))
-
-
-def _max_degree_at_least_three(graph: MiniGraph) -> bool:
-    return any(len(neighbors) >= 3 for neighbors in _adjacency(graph))
-
-
-def _all_degrees_even(graph: MiniGraph) -> bool:
-    return all(len(neighbors) % 2 == 0 for neighbors in _adjacency(graph))
-
-
-def _exactly_two_odd_degrees(graph: MiniGraph) -> bool:
-    return (
-        sum(len(neighbors) % 2 == 1 for neighbors in _adjacency(graph))
-        == 2
-    )
-
-
-def _is_bipartite(graph: MiniGraph) -> bool:
-    neighbors = _adjacency(graph)
+def _compute_bipartite(
+    graph: MiniGraph,
+    adjacency: tuple[frozenset[int], ...],
+) -> bool:
     sides: dict[int, bool] = {}
     for start in range(len(graph.points)):
         if start in sides:
@@ -122,7 +118,7 @@ def _is_bipartite(graph: MiniGraph) -> bool:
         queue: deque[int] = deque([start])
         while queue:
             current = queue.popleft()
-            for neighbor in neighbors[current]:
+            for neighbor in adjacency[current]:
                 if neighbor not in sides:
                     sides[neighbor] = not sides[current]
                     queue.append(neighbor)
@@ -162,7 +158,7 @@ def _properly_cross(
     )
 
 
-def _has_crossing(graph: MiniGraph) -> bool:
+def _compute_has_crossing(graph: MiniGraph) -> bool:
     for first_edge, second_edge in itertools.combinations(graph.edges, 2):
         if set(first_edge) & set(second_edge):
             continue
@@ -174,6 +170,79 @@ def _has_crossing(graph: MiniGraph) -> bool:
         ):
             return True
     return False
+
+
+@lru_cache(maxsize=65536)
+def graph_features(graph: MiniGraph) -> GraphFeatures:
+    """Compute adjacency, degrees, connectivity and shape flags exactly once."""
+
+    adjacency = _adjacency(graph)
+    degrees = tuple(len(neighbors) for neighbors in adjacency)
+    return GraphFeatures(
+        adjacency=adjacency,
+        degrees=degrees,
+        odd_degree_count=sum(degree % 2 == 1 for degree in degrees),
+        max_degree=max(degrees, default=0),
+        connected=_compute_connected(graph, adjacency),
+        has_cycle=_compute_has_cycle(graph, adjacency),
+        has_triangle=_compute_has_triangle(graph),
+        bipartite=_compute_bipartite(graph, adjacency),
+        has_crossing=_compute_has_crossing(graph),
+    )
+
+
+def clear_graph_features_cache() -> None:
+    """Reset the memoized per-graph feature bundles (for cold benchmarks)."""
+
+    graph_features.cache_clear()
+
+
+def _vertex_count_even(graph: MiniGraph) -> bool:
+    return len(graph.points) % 2 == 0
+
+
+def _edge_count_even(graph: MiniGraph) -> bool:
+    return len(graph.edges) % 2 == 0
+
+
+def _is_connected(graph: MiniGraph) -> bool:
+    return graph_features(graph).connected
+
+
+def _has_triangle(graph: MiniGraph) -> bool:
+    return graph_features(graph).has_triangle
+
+
+def _has_cycle(graph: MiniGraph) -> bool:
+    return graph_features(graph).has_cycle
+
+
+def _has_isolated_vertex(graph: MiniGraph) -> bool:
+    return 0 in graph_features(graph).degrees
+
+
+def _has_leaf(graph: MiniGraph) -> bool:
+    return 1 in graph_features(graph).degrees
+
+
+def _max_degree_at_least_three(graph: MiniGraph) -> bool:
+    return graph_features(graph).max_degree >= 3
+
+
+def _all_degrees_even(graph: MiniGraph) -> bool:
+    return graph_features(graph).odd_degree_count == 0
+
+
+def _exactly_two_odd_degrees(graph: MiniGraph) -> bool:
+    return graph_features(graph).odd_degree_count == 2
+
+
+def _is_bipartite(graph: MiniGraph) -> bool:
+    return graph_features(graph).bipartite
+
+
+def _has_crossing(graph: MiniGraph) -> bool:
+    return graph_features(graph).has_crossing
 
 
 def _edges_at_least_vertices(graph: MiniGraph) -> bool:
@@ -573,13 +642,16 @@ __all__ = [
     "MAX_BASE_RATE",
     "MIN_BASE_RATE",
     "Atom",
+    "GraphFeatures",
     "ProbeChoice",
     "Rule",
     "actual_information_gain",
+    "clear_graph_features_cache",
     "compile_truth_masks",
     "distill_rules",
     "enumerate_rules",
     "filter_version_space",
+    "graph_features",
     "information_gain",
     "pick_probe_by_entropy",
     "rule_truth_mask",
