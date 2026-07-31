@@ -947,17 +947,23 @@ function ParticipantContestScreen({
         geometryContent:
           task.publicState.kind === "geometry_atlas" ||
           task.publicState.kind === "token_zendo" ||
-          task.publicState.kind === "point_zendo"
+          task.publicState.kind === "point_zendo" ||
+          task.publicState.kind === "grid_zendo"
             ? task.publicState.content
             : undefined,
         geometryInteraction:
           task.publicState.kind === "geometry_atlas" ||
           task.publicState.kind === "token_zendo" ||
-          task.publicState.kind === "point_zendo"
+          task.publicState.kind === "point_zendo" ||
+          task.publicState.kind === "grid_zendo"
             ? task.publicState.interaction
             : undefined,
         tokenCards:
           task.publicState.kind === "token_zendo"
+            ? task.publicState.cards
+            : undefined,
+        gridCards:
+          task.publicState.kind === "grid_zendo"
             ? task.publicState.cards
             : undefined,
         machinePanel:

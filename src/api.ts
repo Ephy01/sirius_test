@@ -321,6 +321,19 @@ export type TokenZendoPublicState = {
   worldContext?: WorldContext;
 };
 
+export type GridZendoPublicState = {
+  kind: "grid_zendo";
+  family: "grid_zendo";
+  variant: string;
+  prompt: string;
+  cards: Record<string, string[]>;
+  gridSize: number;
+  content: Record<string, unknown>;
+  interaction: Record<string, unknown>;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
 export type PointZendoPublicState = {
   kind: "point_zendo";
   family: "point_zendo";
@@ -394,6 +407,7 @@ export type TaskPublicState =
   | GeometryPublicState
   | TokenZendoPublicState
   | PointZendoPublicState
+  | GridZendoPublicState
   | MachinePanelPublicState
   | LeaperBoardPublicState;
 
@@ -1078,6 +1092,51 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       variant,
       prompt,
       scene,
+      content: isRecord(publicStateValue.content)
+        ? publicStateValue.content
+        : {},
+      interaction: isRecord(publicStateValue.interaction)
+        ? publicStateValue.interaction
+        : {},
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "grid_zendo") {
+    const cardsValue = publicStateValue.cards;
+    const variant = readString(publicStateValue, "variant");
+    const gridSize =
+      readNumber(publicStateValue, "gridSize", "grid_size") ?? 5;
+    const cards: Record<string, string[]> = {};
+    if (isRecord(cardsValue)) {
+      for (const [cardId, rows] of Object.entries(cardsValue)) {
+        if (
+          Array.isArray(rows) &&
+          rows.length === gridSize &&
+          rows.every(
+            (row) =>
+              typeof row === "string" &&
+              row.length === gridSize &&
+              [...row].every((cell) => cell === "0" || cell === "1"),
+          )
+        ) {
+          cards[cardId] = rows as string[];
+        }
+      }
+    }
+    if (!variant || Object.keys(cards).length === 0) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректные узоры grid_zendo.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      family: "grid_zendo",
+      variant,
+      prompt,
+      cards,
+      gridSize,
       content: isRecord(publicStateValue.content)
         ? publicStateValue.content
         : {},

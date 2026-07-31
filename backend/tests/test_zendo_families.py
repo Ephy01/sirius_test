@@ -20,6 +20,10 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.environments.core.zendo_engine import get_universe_space
+from app.environments.zendo.grid import (
+    GridUniverse,
+    generate_grid_zendo_task,
+)
 from app.environments.zendo.point import (
     PointUniverse,
     generate_point_zendo_task,
@@ -53,6 +57,12 @@ FAMILY_CASES = [
         PointUniverse(),
         generate_point_zendo_task,
         id="point_zendo",
+    ),
+    pytest.param(
+        "grid_zendo",
+        GridUniverse(),
+        generate_grid_zendo_task,
+        id="grid_zendo",
     ),
 ]
 
@@ -109,7 +119,8 @@ def test_zendo_family_is_deterministic_and_does_not_leak(
                 item["classification"] == "positive"
                 for item in content["examples"]
             ) == 2
-            assert len(content["probe_cards"]) == 12
+            if "probe_cards" in content:
+                assert len(content["probe_cards"]) == 12
             assert len(content["targets"]) == 8
             assert content["probes_remaining"] == 5
 
@@ -339,3 +350,162 @@ def test_point_sampler_records_build_metrics():
     assert "sampler_rejects" in log
     for atom_key, rate in log["atom_base_rates"].items():
         assert 0.12 <= rate <= 0.88, atom_key
+
+
+def test_grid_symmetry_literals_survive_distillation():
+    space = get_universe_space(GridUniverse())
+    literal_keys = {
+        rule.atom_key
+        for rule in space.rules
+        if rule.op == "atom" and rule.atom_key
+    }
+    # rotate_90 and rotate_270 share a truth mask, so exactly one of the
+    # pair represents C4 invariance after deduplication.
+    assert literal_keys & {"sym_rotate_90", "sym_rotate_270"}
+    assert {
+        "sym_rotate_180",
+        "sym_reflect_h",
+        "sym_reflect_v",
+        "sym_reflect_main",
+        "sym_reflect_anti",
+        "connected",
+        "domino_tileable",
+    } <= literal_keys
+
+
+def test_grid_zendo_api_drawn_probe_flow(tmp_path):
+    application = create_app(_settings(tmp_path / "grid-zendo-api.db"))
+    with TestClient(application) as client:
+        organizer = client.post(
+            "/api/v1/access/redeem",
+            json={"code": "ORBIT-ADMIN"},
+        ).json()["access_token"]
+        contest = client.post(
+            "/api/v1/contests",
+            headers=auth(organizer),
+            json={
+                "title": "Grid Zendo",
+                "task_config": {
+                    "families": [
+                        {
+                            "family": "grid_zendo",
+                            "weight": 1,
+                            "initial_difficulty": 2,
+                            "max_difficulty": 5,
+                        }
+                    ],
+                },
+            },
+        ).json()
+        client.post(
+            f"/api/v1/contests/{contest['id']}/enrollments",
+            headers=auth(organizer),
+            json={
+                "participants": [
+                    {"external_ref": "grid-001", "display_name": "Участник"}
+                ]
+            },
+        )
+        code = client.post(
+            f"/api/v1/contests/{contest['id']}/codes",
+            headers=auth(organizer),
+            json={},
+        ).json()["items"][0]["code"]
+        client.post(
+            f"/api/v1/contests/{contest['id']}/publish",
+            headers=auth(organizer),
+        )
+        participant = client.post(
+            "/api/v1/access/redeem",
+            json={"code": code},
+        ).json()["access_token"]
+
+        client.post(
+            "/api/v1/participant/attempts/start",
+            headers=auth(participant),
+        )
+        task = client.get(
+            "/api/v1/participant/tasks/current",
+            headers=auth(participant),
+        ).json()["task"]
+        assert task["family"] == "grid_zendo"
+        assert task["public_state"]["kind"] == "grid_zendo"
+        cards = task["public_state"]["cards"]
+        assert all(
+            len(rows) == 5 and all(len(row) == 5 for row in rows)
+            for rows in cards.values()
+        )
+        assert "probe_cards" not in task["public_state"]["content"]
+
+        invalid = client.post(
+            f"/api/v1/participant/tasks/{task['id']}/interactions",
+            headers=auth(participant),
+            json={
+                "client_action_id": "grid-probe-invalid",
+                "action_type": "probe",
+                "probe": "0101",
+            },
+        )
+        assert invalid.status_code == 200
+        assert invalid.json()["accepted"] is False
+
+        drawn = "1100000000000000000000000"
+        probed = client.post(
+            f"/api/v1/participant/tasks/{task['id']}/interactions",
+            headers=auth(participant),
+            json={
+                "client_action_id": "grid-probe-1",
+                "action_type": "probe",
+                "probe": drawn,
+            },
+        )
+        assert probed.status_code == 200
+        assert probed.json()["accepted"] is True
+        observations = probed.json()["task"]["public_state"]["content"][
+            "probe_observations"
+        ]
+        assert len(observations) == 1
+        assert observations[0]["pattern"] == [
+            "11000",
+            "00000",
+            "00000",
+            "00000",
+            "00000",
+        ]
+
+        with application.state.database.session_factory() as session:
+            from sqlalchemy import select
+
+            probe_events = list(
+                session.scalars(
+                    select(AttemptEvent).where(
+                        AttemptEvent.event_type == "zendo_probe"
+                    )
+                )
+            )
+            assert len(probe_events) == 1
+            payload = probe_events[0].payload
+            assert payload["gain_bits_actual"] >= 0.0
+            assert payload["gain_bits_best"] >= 0.0
+            assert payload["vs_size_before"] >= payload["vs_size_after"]
+
+            stored = session.get(TaskInstance, task["id"])
+            assert stored is not None
+            assert stored.private_state["probes_remaining"] == 4
+            answer = " ".join(
+                "да" if value else "нет"
+                for value in stored.private_state["target_answers"]
+            )
+
+        answered = client.post(
+            f"/api/v1/participant/tasks/{task['id']}/answer",
+            headers=auth(participant),
+            json={"answer": answer},
+        )
+        assert answered.status_code == 200
+        with application.state.database.session_factory() as session:
+            stored = session.get(TaskInstance, task["id"])
+            evaluation = stored.evaluation_state
+            assert evaluation["correct"] is True
+            assert evaluation["family"] == "grid_zendo"
+            assert evaluation["generator_version"] == "grid-zendo-v1"

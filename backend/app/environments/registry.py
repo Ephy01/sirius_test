@@ -51,6 +51,13 @@ from .machines import (
     transition_machine_action,
 )
 from .zendo import (
+    GRID_ZENDO_FAMILY,
+    GRID_ZENDO_GENERATOR_VERSION,
+    evaluate_grid_zendo_answer,
+    generate_grid_zendo_task,
+    transition_grid_zendo_probe,
+)
+from .zendo import (
     POINT_ZENDO_FAMILY,
     POINT_ZENDO_GENERATOR_VERSION,
     TOKEN_ZENDO_FAMILY,
@@ -69,6 +76,7 @@ IMPLEMENTED_FAMILIES = frozenset(
         MACHINE_REACH_FAMILY,
         TOKEN_ZENDO_FAMILY,
         POINT_ZENDO_FAMILY,
+        GRID_ZENDO_FAMILY,
         *GEOMETRY_FAMILIES,
     }
 )
@@ -78,6 +86,7 @@ INTERACTIVE_FAMILIES = frozenset(
         MACHINE_REACH_FAMILY,
         TOKEN_ZENDO_FAMILY,
         POINT_ZENDO_FAMILY,
+        GRID_ZENDO_FAMILY,
     }
 )
 GENERATOR_VERSIONS = {
@@ -85,6 +94,7 @@ GENERATOR_VERSIONS = {
     MACHINE_REACH_FAMILY: MACHINE_REACH_GENERATOR_VERSION,
     TOKEN_ZENDO_FAMILY: TOKEN_ZENDO_GENERATOR_VERSION,
     POINT_ZENDO_FAMILY: POINT_ZENDO_GENERATOR_VERSION,
+    GRID_ZENDO_FAMILY: GRID_ZENDO_GENERATOR_VERSION,
     **{
         family: (
             GEO_ZENDO_GENERATOR_VERSION
@@ -252,6 +262,18 @@ def generate_task(
             public_state=public_state,
             private_state=private_state,
         )
+    if (
+        family == GRID_ZENDO_FAMILY
+        and generator_version == GRID_ZENDO_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_grid_zendo_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         public_state, private_state = generate_geometry_atlas_task(
             family=family,
@@ -329,6 +351,14 @@ def evaluate_task(
         and generator_version == POINT_ZENDO_GENERATOR_VERSION
     ):
         return evaluate_point_zendo_answer(
+            answer=answer,
+            private_state=private_state,
+        )
+    if (
+        family == GRID_ZENDO_FAMILY
+        and generator_version == GRID_ZENDO_GENERATOR_VERSION
+    ):
+        return evaluate_grid_zendo_answer(
             answer=answer,
             private_state=private_state,
         )
@@ -420,6 +450,29 @@ def interact_task(
             message=transition.message,
             normalized_input=transition.normalized_card_id,
             evaluation_state=transition.telemetry,
+        )
+    if (
+        family == GRID_ZENDO_FAMILY
+        and generator_version == GRID_ZENDO_GENERATOR_VERSION
+        and action_type == "probe"
+    ):
+        probe = action_payload.get("probe")
+        if not isinstance(probe, str):
+            raise ValueError("Grid probe payload must contain a string pattern")
+        grid_transition = transition_grid_zendo_probe(
+            pattern=probe,
+            public_state=public_state,
+            private_state=private_state,
+        )
+        return InteractionTransition(
+            public_state=grid_transition.public_state,
+            private_state=grid_transition.private_state,
+            accepted=grid_transition.accepted,
+            completed=False,
+            reason=grid_transition.reason,
+            message=grid_transition.message,
+            normalized_input=grid_transition.normalized_pattern,
+            evaluation_state=grid_transition.telemetry,
         )
     if (
         family == GEO_ZENDO_FAMILY

@@ -2690,3 +2690,100 @@
   font-size: 8px;
   line-height: 1.5;
 }
+
+.grid-zendo {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  justify-self: stretch;
+}
+
+.grid-zendo__cards,
+.grid-zendo__observations {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.grid-zendo__observations {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #d5dcdd;
+}
+
+.grid-card {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #d5dcdd;
+  background: #fff;
+}
+
+.grid-card > header {
+  margin-bottom: 6px;
+  color: #5f686b;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.grid-pattern {
+  display: grid;
+  gap: 2px;
+  aspect-ratio: 1;
+}
+
+.grid-pattern i,
+.grid-pattern button {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid #d9dfe0;
+  background: #f8faf9;
+}
+
+.grid-pattern i.is-filled,
+.grid-pattern button.is-filled {
+  border-color: #387f8b;
+  background: #4bbecf;
+}
+
+.grid-pattern--editable button {
+  cursor: pointer;
+}
+
+.grid-pattern--editable button:hover {
+  border-color: #006b80;
+}
+
+.grid-card--draw {
+  border-style: dashed;
+}
+
+.grid-card__probe {
+  width: 100%;
+  margin-top: 7px;
+  padding: 6px 8px;
+  border: 1px solid #006b80;
+  background: #e6f4f6;
+  color: #006b80;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.grid-card__probe:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.grid-zendo figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  color: #6f7678;
+  font-size: 8px;
+  line-height: 1.5;
+}

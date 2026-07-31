@@ -97,6 +97,7 @@ export type ParticipantTask = {
   geometryContent?: Record<string, unknown>;
   geometryInteraction?: Record<string, unknown>;
   tokenCards?: Record<string, TokenCard[]>;
+  gridCards?: Record<string, string[]>;
   machinePanel?: MachinePanelPublicState;
   leaperBoard?: LeaperBoardPublicState;
   responseHint?: string;
@@ -440,7 +441,8 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
   if (
     task.kind === "geometry_atlas" ||
     task.kind === "token_zendo" ||
-    task.kind === "point_zendo"
+    task.kind === "point_zendo" ||
+    task.kind === "grid_zendo"
   ) {
     return [
       {
@@ -458,7 +460,12 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
         id: 2,
         author: "system",
         content:
-          task.family === "geo_zendo" ||
+          task.kind === "grid_zendo" ? (
+            <>
+              Нарисуйте узор на пустой сетке и проверьте его кнопкой или
+              командой <code>/test</code>, затем отправьте итоговый ответ.
+            </>
+          ) : task.family === "geo_zendo" ||
           task.kind === "token_zendo" ||
           task.kind === "point_zendo" ? (
             <>
@@ -551,7 +558,8 @@ export function ParticipantWorkspace({
   const isZendo =
     (isGeometry && task.family === "geo_zendo") ||
     task.kind === "token_zendo" ||
-    task.kind === "point_zendo";
+    task.kind === "point_zendo" ||
+    task.kind === "grid_zendo";
   const isMachine =
     task.kind === "machine_panel" ||
     (task.kind === "chess" && task.family === "machine_reach");
@@ -1163,6 +1171,13 @@ export function ParticipantWorkspace({
               cards={task.tokenCards}
               content={task.geometryContent ?? {}}
             />
+          ) : task.gridCards ? (
+            <GridZendoScene
+              cards={task.gridCards}
+              content={task.geometryContent ?? {}}
+              canProbe={task.status === "active" && !isBusy}
+              onProbe={(pattern) => void runCommand(`/test ${pattern}`)}
+            />
           ) : task.geometryScene ? (
             <GeometryAtlasScene
               scene={task.geometryScene}
@@ -1516,6 +1531,134 @@ function TokenShelfScene({
           <span>Проверок у оракула осталось: {remaining}</span>
         )}
         <span>Цвет и число каждой фишки видны на полке</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+
+function GridPatternPreview({ rows }: { rows: readonly string[] }) {
+  return (
+    <div
+      className="grid-pattern"
+      style={{ gridTemplateColumns: `repeat(${rows[0]?.length ?? 5}, 1fr)` }}
+      aria-hidden="true"
+    >
+      {rows.flatMap((row, rowIndex) =>
+        [...row].map((cell, columnIndex) => (
+          <i
+            className={cell === "1" ? "is-filled" : ""}
+            key={`${rowIndex}-${columnIndex}`}
+          />
+        )),
+      )}
+    </div>
+  );
+}
+
+function GridZendoScene({
+  cards,
+  content,
+  canProbe,
+  onProbe,
+}: {
+  cards: Record<string, string[]>;
+  content: Record<string, unknown>;
+  canProbe: boolean;
+  onProbe: (pattern: string) => void;
+}) {
+  const size = Object.values(cards)[0]?.length ?? 5;
+  const [drawn, setDrawn] = useState<boolean[]>(() =>
+    Array(size * size).fill(false),
+  );
+  const remaining =
+    typeof content.probes_remaining === "number"
+      ? content.probes_remaining
+      : undefined;
+  const observations = Array.isArray(content.probe_observations)
+    ? content.probe_observations
+    : [];
+  const drawnPattern = drawn
+    .map((cell) => (cell ? "1" : "0"))
+    .join("");
+
+  return (
+    <figure className="grid-zendo" aria-label="Узоры на сетке">
+      <div className="grid-zendo__cards">
+        {Object.entries(cards).map(([cardId, rows]) => (
+          <section className="grid-card" key={cardId}>
+            <header>{geometryGroupLabel(cardId, content)}</header>
+            <GridPatternPreview rows={rows} />
+          </section>
+        ))}
+        <section className="grid-card grid-card--draw">
+          <header>Свой узор</header>
+          <div
+            className="grid-pattern grid-pattern--editable"
+            style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
+            role="group"
+            aria-label="Рисование узора для проверки"
+          >
+            {drawn.map((cell, index) => (
+              <button
+                type="button"
+                className={cell ? "is-filled" : ""}
+                aria-pressed={cell}
+                aria-label={`Клетка ${Math.floor(index / size) + 1}-${
+                  (index % size) + 1
+                }`}
+                onClick={() =>
+                  setDrawn((current) =>
+                    current.map((value, cellIndex) =>
+                      cellIndex === index ? !value : value,
+                    ),
+                  )
+                }
+                key={index}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            className="grid-card__probe"
+            disabled={!canProbe}
+            onClick={() => onProbe(drawnPattern)}
+          >
+            Проверить узор
+          </button>
+        </section>
+      </div>
+      {observations.length > 0 && (
+        <div className="grid-zendo__observations">
+          {observations.flatMap((item, index) => {
+            if (
+              typeof item !== "object" ||
+              item === null ||
+              !("pattern" in item) ||
+              !Array.isArray(item.pattern)
+            ) {
+              return [];
+            }
+            return [
+              <section className="grid-card" key={index}>
+                <header>
+                  Проба {index + 1}:{" "}
+                  {"classification" in item &&
+                  item.classification === "positive"
+                    ? "подходит"
+                    : "не подходит"}
+                </header>
+                <GridPatternPreview rows={item.pattern as string[]} />
+              </section>,
+            ];
+          })}
+        </div>
+      )}
+      <figcaption>
+        {remaining !== undefined && (
+          <span>Проверок у оракула осталось: {remaining}</span>
+        )}
+        <span>Закрашивайте клетки кликом, узор уходит оракулу целиком</span>
       </figcaption>
     </figure>
   );
