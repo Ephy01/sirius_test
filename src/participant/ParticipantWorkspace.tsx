@@ -1,4 +1,5 @@
 import {
+  type ClipboardEvent,
   type FormEvent,
   type ReactNode,
   useEffect,
@@ -131,8 +132,30 @@ export type TaskMoveTransitionResult = TaskTransitionResult & {
   completed: boolean;
 };
 
+export type ParticipantTelemetryEventType =
+  | "client_task_viewed"
+  | "client_command_submitted"
+  | "client_focus"
+  | "client_blur"
+  | "client_visibility_visible"
+  | "client_visibility_hidden"
+  | "client_chat_paste"
+  | "client_copy";
+
+export type ParticipantTelemetryEvent = {
+  clientEventId: string;
+  clientSessionId: string;
+  eventType: ParticipantTelemetryEventType;
+  attemptId?: string;
+  taskId?: string;
+  clientTimestamp: string;
+  clientElapsedMs: number;
+  payload?: Record<string, unknown>;
+};
+
 export type ParticipantWorkspaceProps = {
   task: ParticipantTask;
+  attemptId?: string;
   deadlineAt?: string | null;
   contestTitle: string;
   participantName?: string;
@@ -156,6 +179,9 @@ export type ParticipantWorkspaceProps = {
   ) => Promise<TaskMoveTransitionResult>;
   onUndo?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
   onMessage?: (message: string) => Promise<unknown> | unknown;
+  onTelemetry?: (
+    event: ParticipantTelemetryEvent,
+  ) => Promise<unknown> | unknown;
 };
 
 type ConsoleEntry = {
@@ -164,7 +190,17 @@ type ConsoleEntry = {
   content: ReactNode;
 };
 
+type QueuedTelemetry = {
+  event: ParticipantTelemetryEvent;
+  retryCount: number;
+};
+
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
+const MAX_COMMAND_LENGTH = 4_000;
+const MAX_TELEMETRY_TEXT_BYTES = 6_000;
+const MAX_TELEMETRY_QUEUE_LENGTH = 5_000;
+const MAX_PERSISTED_TELEMETRY_EVENTS = 300;
+const TELEMETRY_STORAGE_PREFIX = "sirius-gate:telemetry:";
 const DEFAULT_BACK_RANK: readonly ChessPieceKind[] = [
   "B",
   "R",
@@ -305,6 +341,121 @@ function createClientActionId(): string {
   return `action-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function telemetryText(value: string) {
+  const encoder = new TextEncoder();
+  const originalByteLength = encoder.encode(value).byteLength;
+  const originalJsonByteLength = encoder.encode(JSON.stringify(value)).byteLength;
+  if (originalJsonByteLength <= MAX_TELEMETRY_TEXT_BYTES) {
+    return {
+      text: value,
+      originalByteLength,
+      originalJsonByteLength,
+      truncated: false,
+    };
+  }
+
+  const characters = Array.from(value);
+  let lower = 0;
+  let upper = characters.length;
+  while (lower < upper) {
+    const middle = Math.ceil((lower + upper) / 2);
+    const candidate = characters.slice(0, middle).join("");
+    if (
+      encoder.encode(JSON.stringify(candidate)).byteLength <=
+      MAX_TELEMETRY_TEXT_BYTES
+    ) {
+      lower = middle;
+    } else {
+      upper = middle - 1;
+    }
+  }
+
+  return {
+    text: characters.slice(0, lower).join(""),
+    originalByteLength,
+    originalJsonByteLength,
+    truncated: true,
+  };
+}
+
+function telemetryErrorIsRetryable(error: unknown): boolean {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("status" in error) ||
+    typeof error.status !== "number"
+  ) {
+    return true;
+  }
+  const code =
+    "code" in error && typeof error.code === "string" ? error.code : undefined;
+  if (code === "TELEMETRY_EVENT_LIMIT_REACHED") return false;
+  return (
+    error.status === 0 ||
+    (error.status === 429 && code === "TELEMETRY_RATE_LIMITED") ||
+    error.status >= 500
+  );
+}
+
+function telemetryStorageKey(attemptId?: string): string | null {
+  return attemptId ? `${TELEMETRY_STORAGE_PREFIX}${attemptId}` : null;
+}
+
+function loadTelemetryQueue(attemptId?: string): QueuedTelemetry[] {
+  const storageKey = telemetryStorageKey(attemptId);
+  if (!storageKey || typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(storageKey) ?? "[]");
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter(
+        (event): event is ParticipantTelemetryEvent =>
+          typeof event === "object" &&
+          event !== null &&
+          typeof event.clientEventId === "string" &&
+          typeof event.clientSessionId === "string" &&
+          typeof event.eventType === "string" &&
+          typeof event.clientTimestamp === "string" &&
+          typeof event.clientElapsedMs === "number",
+      )
+      .slice(0, MAX_PERSISTED_TELEMETRY_EVENTS)
+      .map((event) => ({
+        event: {
+          ...event,
+          attemptId: event.attemptId ?? attemptId,
+        },
+        retryCount: 0,
+      }));
+  } catch {
+    window.sessionStorage.removeItem(storageKey);
+    return [];
+  }
+}
+
+function persistTelemetryQueue(
+  attemptId: string | undefined,
+  queue: QueuedTelemetry[],
+) {
+  const storageKey = telemetryStorageKey(attemptId);
+  if (!storageKey || typeof window === "undefined") return;
+  try {
+    if (queue.length === 0) {
+      window.sessionStorage.removeItem(storageKey);
+      return;
+    }
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify(
+        queue
+          .slice(0, MAX_PERSISTED_TELEMETRY_EVENTS)
+          .map((item) => item.event),
+      ),
+    );
+  } catch {
+    // The in-memory queue continues to work if browser storage is unavailable.
+  }
+}
+
 function initialEntries(task: ParticipantTask): ConsoleEntry[] {
   if (
     task.kind === "machine_panel" ||
@@ -442,6 +593,7 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
 
 export function ParticipantWorkspace({
   task,
+  attemptId,
   deadlineAt,
   contestTitle,
   participantName,
@@ -456,6 +608,7 @@ export function ParticipantWorkspace({
   onApplyOperation,
   onUndo,
   onMessage,
+  onTelemetry,
 }: ParticipantWorkspaceProps) {
   const board = useMemo(() => normalizeBoard(task), [task]);
   const dice = useMemo(() => normalizeDice(task), [task]);
@@ -472,6 +625,16 @@ export function ParticipantWorkspace({
   const inFlight = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const consoleLogRef = useRef<HTMLDivElement>(null);
+  const telemetryHandlerRef = useRef(onTelemetry);
+  const telemetrySessionId = useRef(createClientActionId());
+  const telemetryStartedAt = useRef(Date.now());
+  const telemetrySequence = useRef(0);
+  const telemetryViewedTasks = useRef(new Set<string>());
+  const telemetryQueue = useRef<QueuedTelemetry[]>(
+    loadTelemetryQueue(attemptId),
+  );
+  const telemetryDrainActive = useRef(false);
+  const telemetryRetryTimer = useRef<number | null>(null);
 
   const timeIsUp = Boolean(deadlineAt) && remainingTime === "00:00";
   const isBusy = busy || commandBusy || timeIsUp;
@@ -518,10 +681,69 @@ export function ParticipantWorkspace({
   }, [deadlineAt]);
 
   useEffect(() => {
+    telemetryHandlerRef.current = onTelemetry;
+    void drainTelemetryQueue();
+  }, [onTelemetry]);
+
+  useEffect(
+    () => () => {
+      if (telemetryRetryTimer.current !== null) {
+        window.clearTimeout(telemetryRetryTimer.current);
+        telemetryRetryTimer.current = null;
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
     if (activeTaskId.current === task.id) return;
     activeTaskId.current = task.id;
     setDraft("");
   }, [task.id]);
+
+  useEffect(() => {
+    if (telemetryViewedTasks.current.has(task.id)) return;
+    telemetryViewedTasks.current.add(task.id);
+    emitTelemetry(
+      "client_task_viewed",
+      {
+        ordinal: task.ordinal,
+        family: task.family,
+        difficulty: task.difficulty,
+        task_status: task.status,
+        document_visible: document.visibilityState === "visible",
+        window_focused: document.hasFocus(),
+      },
+      task.id,
+    );
+  }, [task.id]);
+
+  useEffect(() => {
+    const handleFocus = () =>
+      emitTelemetry("client_focus", {
+        document_visible: document.visibilityState === "visible",
+      });
+    const handleBlur = () =>
+      emitTelemetry("client_blur", {
+        document_visible: document.visibilityState === "visible",
+      });
+    const handleVisibility = () =>
+      emitTelemetry(
+        document.visibilityState === "visible"
+          ? "client_visibility_visible"
+          : "client_visibility_hidden",
+        { window_focused: document.hasFocus() },
+      );
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     const log = consoleLogRef.current;
@@ -533,6 +755,76 @@ export function ParticipantWorkspace({
       ...current,
       { id: entryId.current++, author, content },
     ]);
+  }
+
+  function emitTelemetry(
+    eventType: ParticipantTelemetryEventType,
+    payload: Record<string, unknown> = {},
+    taskId = activeTaskId.current,
+  ) {
+    if (!telemetryHandlerRef.current) return;
+    telemetrySequence.current += 1;
+    const event: ParticipantTelemetryEvent = {
+      clientEventId: createClientActionId(),
+      clientSessionId: telemetrySessionId.current,
+      eventType,
+      attemptId,
+      taskId,
+      clientTimestamp: new Date().toISOString(),
+      clientElapsedMs: Math.max(0, Date.now() - telemetryStartedAt.current),
+      payload: {
+        ...payload,
+        client_sequence: telemetrySequence.current,
+      },
+    };
+    if (telemetryQueue.current.length >= MAX_TELEMETRY_QUEUE_LENGTH) {
+      return;
+    }
+    telemetryQueue.current.push({ event, retryCount: 0 });
+    persistTelemetryQueue(attemptId, telemetryQueue.current);
+    if (telemetryRetryTimer.current === null) {
+      void drainTelemetryQueue();
+    }
+  }
+
+  async function drainTelemetryQueue() {
+    const handler = telemetryHandlerRef.current;
+    if (!handler || telemetryDrainActive.current) return;
+    telemetryDrainActive.current = true;
+    let retryDelay: number | null = null;
+
+    try {
+      while (telemetryQueue.current.length > 0) {
+        const queued = telemetryQueue.current[0];
+        try {
+          await handler(queued.event);
+          telemetryQueue.current.shift();
+          persistTelemetryQueue(attemptId, telemetryQueue.current);
+        } catch (error) {
+          if (!telemetryErrorIsRetryable(error)) {
+            telemetryQueue.current.shift();
+            persistTelemetryQueue(attemptId, telemetryQueue.current);
+            continue;
+          }
+          queued.retryCount += 1;
+          retryDelay = Math.min(
+            10_000,
+            250 * 2 ** Math.min(queued.retryCount - 1, 6),
+          );
+          break;
+        }
+      }
+    } finally {
+      telemetryDrainActive.current = false;
+      if (retryDelay !== null && telemetryQueue.current.length > 0) {
+        telemetryRetryTimer.current = window.setTimeout(() => {
+          telemetryRetryTimer.current = null;
+          void drainTelemetryQueue();
+        }, retryDelay);
+      } else if (telemetryQueue.current.length > 0) {
+        queueMicrotask(() => void drainTelemetryQueue());
+      }
+    }
   }
 
   async function submitPenultimaMove(move: string) {
@@ -620,14 +912,23 @@ export function ParticipantWorkspace({
   async function runCommand(rawInput: string) {
     const input = rawInput.trim();
     if (!input || isBusy || inFlight.current) return;
+    const [command = "", ...parts] = input.split(/\s+/);
+    const payload = input.slice(command.length).trim();
 
     inFlight.current = true;
     setDraft("");
     appendEntry("participant", input);
     setCommandBusy(true);
-
-    const [command = "", ...parts] = input.split(/\s+/);
-    const payload = input.slice(command.length).trim();
+    const telemetryInput = telemetryText(input);
+    emitTelemetry("client_command_submitted", {
+      input: telemetryInput.text,
+      command: command.toLocaleLowerCase("ru-RU"),
+      input_length: input.length,
+      input_byte_length: telemetryInput.originalByteLength,
+      input_json_byte_length: telemetryInput.originalJsonByteLength,
+      input_truncated: telemetryInput.truncated,
+      task_status: task.status,
+    });
 
     try {
       switch (command.toLowerCase()) {
@@ -1014,6 +1315,31 @@ export function ParticipantWorkspace({
       data-task-family={task.family}
       data-task-kind={task.kind}
       data-task-difficulty={task.difficulty}
+      onCopy={(event: ClipboardEvent<HTMLElement>) => {
+        const target = event.target;
+        let characterCount = 0;
+        if (
+          target instanceof HTMLInputElement &&
+          target.selectionStart !== null &&
+          target.selectionEnd !== null
+        ) {
+          characterCount = Array.from(
+            target.value.slice(target.selectionStart, target.selectionEnd),
+          ).length;
+        } else {
+          characterCount = Array.from(
+            window.getSelection()?.toString() ?? "",
+          ).length;
+        }
+        emitTelemetry("client_copy", {
+          surface:
+            target instanceof Element &&
+            target.closest(".participant-console")
+              ? "chat"
+              : "task",
+          character_count: characterCount,
+        });
+      }}
     >
       <section className="participant-task" aria-labelledby="participantTaskTitle">
         <header className="participant-task__header">
@@ -1151,7 +1477,17 @@ export function ParticipantWorkspace({
               }
               autoComplete="off"
               spellCheck={false}
+              maxLength={MAX_COMMAND_LENGTH}
               disabled={isBusy}
+              onPaste={(event) => {
+                const pastedText = event.clipboardData.getData("text");
+                emitTelemetry("client_chat_paste", {
+                  character_count: pastedText.length,
+                  line_count: pastedText
+                    ? pastedText.split(/\r\n|\r|\n/).length
+                    : 0,
+                });
+              }}
             />
             <button
               type="submit"

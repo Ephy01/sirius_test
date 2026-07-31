@@ -13,6 +13,7 @@ from app.models import (
     Attempt,
     AttemptEvent,
     AttemptGrant,
+    ClientTelemetryReceipt,
     Contest,
     Enrollment,
     Participant,
@@ -153,6 +154,7 @@ def _assert_only_global_participant_remains(
         assert _row_count(session, TaskInstance) == 0
         assert _row_count(session, TaskInteraction) == 0
         assert _row_count(session, AttemptEvent) == 0
+        assert _row_count(session, ClientTelemetryReceipt) == 0
 
         assert _row_count(session, Participant) == 1
         participant = session.get(Participant, participant_id)
@@ -294,6 +296,18 @@ def test_delete_published_contest_cascades_full_attempt_graph(tmp_path):
         )
         assert interaction_response.status_code == 200
         assert interaction_response.json()["accepted"] is True
+        telemetry_response = client.post(
+            "/api/v1/participant/telemetry",
+            headers=auth(participant),
+            json={
+                "client_event_id": "delete-cascade-event-1",
+                "client_session_id": "delete-cascade-session",
+                "event_type": "client_task_viewed",
+                "task_id": task["id"],
+                "payload": {"source": "cascade-test"},
+            },
+        )
+        assert telemetry_response.status_code == 204
 
         with application.state.database.session_factory() as session:
             stored_attempt = session.get(Attempt, attempt["id"])
@@ -321,6 +335,7 @@ def test_delete_published_contest_cascades_full_attempt_graph(tmp_path):
             assert _row_count(session, TaskInstance) == 1
             assert _row_count(session, TaskInteraction) == 1
             assert _row_count(session, AttemptEvent) >= 5
+            assert _row_count(session, ClientTelemetryReceipt) == 1
 
         deleted = client.delete(
             f"/api/v1/contests/{contest_id}",

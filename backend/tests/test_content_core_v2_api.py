@@ -256,10 +256,22 @@ def test_machine_reach_api_is_idempotent_and_freezes_false_impossible(tmp_path):
                 session.scalars(
                     select(AttemptEvent).where(
                         AttemptEvent.task_instance_id == task["id"]
-                    )
+                    ).order_by(AttemptEvent.sequence)
                 )
             )
             assert any(event.event_type == "task_input_frozen" for event in events)
+            submitted_index = next(
+                index
+                for index, event in enumerate(events)
+                if event.event_type == "answer_submitted"
+                and event.payload.get("answer") == "impossible"
+            )
+            frozen_index = next(
+                index
+                for index, event in enumerate(events)
+                if event.event_type == "task_input_frozen"
+            )
+            assert submitted_index < frozen_index
             false_impossible_event = next(
                 event
                 for event in events

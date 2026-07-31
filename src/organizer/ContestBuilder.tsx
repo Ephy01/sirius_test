@@ -483,11 +483,6 @@ export function ContestBuilder({
             <section aria-labelledby="builderWorldTitle">
               <span className="builder-section-label">02 · семейства</span>
               <h2 id="builderWorldTitle">Контент траектории</h2>
-              <p className="builder-intro">
-                Скины отвечают только за представление сцены. Режиссёр
-                калибрует каждое включённое семейство и затем меняет порядок и
-                сложность по истории прохождения.
-              </p>
               <div className="family-list">
                 {families.map((family) => {
                   const copy = FAMILY_LABELS[family.key];

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -245,6 +246,78 @@ class ParticipantContextResponse(ApiModel):
     enrollment: EnrollmentResponse
     participant: ParticipantResponse
     active_attempt: AttemptResponse | None
+
+
+ClientTelemetryEventType = Literal[
+    "client_task_viewed",
+    "client_command_submitted",
+    "client_focus",
+    "client_blur",
+    "client_visibility_visible",
+    "client_visibility_hidden",
+    "client_chat_paste",
+    "client_copy",
+]
+
+
+class ClientTelemetryRequest(ApiModel):
+    client_event_id: str = Field(min_length=1, max_length=128)
+    client_session_id: str = Field(min_length=1, max_length=128)
+    event_type: ClientTelemetryEventType
+    attempt_id: str | None = Field(default=None, min_length=1, max_length=36)
+    task_id: str | None = Field(default=None, min_length=1, max_length=36)
+    client_timestamp: datetime | None = None
+    client_elapsed_ms: int | None = Field(
+        default=None,
+        ge=0,
+        le=604_800_000,
+        strict=True,
+    )
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("client_event_id", "client_session_id")
+    @classmethod
+    def clean_client_identifier(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("client identifier must not be blank")
+        if any(
+            not (
+                character.isascii()
+                and (character.isalnum() or character in {"-", "_", ".", ":"})
+            )
+            for character in cleaned
+        ):
+            raise ValueError("client identifier contains unsupported characters")
+        return cleaned
+
+    @field_validator("attempt_id", "task_id")
+    @classmethod
+    def clean_optional_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("identifier must not be blank")
+        return cleaned
+
+    @field_validator("payload")
+    @classmethod
+    def bound_payload_size(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(value) > 64:
+            raise ValueError("payload has too many top-level fields")
+        try:
+            encoded = json.dumps(
+                value,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except (TypeError, ValueError) as error:
+            raise ValueError("payload must be valid JSON") from error
+        if len(encoded) > 8_192:
+            raise ValueError("payload exceeds 8 KiB")
+        return value
 
 
 class TaskResponse(ApiModel):

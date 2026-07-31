@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SqlEnum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -216,6 +217,9 @@ class Attempt(Base):
     events: Mapped[list[AttemptEvent]] = relationship(
         back_populates="attempt", cascade="all, delete-orphan"
     )
+    client_telemetry_receipts: Mapped[list[ClientTelemetryReceipt]] = relationship(
+        back_populates="attempt", cascade="all, delete-orphan"
+    )
 
 
 class AttemptGrant(Base):
@@ -329,6 +333,41 @@ class TaskInteraction(Base):
     )
 
     task: Mapped[TaskInstance] = relationship(back_populates="interactions")
+
+
+class ClientTelemetryReceipt(Base):
+    """Idempotency and quota record for one accepted client telemetry event."""
+
+    __tablename__ = "client_telemetry_receipts"
+    __table_args__ = (
+        UniqueConstraint(
+            "attempt_id",
+            "client_event_id",
+            name="uq_client_telemetry_receipt_attempt_event",
+        ),
+        Index(
+            "ix_client_telemetry_receipt_attempt_created",
+            "attempt_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("attempts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    client_event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+    attempt: Mapped[Attempt] = relationship(
+        back_populates="client_telemetry_receipts"
+    )
 
 
 class AttemptEvent(Base):

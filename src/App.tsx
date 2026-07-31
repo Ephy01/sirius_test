@@ -31,6 +31,7 @@ import { ContestAccessPanel } from "./organizer/ContestAccessPanel";
 import {
   ParticipantWorkspace,
   type ParticipantTask as WorkspaceParticipantTask,
+  type ParticipantTelemetryEvent,
   type TaskMoveTransitionResult,
   type TaskTransitionResult,
 } from "./participant";
@@ -944,6 +945,14 @@ function ParticipantContestScreen({
     }
   }
 
+  async function recordTelemetry(
+    event: ParticipantTelemetryEvent,
+  ): Promise<void> {
+    await api.recordParticipantTelemetry(event, {
+      token: session.token,
+    });
+  }
+
   const workspaceTask: WorkspaceParticipantTask | null = task
     ? {
         id: task.id,
@@ -1064,6 +1073,7 @@ function ParticipantContestScreen({
       {workspaceTask ? (
         <ParticipantWorkspace
           task={workspaceTask}
+          attemptId={session.attempt?.id}
           deadlineAt={session.attempt?.deadlineAt}
           contestTitle={session.contest?.title ?? "Контест"}
           participantName={session.participant?.displayName}
@@ -1076,6 +1086,7 @@ function ParticipantContestScreen({
           onProbe={probeTask}
           onApplyOperation={applyOperationTask}
           onUndo={undoMachineTask}
+          onTelemetry={recordTelemetry}
         />
       ) : (
         <main className="participant-waiting">

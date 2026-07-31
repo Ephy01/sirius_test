@@ -9,6 +9,8 @@ export {
   type DiceFaces,
   type DicePieceKind,
   type ParticipantTask,
+  type ParticipantTelemetryEvent,
+  type ParticipantTelemetryEventType,
   type ParticipantWorkspaceProps,
   type PenultimaObservation,
   type TaskMoveTransitionResult,

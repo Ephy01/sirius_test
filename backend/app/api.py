@@ -2,12 +2,15 @@ import hmac
 import hashlib
 import json
 import secrets
+import threading
+import weakref
+from urllib.parse import quote
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -62,6 +65,7 @@ from .models import (
     AttemptGrant,
     AttemptGrantStatus,
     AttemptStatus,
+    ClientTelemetryReceipt,
     Contest,
     ContestStatus,
     Enrollment,
@@ -77,6 +81,7 @@ from .schemas import (
     AccessCodeSummary,
     AttemptGrantResponse,
     AttemptStartResponse,
+    ClientTelemetryRequest,
     CodeGenerationRequest,
     CodeGenerationResponse,
     CodeRotationRequest,
@@ -105,8 +110,16 @@ from .security import (
     issue_bearer_token,
     normalize_code,
 )
+from .telemetry import format_enrollment_telemetry
 
 router = APIRouter(prefix="/api/v1")
+
+MAX_CLIENT_TELEMETRY_EVENTS_PER_ATTEMPT = 5_000
+MAX_CLIENT_TELEMETRY_EVENTS_PER_MINUTE = 240
+CLIENT_TELEMETRY_GRACE_PERIOD = timedelta(minutes=5)
+CLIENT_TELEMETRY_CLOCK_SKEW = timedelta(minutes=2)
+_EVENT_SEQUENCE_RESERVATION_LOCK = threading.Lock()
+_EVENT_SEQUENCE_RESERVATIONS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 FAMILY_ALIASES = {
     "chess960": "chess960",
@@ -256,6 +269,24 @@ def _expire_attempt_if_needed(
         attempt.status == AttemptStatus.ACTIVE
         and _as_utc(attempt.deadline_at) <= now
     ):
+        updated = session.execute(
+            update(Attempt)
+            .where(
+                Attempt.id == attempt.id,
+                Attempt.status == AttemptStatus.ACTIVE,
+                Attempt.deadline_at <= now,
+            )
+            .values(
+                status=AttemptStatus.EXPIRED,
+                active_slot=None,
+                finished_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if updated.rowcount != 1:
+            session.expire(attempt)
+            session.refresh(attempt)
+            return False
         attempt.status = AttemptStatus.EXPIRED
         attempt.active_slot = None
         attempt.finished_at = now
@@ -282,9 +313,13 @@ def _active_attempt(
     if lock:
         statement = statement.with_for_update()
     attempt = session.scalar(statement)
-    if attempt is not None and _expire_attempt_if_needed(session, attempt, utc_now()):
-        session.commit()
-        return None
+    if attempt is not None:
+        expired_here = _expire_attempt_if_needed(session, attempt, utc_now())
+        if expired_here:
+            session.commit()
+            return None
+        if attempt.status != AttemptStatus.ACTIVE:
+            return None
     return attempt
 
 
@@ -304,6 +339,93 @@ def _require_active_attempt(
     return attempt
 
 
+def _telemetry_attempt(
+    session: SessionDependency,
+    enrollment: Enrollment,
+    payload: ClientTelemetryRequest,
+) -> Attempt:
+    """Resolve the attempt for a client event, including a short delivery grace.
+
+    The browser may create an event before the deadline and deliver it a few
+    seconds later after a transient network failure. Server-side task actions
+    still require an active attempt; only semantic client telemetry uses this
+    narrow grace window.
+    """
+
+    attempt: Attempt | None
+    if payload.attempt_id is not None:
+        attempt = session.scalar(
+            select(Attempt)
+            .where(
+                Attempt.id == payload.attempt_id,
+                Attempt.enrollment_id == enrollment.id,
+            )
+            .with_for_update()
+        )
+        if attempt is None:
+            raise api_error(
+                status.HTTP_404_NOT_FOUND,
+                "ATTEMPT_NOT_FOUND",
+                "Попытка не найдена.",
+            )
+        if _expire_attempt_if_needed(session, attempt, utc_now()):
+            session.commit()
+    else:
+        attempt = _active_attempt(session, enrollment.id, lock=True)
+        if attempt is None:
+            attempt = session.scalar(
+                select(Attempt)
+                .where(Attempt.enrollment_id == enrollment.id)
+                .order_by(Attempt.number.desc())
+                .limit(1)
+                .with_for_update()
+            )
+
+    if attempt is None:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "ACTIVE_ATTEMPT_REQUIRED",
+            "Сначала запустите попытку.",
+        )
+    if attempt.status == AttemptStatus.ACTIVE:
+        return attempt
+
+    deadline = _as_utc(attempt.deadline_at)
+    finished_at = (
+        _as_utc(attempt.finished_at)
+        if attempt.finished_at is not None
+        else deadline
+    )
+    telemetry_end = min(deadline, finished_at)
+    now = utc_now()
+    timestamp = (
+        _as_utc(payload.client_timestamp)
+        if payload.client_timestamp is not None
+        else None
+    )
+    allowed_elapsed_ms = int(
+        (telemetry_end - _as_utc(attempt.started_at) + CLIENT_TELEMETRY_CLOCK_SKEW)
+        .total_seconds()
+        * 1_000
+    )
+    is_delayed_predeadline_event = (
+        now <= telemetry_end + CLIENT_TELEMETRY_GRACE_PERIOD
+        and timestamp is not None
+        and payload.client_elapsed_ms is not None
+        and _as_utc(attempt.started_at) - CLIENT_TELEMETRY_CLOCK_SKEW
+        <= timestamp
+        <= telemetry_end + CLIENT_TELEMETRY_CLOCK_SKEW
+        and payload.client_elapsed_ms <= max(0, allowed_elapsed_ms)
+    )
+    if not is_delayed_predeadline_event:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "TELEMETRY_WINDOW_CLOSED",
+            "Окно приёма телеметрии этой попытки закрыто.",
+        )
+    return attempt
+
+
 def _active_task(session: SessionDependency, attempt_id: str) -> TaskInstance | None:
     return session.scalar(
         select(TaskInstance).where(
@@ -311,6 +433,39 @@ def _active_task(session: SessionDependency, attempt_id: str) -> TaskInstance | 
             TaskInstance.status == TaskStatus.ACTIVE,
         )
     )
+
+
+def _next_event_sequence(
+    session: SessionDependency,
+    *,
+    attempt_id: str,
+) -> int:
+    def current_maximum() -> int:
+        stored_sequence = session.scalar(
+            select(func.max(AttemptEvent.sequence)).where(
+                AttemptEvent.attempt_id == attempt_id
+            )
+        )
+        pending_sequences = [
+            event.sequence
+            for event in session.new
+            if isinstance(event, AttemptEvent) and event.attempt_id == attempt_id
+        ]
+        return max([stored_sequence or 0, *pending_sequences])
+
+    bind = session.get_bind()
+    if bind.dialect.name != "sqlite":
+        return current_maximum() + 1
+
+    engine = getattr(bind, "engine", bind)
+    with _EVENT_SEQUENCE_RESERVATION_LOCK:
+        reservations = _EVENT_SEQUENCE_RESERVATIONS.setdefault(engine, {})
+        sequence = max(
+            current_maximum(),
+            reservations.get(attempt_id, 0),
+        ) + 1
+        reservations[attempt_id] = sequence
+        return sequence
 
 
 def _append_event(
@@ -321,23 +476,13 @@ def _append_event(
     task_instance_id: str | None = None,
     payload: dict | None = None,
 ) -> AttemptEvent:
-    stored_sequence = session.scalar(
-        select(func.max(AttemptEvent.sequence)).where(
-            AttemptEvent.attempt_id == attempt_id
-        )
-    )
-    pending_sequences = [
-        event.sequence
-        for event in session.new
-        if isinstance(event, AttemptEvent) and event.attempt_id == attempt_id
-    ]
-    sequence = max([stored_sequence or 0, *pending_sequences]) + 1
     event = AttemptEvent(
         attempt_id=attempt_id,
         task_instance_id=task_instance_id,
         event_type=event_type,
-        sequence=sequence,
+        sequence=_next_event_sequence(session, attempt_id=attempt_id),
         payload=payload or {},
+        created_at=utc_now(),
     )
     session.add(event)
     return event
@@ -515,6 +660,32 @@ def _canonical_hash(value: object) -> str:
         separators=(",", ":"),
     ).encode("ascii")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _client_telemetry_fingerprint(
+    *,
+    event_type: str,
+    task_instance_id: str | None,
+    payload: dict,
+) -> str:
+    canonical = _canonical_json(
+        {
+            "event_type": event_type,
+            "task_instance_id": task_instance_id,
+            "payload": payload,
+        }
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _seed_relevant_task_config(config: dict) -> dict:
@@ -1102,6 +1273,7 @@ def _create_or_get_current_task(
             "generator_version": task.generator_version,
             "seed": task.seed,
             "difficulty": task.difficulty,
+            "public_state": task.public_state,
             "configured_weight": selected_family.weight_units / 1000,
             "family_route_version": (
                 director_decision.version
@@ -1541,6 +1713,80 @@ def list_enrollments(
     return OrganizerEnrollmentListResponse(items=items)
 
 
+@router.get(
+    "/contests/{contest_id}/enrollments/{enrollment_id}/telemetry",
+    response_class=Response,
+)
+def download_enrollment_telemetry(
+    contest_id: str,
+    enrollment_id: str,
+    session: SessionDependency,
+    _organizer: OrganizerDependency,
+) -> Response:
+    contest = _get_contest_or_404(session, contest_id)
+    enrollment = _get_enrollment_for_contest_or_404(
+        session,
+        contest_id=contest_id,
+        enrollment_id=enrollment_id,
+    )
+
+    attempts = list(
+        session.scalars(
+            select(Attempt)
+            .where(Attempt.enrollment_id == enrollment.id)
+            .order_by(Attempt.number, Attempt.id)
+        ).all()
+    )
+    now = utc_now()
+    status_changed = False
+    for attempt in attempts:
+        status_changed = (
+            _expire_attempt_if_needed(session, attempt, now) or status_changed
+        )
+    if status_changed:
+        session.commit()
+
+    attempts = list(
+        session.scalars(
+            select(Attempt)
+            .options(
+                selectinload(Attempt.tasks),
+                selectinload(Attempt.events),
+            )
+            .where(Attempt.enrollment_id == enrollment.id)
+            .order_by(Attempt.number, Attempt.id)
+        ).all()
+    )
+    content = format_enrollment_telemetry(
+        contest=contest,
+        enrollment=enrollment,
+        attempts=attempts,
+    )
+    filename = f"sirius-telemetry-{contest.id}-{enrollment.id}.txt"
+    participant_label = "".join(
+        character
+        for character in enrollment.participant.external_ref.strip()[:32]
+        if character not in {"/", "\\"} and ord(character) >= 32
+    ).strip()
+    preferred_filename = (
+        f"sirius-telemetry-{participant_label}-{enrollment.id}.txt"
+        if participant_label
+        else filename
+    )
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"; '
+                f"filename*=UTF-8''{quote(preferred_filename, safe='')}"
+            ),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.post("/contests/{contest_id}/codes", response_model=CodeGenerationResponse)
 def generate_codes(
     contest_id: str,
@@ -1783,6 +2029,133 @@ def participant_context(
         participant=enrollment.participant,
         active_attempt=attempt,
     )
+
+
+@router.post(
+    "/participant/telemetry",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def record_client_telemetry(
+    payload: ClientTelemetryRequest,
+    enrollment: ParticipantEnrollmentDependency,
+    session: SessionDependency,
+) -> Response:
+    attempt = _telemetry_attempt(session, enrollment, payload)
+    task: TaskInstance | None = None
+    if payload.task_id is not None:
+        task = session.scalar(
+            select(TaskInstance).where(
+                TaskInstance.id == payload.task_id,
+                TaskInstance.attempt_id == attempt.id,
+            )
+        )
+        if task is None:
+            raise api_error(
+                status.HTTP_404_NOT_FOUND,
+                "TASK_NOT_FOUND",
+                "Задача не найдена в текущей попытке.",
+            )
+
+    event_payload = {
+        "client_event_id": payload.client_event_id,
+        "client_session_id": payload.client_session_id,
+        "client_timestamp": (
+            _as_utc(payload.client_timestamp).isoformat()
+            if payload.client_timestamp is not None
+            else None
+        ),
+        "client_elapsed_ms": payload.client_elapsed_ms,
+        "payload": payload.payload,
+    }
+    fingerprint = _client_telemetry_fingerprint(
+        event_type=payload.event_type,
+        task_instance_id=task.id if task is not None else None,
+        payload=event_payload,
+    )
+    existing_receipt = session.scalar(
+        select(ClientTelemetryReceipt).where(
+            ClientTelemetryReceipt.attempt_id == attempt.id,
+            ClientTelemetryReceipt.client_event_id == payload.client_event_id,
+        )
+    )
+    if existing_receipt is not None:
+        if existing_receipt.fingerprint == fingerprint:
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "TELEMETRY_EVENT_ID_REUSED",
+            "Этот идентификатор события уже использован с другими данными.",
+        )
+
+    event_count = int(
+        session.scalar(
+            select(func.count(ClientTelemetryReceipt.id)).where(
+                ClientTelemetryReceipt.attempt_id == attempt.id
+            )
+        )
+        or 0
+    )
+    if event_count >= MAX_CLIENT_TELEMETRY_EVENTS_PER_ATTEMPT:
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "TELEMETRY_EVENT_LIMIT_REACHED",
+            "Для этой попытки достигнут предел клиентских событий.",
+        )
+
+    received_at = utc_now()
+    recent_count = int(
+        session.scalar(
+            select(func.count(ClientTelemetryReceipt.id)).where(
+                ClientTelemetryReceipt.attempt_id == attempt.id,
+                ClientTelemetryReceipt.created_at
+                >= received_at - timedelta(minutes=1),
+            )
+        )
+        or 0
+    )
+    if recent_count >= MAX_CLIENT_TELEMETRY_EVENTS_PER_MINUTE:
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "TELEMETRY_RATE_LIMITED",
+            "Слишком много событий телеметрии. Повторите попытку позже.",
+        )
+
+    session.add(
+        ClientTelemetryReceipt(
+            attempt_id=attempt.id,
+            client_event_id=payload.client_event_id,
+            fingerprint=fingerprint,
+            created_at=received_at,
+        )
+    )
+    _append_event(
+        session,
+        attempt_id=attempt.id,
+        task_instance_id=task.id if task is not None else None,
+        event_type=payload.event_type,
+        payload=event_payload,
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raced_receipt = session.scalar(
+            select(ClientTelemetryReceipt).where(
+                ClientTelemetryReceipt.attempt_id == attempt.id,
+                ClientTelemetryReceipt.client_event_id
+                == payload.client_event_id,
+            )
+        )
+        if raced_receipt is None:
+            raise
+        if raced_receipt.fingerprint != fingerprint:
+            raise api_error(
+                status.HTTP_409_CONFLICT,
+                "TELEMETRY_EVENT_ID_REUSED",
+                "Этот идентификатор события уже использован с другими данными.",
+            )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/participant/attempts/start", response_model=AttemptStartResponse)
@@ -2219,6 +2592,7 @@ def answer_task(
         evaluation=evaluation,
     )
     if evaluation.get("should_finalize") is False:
+        freeze_event_payload: dict | None = None
         freeze_seconds = evaluation.get("freeze_seconds")
         if (
             isinstance(freeze_seconds, int)
@@ -2234,17 +2608,11 @@ def answer_task(
             next_private["input_frozen_until"] = frozen_until.isoformat()
             task.private_state = next_private
             evaluation["input_frozen_until"] = frozen_until.isoformat()
-            _append_event(
-                session,
-                attempt_id=attempt.id,
-                task_instance_id=task.id,
-                event_type="task_input_frozen",
-                payload={
-                    "seconds": freeze_seconds,
-                    "until": frozen_until.isoformat(),
-                    "reason": evaluation.get("reason"),
-                },
-            )
+            freeze_event_payload = {
+                "seconds": freeze_seconds,
+                "until": frozen_until.isoformat(),
+                "reason": evaluation.get("reason"),
+            }
         _append_event(
             session,
             attempt_id=attempt.id,
@@ -2252,6 +2620,14 @@ def answer_task(
             event_type="answer_submitted",
             payload={"answer": payload.answer},
         )
+        if freeze_event_payload is not None:
+            _append_event(
+                session,
+                attempt_id=attempt.id,
+                task_instance_id=task.id,
+                event_type="task_input_frozen",
+                payload=freeze_event_payload,
+            )
         _append_event(
             session,
             attempt_id=attempt.id,

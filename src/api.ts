@@ -30,6 +30,11 @@ export class ApiError extends Error {
   }
 }
 
+export type DownloadedFile = {
+  blob: Blob;
+  filename: string;
+};
+
 export type ContestSummary = {
   id: string;
   title: string;
@@ -176,6 +181,27 @@ export type ParticipantContext = {
   participant: ParticipantSummary;
   enrollment: EnrollmentSummary;
   attempt?: AttemptSummary | null;
+};
+
+export type ParticipantTelemetryEventType =
+  | "client_task_viewed"
+  | "client_command_submitted"
+  | "client_focus"
+  | "client_blur"
+  | "client_visibility_visible"
+  | "client_visibility_hidden"
+  | "client_chat_paste"
+  | "client_copy";
+
+export type ParticipantTelemetryInput = {
+  clientEventId: string;
+  clientSessionId: string;
+  eventType: ParticipantTelemetryEventType;
+  attemptId?: string | null;
+  taskId?: string | null;
+  clientTimestamp?: string | null;
+  clientElapsedMs?: number | null;
+  payload?: Record<string, unknown>;
 };
 
 export type StartAttemptInput = Record<string, never>;
@@ -452,6 +478,7 @@ type RequestOptions = {
   token?: string;
   body?: unknown;
   signal?: AbortSignal;
+  keepalive?: boolean;
 };
 
 export type AuthenticatedRequestOptions = {
@@ -1541,6 +1568,55 @@ async function readResponseBody(response: Response): Promise<unknown> {
   return text || undefined;
 }
 
+function contentDispositionFilename(value: string | null): string | undefined {
+  if (!value) return undefined;
+
+  const encodedMatch = value.match(
+    /(?:^|;)\s*filename\*\s*=\s*(?:"([^"]+)"|([^;]+))/i,
+  );
+  if (encodedMatch) {
+    const encodedValue = (encodedMatch[1] ?? encodedMatch[2] ?? "").trim();
+    const filenameValue =
+      encodedValue.match(/^[^']*'[^']*'(.*)$/)?.[1] ?? encodedValue;
+    try {
+      return decodeURIComponent(filenameValue);
+    } catch {
+      // Fall back to the regular filename parameter below.
+    }
+  }
+
+  const quotedMatch = value.match(
+    /(?:^|;)\s*filename\s*=\s*"((?:[^"\\]|\\.)*)"/i,
+  );
+  if (quotedMatch) {
+    return quotedMatch[1].replace(/\\(["\\])/g, "$1");
+  }
+
+  return value
+    .match(/(?:^|;)\s*filename\s*=\s*([^;]+)/i)?.[1]
+    ?.trim();
+}
+
+function sanitizeFilename(value: string): string {
+  return Array.from(
+    value.replace(/[\u0000-\u001f\u007f/\\]/g, "_").trim(),
+  )
+    .slice(0, 180)
+    .join("")
+    .replace(/^\.+$/, "");
+}
+
+function safeDownloadFilename(
+  candidate: string | undefined,
+  fallback: string,
+): string {
+  return (
+    (candidate ? sanitizeFilename(candidate) : "") ||
+    sanitizeFilename(fallback) ||
+    "download.txt"
+  );
+}
+
 export class ApiClient {
   readonly baseUrl: string;
 
@@ -1560,6 +1636,7 @@ export class ApiClient {
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         signal: options.signal,
+        keepalive: options.keepalive,
       });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -1584,6 +1661,66 @@ export class ApiClient {
     }
 
     return body;
+  }
+
+  private async requestFile(
+    path: string,
+    fallbackFilename: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<DownloadedFile> {
+    const headers = new Headers({
+      Accept: "text/plain, application/octet-stream",
+      Authorization: `Bearer ${options.token}`,
+    });
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method: "GET",
+        headers,
+        signal: options.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      throw new ApiError(0, {
+        code: "network_error",
+        message:
+          "Не удалось связаться с сервером. Проверьте подключение и повторите попытку.",
+        details: error,
+      });
+    }
+
+    if (!response.ok) {
+      const body = await readResponseBody(response);
+      throw new ApiError(
+        response.status,
+        createErrorPayload(
+          response.status,
+          response.statusText,
+          body,
+          response.headers.get("x-request-id") ?? undefined,
+        ),
+      );
+    }
+
+    let blob: Blob;
+    try {
+      blob = await response.blob();
+    } catch (error) {
+      throw new ApiError(502, {
+        code: "invalid_file_response",
+        message: "Не удалось прочитать файл, полученный от сервера.",
+        details: error,
+      });
+    }
+
+    return {
+      blob,
+      filename: safeDownloadFilename(
+        contentDispositionFilename(response.headers.get("content-disposition")),
+        fallbackFilename,
+      ),
+    };
   }
 
   async redeemCode(
@@ -1756,6 +1893,18 @@ export class ApiClient {
     }
 
     return items.map((item) => parseContestEnrollmentAccess(item, contestId));
+  }
+
+  async downloadEnrollmentTelemetry(
+    contestId: string,
+    enrollmentId: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<DownloadedFile> {
+    return this.requestFile(
+      `/contests/${encodeURIComponent(contestId)}/enrollments/${encodeURIComponent(enrollmentId)}/telemetry`,
+      `telemetry-${enrollmentId}.txt`,
+      options,
+    );
   }
 
   async rotateEnrollmentCode(
@@ -1953,6 +2102,27 @@ export class ApiClient {
             ? undefined
             : parseAttempt(body.activeAttempt ?? body.active_attempt),
     };
+  }
+
+  async recordParticipantTelemetry(
+    input: ParticipantTelemetryInput,
+    options: AuthenticatedRequestOptions,
+  ): Promise<void> {
+    await this.request("/participant/telemetry", {
+      ...options,
+      method: "POST",
+      keepalive: true,
+      body: {
+        client_event_id: input.clientEventId,
+        client_session_id: input.clientSessionId,
+        event_type: input.eventType,
+        attempt_id: input.attemptId,
+        task_id: input.taskId,
+        client_timestamp: input.clientTimestamp,
+        client_elapsed_ms: input.clientElapsedMs,
+        payload: input.payload,
+      },
+    });
   }
 
   async startAttempt(

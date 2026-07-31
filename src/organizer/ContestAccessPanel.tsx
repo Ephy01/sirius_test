@@ -4,10 +4,11 @@ import {
   api,
   type ContestEnrollmentAccess,
   type ContestSummary,
+  type DownloadedFile,
 } from "../api";
 import "./contest-access-panel.css";
 
-type ActionKind = "rotate" | "grant";
+type ActionKind = "rotate" | "grant" | "download-log";
 
 type BusyAction = {
   enrollmentId: string;
@@ -119,6 +120,22 @@ function actionError(caught: unknown, fallback: string) {
     : fallback;
 }
 
+function saveDownloadedFile(file: DownloadedFile) {
+  const url = URL.createObjectURL(file.blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.filename;
+  anchor.hidden = true;
+  document.body.append(anchor);
+
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+}
+
 export function ContestAccessPanel({
   contest,
   token,
@@ -207,6 +224,25 @@ export function ContestAccessPanel({
       );
     } catch (caught) {
       setError(actionError(caught, "Не удалось разрешить новую попытку."));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function downloadTelemetry(row: ContestEnrollmentAccess) {
+    setBusyAction({ enrollmentId: row.id, kind: "download-log" });
+    setError("");
+    setNotice("");
+    try {
+      const file = await api.downloadEnrollmentTelemetry(
+        contest.id,
+        row.id,
+        { token },
+      );
+      saveDownloadedFile(file);
+      setNotice(`Лог действий «${row.participant.displayName}» скачан.`);
+    } catch (caught) {
+      setError(actionError(caught, "Не удалось скачать лог участника."));
     } finally {
       setBusyAction(null);
     }
@@ -301,6 +337,9 @@ export function ContestAccessPanel({
                   const grantBusy =
                     busyAction?.enrollmentId === row.id &&
                     busyAction.kind === "grant";
+                  const downloadBusy =
+                    busyAction?.enrollmentId === row.id &&
+                    busyAction.kind === "download-log";
                   const hasActiveAttempt =
                     row.latestAttempt?.status === "active";
                   const canGrant =
@@ -396,6 +435,14 @@ export function ContestAccessPanel({
                             {grantBusy
                               ? "Разрешаем…"
                               : "Разрешить новую попытку"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void downloadTelemetry(row)}
+                            disabled={busyAction !== null}
+                            aria-label={`Скачать лог действий участника ${row.participant.displayName}`}
+                          >
+                            {downloadBusy ? "Скачиваем…" : "Скачать лог"}
                           </button>
                         </div>
                       </td>
