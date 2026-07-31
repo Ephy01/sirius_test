@@ -24,6 +24,7 @@ import random
 import re
 import threading
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Callable, Hashable, Protocol, Sequence
 
 from .rule_dsl import (
@@ -224,6 +225,22 @@ def _version_space_after_examples(
     return version_space
 
 
+@lru_cache(maxsize=1 << 17)
+def _atom_values(atoms: tuple[Atom, ...], obj: Hashable) -> dict[str, bool]:
+    """Memoize per-object atom evaluations.
+
+    Near-miss selection re-visits the same mutation candidates across
+    attempts; caching keeps expensive geometric atoms one-shot without
+    changing any outcome.
+    """
+
+    return {atom.key: atom.evaluate(obj) for atom in atoms}
+
+
+def clear_atom_value_cache() -> None:
+    _atom_values.cache_clear()
+
+
 def evaluate_rule(
     rule: Rule,
     obj: Any,
@@ -231,8 +248,7 @@ def evaluate_rule(
 ) -> bool:
     """Evaluate ``rule`` on ``obj`` using the universe's own atoms."""
 
-    atom_values = {atom.key: atom.evaluate(obj) for atom in atoms}
-    return rule.evaluate(obj, atom_values=atom_values)
+    return rule.evaluate(obj, atom_values=_atom_values(tuple(atoms), obj))
 
 
 def _near_miss_targets(

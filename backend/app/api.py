@@ -29,6 +29,7 @@ from .environments import (
     GEOMETRY_GENERATOR_VERSION,
     INTERACTIVE_FAMILIES,
     MACHINE_REACH_FAMILY,
+    POINT_ZENDO_FAMILY,
     TOKEN_ZENDO_FAMILY,
     derive_task_seed,
     evaluate_task,
@@ -131,6 +132,8 @@ FAMILY_ALIASES = {
     "machine-reach": MACHINE_REACH_FAMILY,
     "token_zendo": TOKEN_ZENDO_FAMILY,
     "token-zendo": TOKEN_ZENDO_FAMILY,
+    "point_zendo": POINT_ZENDO_FAMILY,
+    "point-zendo": POINT_ZENDO_FAMILY,
 }
 WORLD_FAMILIES = {
     "chess_world": frozenset({DICE_CHESS_FAMILY}),
@@ -147,6 +150,7 @@ WORLD_FAMILIES["mixed"] = frozenset(
         *frozenset().union(*WORLD_FAMILIES.values()),
         MACHINE_REACH_FAMILY,
         TOKEN_ZENDO_FAMILY,
+        POINT_ZENDO_FAMILY,
     }
 )
 WORLD_DEFAULT_FAMILY = {
@@ -162,11 +166,14 @@ WORLD_DIRECTOR_VERSION = {
 FAMILY_INTERACTION_ACTIONS = {
     GEO_ZENDO_FAMILY: frozenset({"probe"}),
     TOKEN_ZENDO_FAMILY: frozenset({"probe"}),
+    POINT_ZENDO_FAMILY: frozenset({"probe"}),
     MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
 }
 # Families whose accepted probes append a ``zendo_probe`` event with exact
 # ΔH telemetry to the attempt journal.
-ZENDO_PROBE_FAMILIES = frozenset({GEO_ZENDO_FAMILY, TOKEN_ZENDO_FAMILY})
+ZENDO_PROBE_FAMILIES = frozenset(
+    {GEO_ZENDO_FAMILY, TOKEN_ZENDO_FAMILY, POINT_ZENDO_FAMILY}
+)
 FAMILY_ROUTE_VERSION = "weighted-family-route-v1"
 ADAPTIVE_TRAJECTORY_MODE = "adaptive"
 

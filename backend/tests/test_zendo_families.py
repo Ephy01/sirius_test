@@ -20,6 +20,10 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.environments.core.zendo_engine import get_universe_space
+from app.environments.zendo.point import (
+    PointUniverse,
+    generate_point_zendo_task,
+)
 from app.environments.zendo.token import (
     TokenUniverse,
     generate_token_zendo_task,
@@ -43,6 +47,12 @@ FAMILY_CASES = [
         TokenUniverse(),
         generate_token_zendo_task,
         id="token_zendo",
+    ),
+    pytest.param(
+        "point_zendo",
+        PointUniverse(),
+        generate_point_zendo_task,
+        id="point_zendo",
     ),
 ]
 
@@ -167,8 +177,23 @@ def test_zendo_family_warm_generation_perf(family, universe, generate):
     assert time.perf_counter() - started < 5
 
 
-def test_token_zendo_api_probe_logs_gain_bits(tmp_path):
-    application = create_app(_settings(tmp_path / "token-zendo-api.db"))
+API_FAMILY_CASES = [
+    pytest.param("token_zendo", "token_zendo", "token-zendo-v1", id="token"),
+    pytest.param("point_zendo", "point_zendo", "point-zendo-v1", id="point"),
+]
+
+
+@pytest.mark.parametrize(
+    ("family", "expected_kind", "expected_version"),
+    API_FAMILY_CASES,
+)
+def test_zendo_api_probe_logs_gain_bits(
+    tmp_path,
+    family,
+    expected_kind,
+    expected_version,
+):
+    application = create_app(_settings(tmp_path / f"{family}-api.db"))
     with TestClient(application) as client:
         organizer = client.post(
             "/api/v1/access/redeem",
@@ -178,11 +203,11 @@ def test_token_zendo_api_probe_logs_gain_bits(tmp_path):
             "/api/v1/contests",
             headers=auth(organizer),
             json={
-                "title": "Token Zendo",
+                "title": "Zendo API",
                 "task_config": {
                     "families": [
                         {
-                            "family": "token_zendo",
+                            "family": family,
                             "weight": 1,
                             "initial_difficulty": 3,
                             "max_difficulty": 5,
@@ -196,7 +221,7 @@ def test_token_zendo_api_probe_logs_gain_bits(tmp_path):
             headers=auth(organizer),
             json={
                 "participants": [
-                    {"external_ref": "token-001", "display_name": "Участник"}
+                    {"external_ref": f"{family}-001", "display_name": "Участник"}
                 ]
             },
         )
@@ -222,24 +247,32 @@ def test_token_zendo_api_probe_logs_gain_bits(tmp_path):
             "/api/v1/participant/tasks/current",
             headers=auth(participant),
         ).json()["task"]
-        assert task["family"] == "token_zendo"
-        assert task["generator_version"] == "token-zendo-v1"
-        assert task["public_state"]["kind"] == "token_zendo"
-        cards = task["public_state"]["cards"]
+        assert task["family"] == family
+        assert task["generator_version"] == expected_version
+        assert task["public_state"]["kind"] == expected_kind
         probe_id = task["public_state"]["content"]["probe_cards"][0]["card_id"]
-        assert probe_id in cards
-        assert all(
-            token["color"] in {"R", "G", "B"}
-            and 1 <= token["num"] <= 9
-            for card_tokens in cards.values()
-            for token in card_tokens
-        )
+        if family == "token_zendo":
+            cards = task["public_state"]["cards"]
+            assert probe_id in cards
+            assert all(
+                token["color"] in {"R", "G", "B"}
+                and 1 <= token["num"] <= 9
+                for card_tokens in cards.values()
+                for token in card_tokens
+            )
+        else:
+            scene = task["public_state"]["scene"]
+            assert scene["edges"] == []
+            assert any(
+                point["group"] == probe_id
+                for point in scene["points"]
+            )
 
         probed = client.post(
             f"/api/v1/participant/tasks/{task['id']}/interactions",
             headers=auth(participant),
             json={
-                "client_action_id": "token-probe-1",
+                "client_action_id": "zendo-probe-1",
                 "action_type": "probe",
                 "probe": probe_id.lower(),
             },
@@ -252,7 +285,7 @@ def test_token_zendo_api_probe_logs_gain_bits(tmp_path):
             f"/api/v1/participant/tasks/{task['id']}/interactions",
             headers=auth(participant),
             json={
-                "client_action_id": "token-probe-1",
+                "client_action_id": "zendo-probe-1",
                 "action_type": "probe",
                 "probe": probe_id.lower(),
             },
@@ -293,6 +326,16 @@ def test_token_zendo_api_probe_logs_gain_bits(tmp_path):
             stored = session.get(TaskInstance, task["id"])
             evaluation = stored.evaluation_state
             assert evaluation["correct"] is True
-            assert evaluation["family"] == "token_zendo"
-            assert evaluation["generator_version"] == "token-zendo-v1"
+            assert evaluation["family"] == family
+            assert evaluation["generator_version"] == expected_version
             assert 0.0 <= evaluation["continuous_score"] <= 1.0
+
+
+def test_point_sampler_records_build_metrics():
+    from app.environments.zendo.point import sampler_build_log
+
+    get_universe_space(PointUniverse())
+    log = sampler_build_log()
+    assert "sampler_rejects" in log
+    for atom_key, rate in log["atom_base_rates"].items():
+        assert 0.12 <= rate <= 0.88, atom_key

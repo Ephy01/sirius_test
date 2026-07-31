@@ -940,17 +940,20 @@ function ParticipantContestScreen({
             ? task.publicState.sideToMove
             : undefined,
         geometryScene:
-          task.publicState.kind === "geometry_atlas"
+          task.publicState.kind === "geometry_atlas" ||
+          task.publicState.kind === "point_zendo"
             ? task.publicState.scene
             : undefined,
         geometryContent:
           task.publicState.kind === "geometry_atlas" ||
-          task.publicState.kind === "token_zendo"
+          task.publicState.kind === "token_zendo" ||
+          task.publicState.kind === "point_zendo"
             ? task.publicState.content
             : undefined,
         geometryInteraction:
           task.publicState.kind === "geometry_atlas" ||
-          task.publicState.kind === "token_zendo"
+          task.publicState.kind === "token_zendo" ||
+          task.publicState.kind === "point_zendo"
             ? task.publicState.interaction
             : undefined,
         tokenCards:

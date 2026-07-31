@@ -321,6 +321,18 @@ export type TokenZendoPublicState = {
   worldContext?: WorldContext;
 };
 
+export type PointZendoPublicState = {
+  kind: "point_zendo";
+  family: "point_zendo";
+  variant: string;
+  prompt: string;
+  scene: GeometryScene;
+  content: Record<string, unknown>;
+  interaction: Record<string, unknown>;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
 export type MachineSubKind =
   | "lamps_gf2"
   | "numeric_machine"
@@ -381,6 +393,7 @@ export type TaskPublicState =
   | DiceChessPositionPublicState
   | GeometryPublicState
   | TokenZendoPublicState
+  | PointZendoPublicState
   | MachinePanelPublicState
   | LeaperBoardPublicState;
 
@@ -1062,6 +1075,31 @@ function parseParticipantTask(value: unknown): ParticipantTask {
     publicState = {
       kind,
       family,
+      variant,
+      prompt,
+      scene,
+      content: isRecord(publicStateValue.content)
+        ? publicStateValue.content
+        : {},
+      interaction: isRecord(publicStateValue.interaction)
+        ? publicStateValue.interaction
+        : {},
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "point_zendo") {
+    const scene = parseGeometryScene(publicStateValue.scene);
+    const variant = readString(publicStateValue, "variant");
+    if (!scene || !variant) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную сцену point_zendo.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      family: "point_zendo",
       variant,
       prompt,
       scene,

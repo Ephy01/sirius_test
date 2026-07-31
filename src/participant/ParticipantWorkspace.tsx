@@ -437,7 +437,11 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
       },
     ];
   }
-  if (task.kind === "geometry_atlas" || task.kind === "token_zendo") {
+  if (
+    task.kind === "geometry_atlas" ||
+    task.kind === "token_zendo" ||
+    task.kind === "point_zendo"
+  ) {
     return [
       {
         id: 1,
@@ -454,7 +458,9 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
         id: 2,
         author: "system",
         content:
-          task.family === "geo_zendo" || task.kind === "token_zendo" ? (
+          task.family === "geo_zendo" ||
+          task.kind === "token_zendo" ||
+          task.kind === "point_zendo" ? (
             <>
               Можно проверить доступную карточку командой{" "}
               <code>/test &lt;код&gt;</code>, затем отправить итоговый ответ.
@@ -544,7 +550,8 @@ export function ParticipantWorkspace({
   const isGeometry = task.kind === "geometry_atlas";
   const isZendo =
     (isGeometry && task.family === "geo_zendo") ||
-    task.kind === "token_zendo";
+    task.kind === "token_zendo" ||
+    task.kind === "point_zendo";
   const isMachine =
     task.kind === "machine_panel" ||
     (task.kind === "chess" && task.family === "machine_reach");
@@ -1156,7 +1163,7 @@ export function ParticipantWorkspace({
               cards={task.tokenCards}
               content={task.geometryContent ?? {}}
             />
-          ) : isGeometry && task.geometryScene ? (
+          ) : task.geometryScene ? (
             <GeometryAtlasScene
               scene={task.geometryScene}
               content={task.geometryContent ?? {}}
