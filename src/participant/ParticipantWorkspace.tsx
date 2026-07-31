@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type {
+  HiddenWiringPublicState,
   LeaperBoardPublicState,
   MachinePanelPublicState,
   MachineState,
@@ -99,6 +100,7 @@ export type ParticipantTask = {
   tokenCards?: Record<string, TokenCard[]>;
   gridCards?: Record<string, string[]>;
   machinePanel?: MachinePanelPublicState;
+  wiring?: HiddenWiringPublicState;
   leaperBoard?: LeaperBoardPublicState;
   responseHint?: string;
   worldPhase?: string;
@@ -438,6 +440,31 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
       },
     ];
   }
+  if (task.kind === "hidden_wiring") {
+    return [
+      {
+        id: 1,
+        author: "system",
+        content: (
+          <>
+            Открыта панель{" "}
+            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
+            Проводка скрыта. Кнопки срабатывают только парами.
+          </>
+        ),
+      },
+      {
+        id: 2,
+        author: "system",
+        content: (
+          <>
+            Жмите аккорды командой <code>/op b1+b2</code> или кнопками на
+            панели. Первая проба обучающая и не тратит лимит.
+          </>
+        ),
+      },
+    ];
+  }
   if (
     task.kind === "geometry_atlas" ||
     task.kind === "token_zendo" ||
@@ -563,6 +590,7 @@ export function ParticipantWorkspace({
   const isMachine =
     task.kind === "machine_panel" ||
     (task.kind === "chess" && task.family === "machine_reach");
+  const isWiring = task.kind === "hidden_wiring";
   const isLeaperBoard = task.kind === "chess" && Boolean(task.leaperBoard);
   const worldPhaseLabel =
     task.worldPhase === "calibration"
@@ -834,7 +862,16 @@ export function ParticipantWorkspace({
         case "/help":
           appendEntry(
             "system",
-            isMachine ? (
+            isWiring ? (
+              <>
+                <code>/op b1+b2</code> — нажать аккорд из двух кнопок
+                <br />
+                Кнопки срабатывают только парами; первая проба обучающая
+                и не тратит лимит.
+                <br />
+                <code>/skip</code> — пропустить задачу
+              </>
+            ) : isMachine ? (
               <>
                 <code>/op &lt;id&gt;</code> — применить указанную операцию
                 <br />
@@ -895,10 +932,10 @@ export function ParticipantWorkspace({
           break;
 
         case "/op":
-          if (!isMachine) {
+          if (!isMachine && !isWiring) {
             appendEntry(
               "system",
-              "Команда /op доступна только в задачах с машиной.",
+              "Команда /op доступна только в задачах с машиной или панелью.",
             );
             break;
           }
@@ -1142,7 +1179,15 @@ export function ParticipantWorkspace({
               {statementQuestion && <p>{statementQuestion}</p>}
             </div>
             <p className="participant-brief__answer">
-              {isMachine ? (
+              {isWiring ? (
+                <>
+                  Кнопки срабатывают только парами: аккорд{" "}
+                  <code>/op b1+b2</code> переключает лампы.{" "}
+                  {task.wiring?.variant === "predict_chords"
+                    ? "Итог — предсказание трёх экзаменационных аккордов через /answer."
+                    : "Панель завершится сама при совпадении с целью."}
+                </>
+              ) : isMachine ? (
                 <>
                   Управляйте средой через <code>/op &lt;id&gt;</code> и{" "}
                   <code>/undo</code>. Когда решение найдено, отправьте{" "}
@@ -1162,7 +1207,13 @@ export function ParticipantWorkspace({
             </p>
           </article>
 
-          {task.machinePanel ? (
+          {task.wiring ? (
+            <WiringPanelScene
+              state={task.wiring}
+              canAct={task.status === "active" && !isBusy}
+              onChord={(opId) => void runCommand(`/op ${opId}`)}
+            />
+          ) : task.machinePanel ? (
             <MachinePanel state={task.machinePanel} />
           ) : isLeaperBoard && task.leaperBoard ? (
             <LeaperBoardScene state={task.leaperBoard} />
@@ -1659,6 +1710,156 @@ function GridZendoScene({
           <span>Проверок у оракула осталось: {remaining}</span>
         )}
         <span>Закрашивайте клетки кликом, узор уходит оракулу целиком</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+
+function WiringLampRow({
+  label,
+  lamps,
+  current = false,
+}: {
+  label: string;
+  lamps: readonly number[];
+  current?: boolean;
+}) {
+  return (
+    <section
+      className={`machine-state${current ? " machine-state--current" : ""}`}
+    >
+      <span>{label}</span>
+      <ol className="machine-lamps" aria-label={`${label}: состояние ламп`}>
+        {lamps.map((lamp, index) => (
+          <li
+            className={lamp ? "is-on" : ""}
+            aria-label={`Лампа ${index + 1}: ${lamp ? "горит" : "не горит"}`}
+            key={index}
+          >
+            <i aria-hidden="true" />
+            <small>{index + 1}</small>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function WiringPanelScene({
+  state,
+  canAct,
+  onChord,
+}: {
+  state: HiddenWiringPublicState;
+  canAct: boolean;
+  onChord: (opId: string) => void;
+}) {
+  const [selected, setSelected] = useState<number[]>([]);
+  const chordReady = selected.length === 2;
+  const chordId = chordReady
+    ? `b${Math.min(...selected)}+b${Math.max(...selected)}`
+    : null;
+  const chordAllowed =
+    chordId !== null && state.ops.some((operation) => operation.id === chordId);
+
+  function toggleButton(index: number) {
+    setSelected((currentSelection) =>
+      currentSelection.includes(index)
+        ? currentSelection.filter((value) => value !== index)
+        : currentSelection.length < 2
+          ? [...currentSelection, index]
+          : [currentSelection[1], index],
+    );
+  }
+
+  return (
+    <figure className="wiring-panel" aria-label="Панель со скрытой проводкой">
+      <header>
+        <div>
+          <span>Скрытая проводка</span>
+          <strong>
+            {state.variant === "reach_target"
+              ? "Совладай с панелью"
+              : "Пойми проводку"}
+          </strong>
+        </div>
+        <small>
+          Аккордов осталось {state.chordsRemaining} / {state.chordBudget}
+          {state.observations.length === 0 ? " · первая проба обучающая" : ""}
+        </small>
+      </header>
+      <p className="wiring-panel__legend">{state.legend}</p>
+
+      <div className="machine-panel__states">
+        <WiringLampRow label="Сейчас" lamps={state.current} current />
+        {state.target && <WiringLampRow label="Цель" lamps={state.target} />}
+      </div>
+
+      <div className="wiring-panel__buttons" role="group" aria-label="Кнопки панели">
+        {Array.from({ length: state.buttonCount }, (_, index) => index + 1).map(
+          (button) => (
+            <button
+              type="button"
+              className={selected.includes(button) ? "is-selected" : ""}
+              aria-pressed={selected.includes(button)}
+              onClick={() => toggleButton(button)}
+              key={button}
+            >
+              {button}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          className="wiring-panel__fire"
+          disabled={!canAct || !chordReady || !chordAllowed}
+          onClick={() => {
+            if (chordId) {
+              onChord(chordId);
+              setSelected([]);
+            }
+          }}
+        >
+          Нажать аккорд
+        </button>
+      </div>
+      {chordReady && !chordAllowed && (
+        <p className="wiring-panel__warning">
+          Этот аккорд недоступен для проб.
+        </p>
+      )}
+
+      {state.examChords && state.examChords.length > 0 && (
+        <div className="wiring-panel__exam">
+          <span>Экзаменационные аккорды (недоступны для проб):</span>
+          {state.examChords.map((chord) => (
+            <code key={chord.id}>{chord.id}</code>
+          ))}
+        </div>
+      )}
+
+      {state.observations.length > 0 && (
+        <ol className="wiring-panel__log" aria-label="Наблюдения">
+          {state.observations.map((observation, index) => (
+            <li key={index}>
+              <code>{observation.chord}</code>
+              {observation.training && <em> обучающая</em>}
+              <span>
+                переключились:{" "}
+                {observation.effect
+                  .map((bit, lamp) => (bit ? lamp + 1 : null))
+                  .filter((lamp) => lamp !== null)
+                  .join(", ") || "ничего"}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <figcaption>
+        Выберите две кнопки и нажмите аккорд. Эффект аккорда — те лампы,
+        которые переключились.
       </figcaption>
     </figure>
   );

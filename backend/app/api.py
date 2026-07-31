@@ -29,6 +29,7 @@ from .environments import (
     GEOMETRY_GENERATOR_VERSION,
     INTERACTIVE_FAMILIES,
     GRID_ZENDO_FAMILY,
+    HIDDEN_WIRING_FAMILY,
     MACHINE_REACH_FAMILY,
     POINT_ZENDO_FAMILY,
     TOKEN_ZENDO_FAMILY,
@@ -137,6 +138,8 @@ FAMILY_ALIASES = {
     "point-zendo": POINT_ZENDO_FAMILY,
     "grid_zendo": GRID_ZENDO_FAMILY,
     "grid-zendo": GRID_ZENDO_FAMILY,
+    "hidden_wiring": HIDDEN_WIRING_FAMILY,
+    "hidden-wiring": HIDDEN_WIRING_FAMILY,
 }
 WORLD_FAMILIES = {
     "chess_world": frozenset({DICE_CHESS_FAMILY}),
@@ -155,6 +158,7 @@ WORLD_FAMILIES["mixed"] = frozenset(
         TOKEN_ZENDO_FAMILY,
         POINT_ZENDO_FAMILY,
         GRID_ZENDO_FAMILY,
+        HIDDEN_WIRING_FAMILY,
     }
 )
 WORLD_DEFAULT_FAMILY = {
@@ -172,18 +176,19 @@ FAMILY_INTERACTION_ACTIONS = {
     TOKEN_ZENDO_FAMILY: frozenset({"probe"}),
     POINT_ZENDO_FAMILY: frozenset({"probe"}),
     GRID_ZENDO_FAMILY: frozenset({"probe"}),
+    HIDDEN_WIRING_FAMILY: frozenset({"apply_op"}),
     MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
 }
-# Families whose accepted probes append a ``zendo_probe`` event with exact
-# ΔH telemetry to the attempt journal.
-ZENDO_PROBE_FAMILIES = frozenset(
-    {
-        GEO_ZENDO_FAMILY,
-        TOKEN_ZENDO_FAMILY,
-        POINT_ZENDO_FAMILY,
-        GRID_ZENDO_FAMILY,
-    }
-)
+# Family → action whose accepted interactions append a ``zendo_probe``
+# event with exact ΔH telemetry to the attempt journal. hidden_wiring
+# chords carry the same telemetry shape, so they share the event kind.
+ZENDO_PROBE_ACTIONS = {
+    GEO_ZENDO_FAMILY: "probe",
+    TOKEN_ZENDO_FAMILY: "probe",
+    POINT_ZENDO_FAMILY: "probe",
+    GRID_ZENDO_FAMILY: "probe",
+    HIDDEN_WIRING_FAMILY: "apply_op",
+}
 FAMILY_ROUTE_VERSION = "weighted-family-route-v1"
 ADAPTIVE_TRAJECTORY_MODE = "adaptive"
 
@@ -2406,10 +2411,10 @@ def interact_with_task(
         },
     )
     if (
-        task.family in ZENDO_PROBE_FAMILIES
-        and payload.action_type == "probe"
+        ZENDO_PROBE_ACTIONS.get(task.family) == payload.action_type
         and transition.accepted
         and isinstance(transition.evaluation_state, dict)
+        and "gain_bits_actual" in transition.evaluation_state
     ):
         _append_event(
             session,

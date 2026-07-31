@@ -970,6 +970,10 @@ function ParticipantContestScreen({
           task.publicState.kind === "machine_panel"
             ? task.publicState
             : undefined,
+        wiring:
+          task.publicState.kind === "hidden_wiring"
+            ? task.publicState
+            : undefined,
         leaperBoard:
           task.publicState.kind === "chess"
             ? task.publicState

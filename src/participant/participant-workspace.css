@@ -2787,3 +2787,148 @@
   font-size: 8px;
   line-height: 1.5;
 }
+
+.wiring-panel {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  justify-self: stretch;
+}
+
+.wiring-panel > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #d8d6cf;
+}
+
+.wiring-panel > header span {
+  display: block;
+  margin-bottom: 3px;
+  color: #777b7c;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.wiring-panel > header strong {
+  color: #2f3334;
+  font-size: 12px;
+}
+
+.wiring-panel > header small {
+  color: #5f686b;
+  font-family: var(--mono, monospace);
+  font-size: 8px;
+}
+
+.wiring-panel__legend {
+  margin: 0 0 8px;
+  color: #006b80;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.wiring-panel__buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wiring-panel__buttons button {
+  min-width: 34px;
+  padding: 8px 0;
+  border: 1px solid #cfd5d6;
+  background: #fff;
+  color: #2f3334;
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wiring-panel__buttons button.is-selected {
+  border-color: #006b80;
+  background: #e6f4f6;
+  color: #006b80;
+}
+
+.wiring-panel__fire {
+  padding: 8px 12px !important;
+  border-color: #006b80 !important;
+  background: #006b80 !important;
+  color: #fff !important;
+}
+
+.wiring-panel__fire:disabled {
+  opacity: 0.45;
+  cursor: default !important;
+}
+
+.wiring-panel__warning {
+  margin: 6px 0 0;
+  color: #a3542c;
+  font-size: 8px;
+}
+
+.wiring-panel__exam {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+  color: #5f686b;
+  font-size: 8px;
+}
+
+.wiring-panel__exam code {
+  padding: 3px 5px;
+  background: #f4e9e2;
+  color: #a3542c;
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+}
+
+.wiring-panel__log {
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.wiring-panel__log li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid #e0e5e5;
+  background: #f8faf9;
+  font-size: 8px;
+  color: #424849;
+}
+
+.wiring-panel__log code {
+  color: #006b80;
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+}
+
+.wiring-panel__log em {
+  color: #a3542c;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.wiring-panel figcaption {
+  margin-top: 10px;
+  color: #6f7678;
+  font-size: 8px;
+  line-height: 1.5;
+}

@@ -321,6 +321,32 @@ export type TokenZendoPublicState = {
   worldContext?: WorldContext;
 };
 
+export type WiringObservation = {
+  chord: string;
+  training: boolean;
+  effect: number[];
+  lampsAfter: number[];
+};
+
+export type HiddenWiringPublicState = {
+  kind: "hidden_wiring";
+  family: "hidden_wiring";
+  variant: "reach_target" | "predict_chords";
+  prompt: string;
+  legend: string;
+  lampCount: number;
+  buttonCount: number;
+  ops: MachineOperation[];
+  current: number[];
+  target?: number[];
+  examChords?: { id: string; label: string }[];
+  chordBudget: number;
+  chordsRemaining: number;
+  observations: WiringObservation[];
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
 export type GridZendoPublicState = {
   kind: "grid_zendo";
   family: "grid_zendo";
@@ -408,6 +434,7 @@ export type TaskPublicState =
   | TokenZendoPublicState
   | PointZendoPublicState
   | GridZendoPublicState
+  | HiddenWiringPublicState
   | MachinePanelPublicState
   | LeaperBoardPublicState;
 
@@ -1098,6 +1125,89 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       interaction: isRecord(publicStateValue.interaction)
         ? publicStateValue.interaction
         : {},
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "hidden_wiring") {
+    const variantValue = readString(publicStateValue, "variant");
+    const lampCount = readNumber(publicStateValue, "lampCount", "lamp_count");
+    const buttonCount = readNumber(
+      publicStateValue,
+      "buttonCount",
+      "button_count",
+    );
+    const operations = parseMachineOperations(publicStateValue.ops);
+    const parseLamps = (value: unknown): number[] | null =>
+      Array.isArray(value) &&
+      value.every((item) => item === 0 || item === 1)
+        ? (value as number[])
+        : null;
+    const current = parseLamps(publicStateValue.current);
+    if (
+      (variantValue !== "reach_target" && variantValue !== "predict_chords") ||
+      lampCount === undefined ||
+      buttonCount === undefined ||
+      !operations ||
+      !current
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную панель скрытой проводки.",
+        details: value,
+      });
+    }
+    const target = parseLamps(publicStateValue.target);
+    const examChordsValue =
+      publicStateValue.examChords ?? publicStateValue.exam_chords;
+    const examChords = Array.isArray(examChordsValue)
+      ? examChordsValue.flatMap((item) => {
+          if (!isRecord(item)) return [];
+          const id = readString(item, "id");
+          if (!id) return [];
+          return [{ id, label: readString(item, "label") ?? id }];
+        })
+      : undefined;
+    const observationsValue = publicStateValue.observations;
+    const observations: WiringObservation[] = Array.isArray(observationsValue)
+      ? observationsValue.flatMap((item) => {
+          if (!isRecord(item)) return [];
+          const chord = readString(item, "chord");
+          const effect = parseLamps(item.effect);
+          const lampsAfter = parseLamps(
+            item.lampsAfter ?? item.lamps_after,
+          );
+          if (!chord || !effect || !lampsAfter) return [];
+          return [{
+            chord,
+            training: item.training === true,
+            effect,
+            lampsAfter,
+          }];
+        })
+      : [];
+    publicState = {
+      kind,
+      family: "hidden_wiring",
+      variant: variantValue,
+      prompt,
+      legend:
+        readString(publicStateValue, "legend") ??
+        "Кнопки срабатывают только парами.",
+      lampCount,
+      buttonCount,
+      ops: operations,
+      current,
+      target: target ?? undefined,
+      examChords,
+      chordBudget:
+        readNumber(publicStateValue, "chordBudget", "chord_budget") ?? 8,
+      chordsRemaining:
+        readNumber(
+          publicStateValue,
+          "chordsRemaining",
+          "chords_remaining",
+        ) ?? 8,
+      observations,
       responseHint,
       worldContext,
     };

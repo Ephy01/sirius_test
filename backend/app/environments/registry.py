@@ -50,6 +50,14 @@ from .machines import (
     generate_machine_reach_task,
     transition_machine_action,
 )
+from .wiring import (
+    FAMILY_KEY as HIDDEN_WIRING_FAMILY,
+    GENERATOR_VERSION as HIDDEN_WIRING_GENERATOR_VERSION,
+    WiringTransition,
+    evaluate_hidden_wiring_answer,
+    generate_hidden_wiring_task,
+    transition_hidden_wiring_chord,
+)
 from .zendo import (
     GRID_ZENDO_FAMILY,
     GRID_ZENDO_GENERATOR_VERSION,
@@ -77,6 +85,7 @@ IMPLEMENTED_FAMILIES = frozenset(
         TOKEN_ZENDO_FAMILY,
         POINT_ZENDO_FAMILY,
         GRID_ZENDO_FAMILY,
+        HIDDEN_WIRING_FAMILY,
         *GEOMETRY_FAMILIES,
     }
 )
@@ -87,6 +96,7 @@ INTERACTIVE_FAMILIES = frozenset(
         TOKEN_ZENDO_FAMILY,
         POINT_ZENDO_FAMILY,
         GRID_ZENDO_FAMILY,
+        HIDDEN_WIRING_FAMILY,
     }
 )
 GENERATOR_VERSIONS = {
@@ -95,6 +105,7 @@ GENERATOR_VERSIONS = {
     TOKEN_ZENDO_FAMILY: TOKEN_ZENDO_GENERATOR_VERSION,
     POINT_ZENDO_FAMILY: POINT_ZENDO_GENERATOR_VERSION,
     GRID_ZENDO_FAMILY: GRID_ZENDO_GENERATOR_VERSION,
+    HIDDEN_WIRING_FAMILY: HIDDEN_WIRING_GENERATOR_VERSION,
     **{
         family: (
             GEO_ZENDO_GENERATOR_VERSION
@@ -274,6 +285,18 @@ def generate_task(
             public_state=public_state,
             private_state=private_state,
         )
+    if (
+        family == HIDDEN_WIRING_FAMILY
+        and generator_version == HIDDEN_WIRING_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_hidden_wiring_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         public_state, private_state = generate_geometry_atlas_task(
             family=family,
@@ -359,6 +382,14 @@ def evaluate_task(
         and generator_version == GRID_ZENDO_GENERATOR_VERSION
     ):
         return evaluate_grid_zendo_answer(
+            answer=answer,
+            private_state=private_state,
+        )
+    if (
+        family == HIDDEN_WIRING_FAMILY
+        and generator_version == HIDDEN_WIRING_GENERATOR_VERSION
+    ):
+        return evaluate_hidden_wiring_answer(
             answer=answer,
             private_state=private_state,
         )
@@ -496,6 +527,33 @@ def interact_task(
             message=transition.message,
             normalized_input=probe.strip().upper(),
             evaluation_state=None,
+        )
+    if (
+        family == HIDDEN_WIRING_FAMILY
+        and generator_version == HIDDEN_WIRING_GENERATOR_VERSION
+        and action_type == "apply_op"
+    ):
+        op_id = action_payload.get("op_id")
+        client_action_id = action_payload.get("client_action_id")
+        if not isinstance(client_action_id, str):
+            raise ValueError("Wiring chord requires client_action_id")
+        if not isinstance(op_id, str):
+            raise ValueError("Wiring chord requires op_id")
+        wiring_transition: WiringTransition = transition_hidden_wiring_chord(
+            op_id=op_id,
+            public_state=public_state,
+            private_state=private_state,
+            client_action_id=client_action_id,
+        )
+        return InteractionTransition(
+            public_state=wiring_transition.public_state,
+            private_state=wiring_transition.private_state,
+            accepted=wiring_transition.accepted,
+            completed=wiring_transition.completed,
+            reason=wiring_transition.reason,
+            message=wiring_transition.message,
+            normalized_input=wiring_transition.normalized_input,
+            evaluation_state=wiring_transition.evaluation_state,
         )
     if (
         family == MACHINE_REACH_FAMILY
