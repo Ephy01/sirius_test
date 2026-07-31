@@ -321,6 +321,49 @@ export type TokenZendoPublicState = {
   worldContext?: WorldContext;
 };
 
+export type FoldStep = {
+  axis: "vertical" | "horizontal" | "diagonal";
+  direction: string;
+  label: string;
+};
+
+export type FoldPunchPublicState = {
+  kind: "fold_punch";
+  family: "fold_punch";
+  variant: string;
+  prompt: string;
+  sheetSize: number;
+  folds: FoldStep[];
+  folded: {
+    width: number;
+    height: number;
+    triangle: boolean;
+    holes: [number, number][];
+  };
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
+export type PolyominoCells = [number, number][];
+
+export type SpatialBankOption = {
+  id: string;
+  cells?: PolyominoCells;
+  parts?: [PolyominoCells, PolyominoCells];
+};
+
+export type SpatialBankPublicState = {
+  kind: "spatial_bank";
+  family: "spatial_bank";
+  variant: "rotation_match" | "assembly";
+  prompt: string;
+  reference?: PolyominoCells;
+  target?: PolyominoCells;
+  options: SpatialBankOption[];
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
 export type WiringObservation = {
   chord: string;
   training: boolean;
@@ -435,6 +478,8 @@ export type TaskPublicState =
   | PointZendoPublicState
   | GridZendoPublicState
   | HiddenWiringPublicState
+  | FoldPunchPublicState
+  | SpatialBankPublicState
   | MachinePanelPublicState
   | LeaperBoardPublicState;
 
@@ -1208,6 +1253,129 @@ function parseParticipantTask(value: unknown): ParticipantTask {
           "chords_remaining",
         ) ?? 8,
       observations,
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "fold_punch") {
+    const foldsValue = publicStateValue.folds;
+    const foldedValue = publicStateValue.folded;
+    const sheetSize =
+      readNumber(publicStateValue, "sheetSize", "sheet_size") ?? 8;
+    const folds: FoldStep[] = Array.isArray(foldsValue)
+      ? foldsValue.flatMap((item) => {
+          if (!isRecord(item)) return [];
+          const axis = readString(item, "axis");
+          const direction = readString(item, "direction");
+          if (
+            (axis !== "vertical" &&
+              axis !== "horizontal" &&
+              axis !== "diagonal") ||
+            !direction
+          ) {
+            return [];
+          }
+          return [{
+            axis,
+            direction,
+            label: readString(item, "label") ?? direction,
+          }];
+        })
+      : [];
+    const parseCellPairs = (value: unknown): [number, number][] | null =>
+      Array.isArray(value) &&
+      value.every(
+        (item) =>
+          Array.isArray(item) &&
+          item.length === 2 &&
+          item.every((part) => typeof part === "number"),
+      )
+        ? (value as [number, number][])
+        : null;
+    const holes = isRecord(foldedValue)
+      ? parseCellPairs(foldedValue.holes)
+      : null;
+    const variantValue = readString(publicStateValue, "variant") ?? "unfold_holes";
+    if (
+      folds.length === 0 ||
+      !isRecord(foldedValue) ||
+      !holes ||
+      readNumber(foldedValue, "width") === undefined ||
+      readNumber(foldedValue, "height") === undefined
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную задачу дырокола.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      family: "fold_punch",
+      variant: variantValue,
+      prompt,
+      sheetSize,
+      folds,
+      folded: {
+        width: readNumber(foldedValue, "width") ?? sheetSize,
+        height: readNumber(foldedValue, "height") ?? sheetSize,
+        triangle: foldedValue.triangle === true,
+        holes,
+      },
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "spatial_bank") {
+    const variantValue = readString(publicStateValue, "variant");
+    const parseCells = (value: unknown): PolyominoCells | null =>
+      Array.isArray(value) &&
+      value.every(
+        (item) =>
+          Array.isArray(item) &&
+          item.length === 2 &&
+          item.every((part) => typeof part === "number"),
+      )
+        ? (value as PolyominoCells)
+        : null;
+    const optionsValue = publicStateValue.options;
+    const options: SpatialBankOption[] = Array.isArray(optionsValue)
+      ? optionsValue.flatMap((item): SpatialBankOption[] => {
+          if (!isRecord(item)) return [];
+          const id = readString(item, "id");
+          if (!id) return [];
+          const cells = parseCells(item.cells);
+          const partsValue = item.parts;
+          const parts =
+            Array.isArray(partsValue) && partsValue.length === 2
+              ? ([
+                  parseCells(partsValue[0]),
+                  parseCells(partsValue[1]),
+                ] as const)
+              : null;
+          if (cells) return [{ id, cells }];
+          if (parts && parts[0] && parts[1]) {
+            return [{ id, parts: [parts[0], parts[1]] }];
+          }
+          return [];
+        })
+      : [];
+    if (
+      (variantValue !== "rotation_match" && variantValue !== "assembly") ||
+      options.length !== 4
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректный пространственный айтем.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      family: "spatial_bank",
+      variant: variantValue,
+      prompt,
+      reference: parseCells(publicStateValue.reference) ?? undefined,
+      target: parseCells(publicStateValue.target) ?? undefined,
+      options,
       responseHint,
       worldContext,
     };

@@ -23,6 +23,7 @@ from .dependencies import (
 )
 from .environments import (
     DICE_CHESS_FAMILY,
+    FOLD_PUNCH_FAMILY,
     GEO_PROBABILITY_FAMILY,
     GEO_TRANSFORM_FAMILY,
     GEO_ZENDO_FAMILY,
@@ -32,6 +33,7 @@ from .environments import (
     HIDDEN_WIRING_FAMILY,
     MACHINE_REACH_FAMILY,
     POINT_ZENDO_FAMILY,
+    SPATIAL_BANK_FAMILY,
     TOKEN_ZENDO_FAMILY,
     derive_task_seed,
     evaluate_task,
@@ -140,6 +142,10 @@ FAMILY_ALIASES = {
     "grid-zendo": GRID_ZENDO_FAMILY,
     "hidden_wiring": HIDDEN_WIRING_FAMILY,
     "hidden-wiring": HIDDEN_WIRING_FAMILY,
+    "fold_punch": FOLD_PUNCH_FAMILY,
+    "fold-punch": FOLD_PUNCH_FAMILY,
+    "spatial_bank": SPATIAL_BANK_FAMILY,
+    "spatial-bank": SPATIAL_BANK_FAMILY,
 }
 WORLD_FAMILIES = {
     "chess_world": frozenset({DICE_CHESS_FAMILY}),
@@ -159,6 +165,8 @@ WORLD_FAMILIES["mixed"] = frozenset(
         POINT_ZENDO_FAMILY,
         GRID_ZENDO_FAMILY,
         HIDDEN_WIRING_FAMILY,
+        FOLD_PUNCH_FAMILY,
+        SPATIAL_BANK_FAMILY,
     }
 )
 WORLD_DEFAULT_FAMILY = {

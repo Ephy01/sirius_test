@@ -50,6 +50,16 @@ from .machines import (
     generate_machine_reach_task,
     transition_machine_action,
 )
+from .spatial import (
+    FOLD_PUNCH_FAMILY,
+    FOLD_PUNCH_GENERATOR_VERSION,
+    SPATIAL_BANK_FAMILY,
+    SPATIAL_BANK_GENERATOR_VERSION,
+    evaluate_fold_punch_answer,
+    evaluate_spatial_bank_answer,
+    generate_fold_punch_task,
+    generate_spatial_bank_task,
+)
 from .wiring import (
     FAMILY_KEY as HIDDEN_WIRING_FAMILY,
     GENERATOR_VERSION as HIDDEN_WIRING_GENERATOR_VERSION,
@@ -86,6 +96,8 @@ IMPLEMENTED_FAMILIES = frozenset(
         POINT_ZENDO_FAMILY,
         GRID_ZENDO_FAMILY,
         HIDDEN_WIRING_FAMILY,
+        FOLD_PUNCH_FAMILY,
+        SPATIAL_BANK_FAMILY,
         *GEOMETRY_FAMILIES,
     }
 )
@@ -106,6 +118,8 @@ GENERATOR_VERSIONS = {
     POINT_ZENDO_FAMILY: POINT_ZENDO_GENERATOR_VERSION,
     GRID_ZENDO_FAMILY: GRID_ZENDO_GENERATOR_VERSION,
     HIDDEN_WIRING_FAMILY: HIDDEN_WIRING_GENERATOR_VERSION,
+    FOLD_PUNCH_FAMILY: FOLD_PUNCH_GENERATOR_VERSION,
+    SPATIAL_BANK_FAMILY: SPATIAL_BANK_GENERATOR_VERSION,
     **{
         family: (
             GEO_ZENDO_GENERATOR_VERSION
@@ -297,6 +311,30 @@ def generate_task(
             public_state=public_state,
             private_state=private_state,
         )
+    if (
+        family == FOLD_PUNCH_FAMILY
+        and generator_version == FOLD_PUNCH_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_fold_punch_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
+    if (
+        family == SPATIAL_BANK_FAMILY
+        and generator_version == SPATIAL_BANK_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_spatial_bank_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         public_state, private_state = generate_geometry_atlas_task(
             family=family,
@@ -390,6 +428,22 @@ def evaluate_task(
         and generator_version == HIDDEN_WIRING_GENERATOR_VERSION
     ):
         return evaluate_hidden_wiring_answer(
+            answer=answer,
+            private_state=private_state,
+        )
+    if (
+        family == FOLD_PUNCH_FAMILY
+        and generator_version == FOLD_PUNCH_GENERATOR_VERSION
+    ):
+        return evaluate_fold_punch_answer(
+            answer=answer,
+            private_state=private_state,
+        )
+    if (
+        family == SPATIAL_BANK_FAMILY
+        and generator_version == SPATIAL_BANK_GENERATOR_VERSION
+    ):
+        return evaluate_spatial_bank_answer(
             answer=answer,
             private_state=private_state,
         )

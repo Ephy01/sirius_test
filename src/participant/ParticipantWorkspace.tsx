@@ -8,10 +8,13 @@ import {
   useState,
 } from "react";
 import type {
+  FoldPunchPublicState,
   HiddenWiringPublicState,
   LeaperBoardPublicState,
   MachinePanelPublicState,
   MachineState,
+  PolyominoCells,
+  SpatialBankPublicState,
   TokenCard,
 } from "../api";
 import "./participant-workspace.css";
@@ -101,6 +104,8 @@ export type ParticipantTask = {
   gridCards?: Record<string, string[]>;
   machinePanel?: MachinePanelPublicState;
   wiring?: HiddenWiringPublicState;
+  foldPunch?: FoldPunchPublicState;
+  spatialBank?: SpatialBankPublicState;
   leaperBoard?: LeaperBoardPublicState;
   responseHint?: string;
   worldPhase?: string;
@@ -1207,7 +1212,19 @@ export function ParticipantWorkspace({
             </p>
           </article>
 
-          {task.wiring ? (
+          {task.foldPunch ? (
+            <FoldPunchScene
+              state={task.foldPunch}
+              canAnswer={task.status === "active" && !isBusy}
+              onSubmit={(cells) => void runCommand(`/answer ${cells}`)}
+            />
+          ) : task.spatialBank ? (
+            <SpatialBankScene
+              state={task.spatialBank}
+              canAnswer={task.status === "active" && !isBusy}
+              onSelect={(optionId) => void runCommand(`/answer ${optionId}`)}
+            />
+          ) : task.wiring ? (
             <WiringPanelScene
               state={task.wiring}
               canAct={task.status === "active" && !isBusy}
@@ -1860,6 +1877,204 @@ function WiringPanelScene({
       <figcaption>
         Выберите две кнопки и нажмите аккорд. Эффект аккорда — те лампы,
         которые переключились.
+      </figcaption>
+    </figure>
+  );
+}
+
+
+function PolyominoPreview({
+  cells,
+  tone = "cyan",
+}: {
+  cells: PolyominoCells;
+  tone?: "cyan" | "plum";
+}) {
+  const rows = Math.max(...cells.map(([row]) => row)) + 1;
+  const columns = Math.max(...cells.map(([, column]) => column)) + 1;
+  const filled = new Set(cells.map(([row, column]) => `${row}:${column}`));
+  return (
+    <div
+      className={`polyomino polyomino--${tone}`}
+      style={{
+        gridTemplateColumns: `repeat(${columns}, 1fr)`,
+        aspectRatio: `${columns} / ${rows}`,
+      }}
+      aria-hidden="true"
+    >
+      {Array.from({ length: rows * columns }, (_, index) => {
+        const row = Math.floor(index / columns);
+        const column = index % columns;
+        return (
+          <i
+            className={filled.has(`${row}:${column}`) ? "is-filled" : ""}
+            key={index}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function FoldPunchScene({
+  state,
+  canAnswer,
+  onSubmit,
+}: {
+  state: FoldPunchPublicState;
+  canAnswer: boolean;
+  onSubmit: (cells: string) => void;
+}) {
+  const size = state.sheetSize;
+  const [marked, setMarked] = useState<boolean[]>(() =>
+    Array(size * size).fill(false),
+  );
+  const holeSet = new Set(
+    state.folded.holes.map(([row, column]) => `${row}:${column}`),
+  );
+  const markedCells = marked
+    .map((cell, index) =>
+      cell
+        ? `${Math.floor(index / size) + 1},${(index % size) + 1}`
+        : null,
+    )
+    .filter((cell): cell is string => cell !== null);
+
+  return (
+    <figure className="fold-punch" aria-label="Дырокол">
+      <ol className="fold-punch__folds" aria-label="Порядок сгибов">
+        {state.folds.map((fold, index) => (
+          <li key={index}>
+            <span>{index + 1}</span>
+            {fold.label}
+          </li>
+        ))}
+        <li>
+          <span>{state.folds.length + 1}</span>
+          Пробили {state.folded.holes.length === 1 ? "дырку" : "дырки"}
+        </li>
+      </ol>
+
+      <div className="fold-punch__panels">
+        <section>
+          <header>Сложенный лист с дырками</header>
+          <div
+            className="fold-punch__grid fold-punch__grid--folded"
+            style={{
+              gridTemplateColumns: `repeat(${state.folded.width}, 18px)`,
+            }}
+            aria-hidden="true"
+          >
+            {Array.from(
+              { length: state.folded.height * state.folded.width },
+              (_, index) => {
+                const row = Math.floor(index / state.folded.width);
+                const column = index % state.folded.width;
+                const outside =
+                  state.folded.triangle && column > row;
+                return (
+                  <i
+                    className={[
+                      outside ? "is-outside" : "",
+                      holeSet.has(`${row}:${column}`) ? "is-hole" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={index}
+                  />
+                );
+              },
+            )}
+          </div>
+        </section>
+        <section>
+          <header>Развёрнутый лист — отметьте дырки</header>
+          <div
+            className="fold-punch__grid fold-punch__grid--answer"
+            style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
+            role="group"
+            aria-label="Отметка дырок на развёрнутом листе"
+          >
+            {marked.map((cell, index) => (
+              <button
+                type="button"
+                className={cell ? "is-hole" : ""}
+                aria-pressed={cell}
+                aria-label={`Клетка ${Math.floor(index / size) + 1}-${
+                  (index % size) + 1
+                }`}
+                onClick={() =>
+                  setMarked((current) =>
+                    current.map((value, cellIndex) =>
+                      cellIndex === index ? !value : value,
+                    ),
+                  )
+                }
+                key={index}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            className="fold-punch__submit"
+            disabled={!canAnswer || markedCells.length === 0}
+            onClick={() => onSubmit(markedCells.join(" "))}
+          >
+            Отправить отмеченные клетки
+          </button>
+        </section>
+      </div>
+
+      <figcaption>
+        Сгибы выполняются по порядку; дырки пробиты через все слои сразу.
+      </figcaption>
+    </figure>
+  );
+}
+
+function SpatialBankScene({
+  state,
+  canAnswer,
+  onSelect,
+}: {
+  state: SpatialBankPublicState;
+  canAnswer: boolean;
+  onSelect: (optionId: string) => void;
+}) {
+  const reference = state.reference ?? state.target;
+  return (
+    <figure className="spatial-bank" aria-label="Пространственный айтем">
+      {reference && (
+        <section className="spatial-bank__reference">
+          <header>
+            {state.variant === "rotation_match" ? "Эталон" : "Цель"}
+          </header>
+          <PolyominoPreview cells={reference} tone="plum" />
+        </section>
+      )}
+      <div className="spatial-bank__options">
+        {state.options.map((option) => (
+          <button
+            type="button"
+            className="spatial-bank__option"
+            disabled={!canAnswer}
+            onClick={() => onSelect(option.id)}
+            key={option.id}
+          >
+            <span>{option.id}</span>
+            {option.cells && <PolyominoPreview cells={option.cells} />}
+            {option.parts && (
+              <span className="spatial-bank__parts">
+                <PolyominoPreview cells={option.parts[0]} />
+                <b>+</b>
+                <PolyominoPreview cells={option.parts[1]} />
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <figcaption>
+        Кликните вариант или ответьте в чате: <code>/answer V2</code>.
       </figcaption>
     </figure>
   );

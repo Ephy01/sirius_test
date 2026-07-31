@@ -974,6 +974,14 @@ function ParticipantContestScreen({
           task.publicState.kind === "hidden_wiring"
             ? task.publicState
             : undefined,
+        foldPunch:
+          task.publicState.kind === "fold_punch"
+            ? task.publicState
+            : undefined,
+        spatialBank:
+          task.publicState.kind === "spatial_bank"
+            ? task.publicState
+            : undefined,
         leaperBoard:
           task.publicState.kind === "chess"
             ? task.publicState
