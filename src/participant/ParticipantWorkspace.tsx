@@ -1646,6 +1646,10 @@ function GeometryAtlasScene({
   );
   const width = Math.max(1, scene.bounds.maxX - scene.bounds.minX);
   const height = Math.max(1, scene.bounds.maxY - scene.bounds.minY);
+  // Бэкенд считает в математических координатах (ось y вверх), SVG рисует
+  // ось y вниз — без переворота «поворот против часовой» выглядит поворотом
+  // по часовой, а отражение y = x — отражением y = −x.
+  const flipY = (value: number) => scene.bounds.maxY + scene.bounds.minY - value;
   const viewPadding = Math.max(width, height) * 0.09;
   const radius = Math.max(
     0.48,
@@ -1681,9 +1685,9 @@ function GeometryAtlasScene({
                   return (
                     <line
                       x1={source.x}
-                      y1={source.y}
+                      y1={flipY(source.y)}
                       x2={target.x}
-                      y2={target.y}
+                      y2={flipY(target.y)}
                       stroke={geometryColor(edge.color)}
                       key={edge.id}
                     />
@@ -1693,14 +1697,14 @@ function GeometryAtlasScene({
                   <g key={point.id}>
                     <circle
                       cx={point.x}
-                      cy={point.y}
+                      cy={flipY(point.y)}
                       r={radius}
                       style={{ fill: geometryColor(point.color) }}
                     />
                     {point.label && (
                       <text
                         x={point.x}
-                        y={point.y}
+                        y={flipY(point.y)}
                         dominantBaseline="central"
                         textAnchor="middle"
                         style={{
