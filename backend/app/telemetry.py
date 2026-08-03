@@ -225,10 +225,12 @@ def _ai_transcript_lines(attempt: Attempt, tasks: list[TaskInstance]) -> list[st
         if turn.latency_ms is not None:
             latencies.append(turn.latency_ms)
 
+    flagged = sum(1 for _task, turn in turns if turn.provider == "tripwire")
     lines.append("")
     lines.append("--- AI SUMMARY ---")
     lines.append(f"ai_turns_completed: {completed}")
     lines.append(f"ai_turns_failed: {failed}")
+    lines.append(f"ai_messages_flagged: {flagged}")
     lines.append(f"ai_total_input_tokens: {total_input}")
     lines.append(f"ai_total_output_tokens: {total_output}")
     lines.append(

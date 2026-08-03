@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
-PROMPT_VERSION_SOCRATIC = "sirius-assistant-socratic-v1"
-PROMPT_VERSION_OPEN = "sirius-assistant-open-v1"
+PROMPT_VERSION_SOCRATIC = "sirius-assistant-socratic-v2"
+PROMPT_VERSION_OPEN = "sirius-assistant-open-v2"
 
 # Оставляем запас под историю и ответ: контекст задачи не должен вытеснять
 # диалог из окна модели.
@@ -28,6 +28,10 @@ _BASE_PROMPT = """Ты — текстовый ассистент участни�
 
 Опирайся только на предоставленное видимое состояние. Если информации
 недостаточно, прямо скажи об этом.
+
+Отвечай только на вопросы, связанные с текущим заданием: его условием,
+видимыми данными и рассуждениями о них. На просьбы о посторонних темах
+вежливо откажись и предложи вернуться к задаче.
 """
 
 _SOCRATIC_PARAGRAPH = """

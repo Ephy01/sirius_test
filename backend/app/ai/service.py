@@ -36,6 +36,13 @@ from .provider import (
     ProviderMessage,
     ProviderRequest,
 )
+from .tripwire import (
+    CRISIS_RESPONSE,
+    TRIPWIRE_CONTEXT_HASH,
+    TRIPWIRE_PROMPT_VERSION,
+    TRIPWIRE_PROVIDER,
+    crisis_category,
+)
 
 AI_MODES = frozenset({"off", "socratic", "open"})
 # A pending turn older than this is considered orphaned (process died between
@@ -116,16 +123,19 @@ def attempt_ai_config(session: Session, attempt: Attempt) -> AiConfig:
 
 
 def _completed_turns(session: Session, *, attempt_id: str, task_id: str) -> tuple[int, int]:
+    # Ответы tripwire (кризисные сообщения) лимит участника не расходуют.
     attempt_count = session.scalar(
         select(func.count(AiTurn.id)).where(
             AiTurn.attempt_id == attempt_id,
             AiTurn.status == AiTurnStatus.COMPLETED,
+            AiTurn.provider != TRIPWIRE_PROVIDER,
         )
     )
     task_count = session.scalar(
         select(func.count(AiTurn.id)).where(
             AiTurn.task_instance_id == task_id,
             AiTurn.status == AiTurnStatus.COMPLETED,
+            AiTurn.provider != TRIPWIRE_PROVIDER,
         )
     )
     return int(attempt_count or 0), int(task_count or 0)
@@ -262,6 +272,47 @@ def run_ai_turn(
         )
         return existing, remaining
 
+    # Кризисный tripwire — до лимитов и очереди: поддерживающий ответ
+    # приходит всегда, модель не вызывается, лимит не тратится.
+    category = crisis_category(stripped)
+    if category is not None:
+        turn = AiTurn(
+            attempt_id=attempt.id,
+            task_instance_id=task.id,
+            sequence=_next_turn_sequence(session, task.id),
+            client_action_id=client_action_id,
+            status=AiTurnStatus.COMPLETED,
+            user_message=stripped,
+            assistant_message=CRISIS_RESPONSE,
+            provider=TRIPWIRE_PROVIDER,
+            model_uri=TRIPWIRE_PROVIDER,
+            prompt_version=TRIPWIRE_PROMPT_VERSION,
+            public_context_hash=TRIPWIRE_CONTEXT_HASH,
+            latency_ms=0,
+            completed_at=utc_now(),
+        )
+        session.add(turn)
+        # Python-side id default применяется на flush; без него событие
+        # получило бы aiTurnId=null.
+        session.flush()
+        _append_ai_event(
+            session,
+            attempt=attempt,
+            task=task,
+            event_type="ai_message_flagged",
+            payload={
+                "aiTurnId": turn.id,
+                "category": category,
+                "inputLength": len(stripped),
+            },
+        )
+        session.commit()
+        session.refresh(turn)
+        remaining = remaining_turns(
+            session, config=config, attempt_id=attempt.id, task_id=task.id
+        )
+        return turn, remaining
+
     pending = session.scalar(
         select(AiTurn).where(
             AiTurn.attempt_id == attempt.id,
@@ -319,6 +370,7 @@ def run_ai_turn(
         public_context_hash=context.sha256,
     )
     session.add(turn)
+    session.flush()
     _append_ai_event(
         session,
         attempt=attempt,

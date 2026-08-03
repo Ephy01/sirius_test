@@ -21,6 +21,12 @@ from .service import (
     remaining_turns,
     run_ai_turn,
 )
+from .tripwire import (
+    CRISIS_CATEGORY,
+    CRISIS_RESPONSE,
+    TRIPWIRE_PROVIDER,
+    crisis_category,
+)
 from .yandex import YandexAssistantProvider, provider_from_settings
 
 __all__ = [
@@ -29,6 +35,10 @@ __all__ = [
     "AiVisibleContext",
     "AssistantProvider",
     "CONTEXT_BUILDERS",
+    "CRISIS_CATEGORY",
+    "CRISIS_RESPONSE",
+    "TRIPWIRE_PROVIDER",
+    "crisis_category",
     "FakeAssistantProvider",
     "PROMPT_VERSION_OPEN",
     "PROMPT_VERSION_SOCRATIC",

@@ -413,6 +413,6 @@ def test_organizer_export_contains_ai_transcript(tmp_path):
         assert "--- AI TRANSCRIPT ---" in text
         assert "Правило про степени?" in text
         assert "Какие степени у вершин?" in text
-        assert "prompt_version: sirius-assistant-socratic-v1" in text
+        assert "prompt_version: sirius-assistant-socratic-v2" in text
         assert "--- AI SUMMARY ---" in text
         assert "ai_turns_completed: 1" in text
