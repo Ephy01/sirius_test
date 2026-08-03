@@ -575,6 +575,7 @@ export function ParticipantWorkspace({
   const inFlight = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const consoleLogRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const telemetryHandlerRef = useRef(onTelemetry);
   const telemetrySessionId = useRef(createClientActionId());
   const telemetryStartedAt = useRef(Date.now());
@@ -718,6 +719,9 @@ export function ParticipantWorkspace({
     if (activeTaskId.current === task.id) return;
     activeTaskId.current = task.id;
     setDraft("");
+    // Прокрутка сцены остаётся от прошлой задачи; более короткая новая
+    // задача при сохранённом scrollTop выглядит как пустая страница.
+    stageRef.current?.scrollTo({ top: 0 });
   }, [task.id]);
 
   useEffect(() => {
@@ -1340,7 +1344,7 @@ export function ParticipantWorkspace({
           </span>
         </header>
 
-        <div className="participant-task__stage">
+        <div className="participant-task__stage" ref={stageRef}>
           <article className="participant-brief">
             <h1 id="participantTaskTitle">
               Задача {task.ordinal}
@@ -1354,33 +1358,34 @@ export function ParticipantWorkspace({
                 {isWiring ? (
                   task.wiring?.variant === "predict_chords" ? (
                     <>
-                      Итог — предсказание трёх экзаменационных комбинаций.
-                      Ответ — три битовые строки по лампам (1 —
-                      переключится): <code>/answer 1101 0000 1000</code>.
+                      Ответ отправьте в чате (пример:{" "}
+                      <code>/answer 1101 0000 1000</code> — три битовые
+                      строки по лампам экзаменационных комбинаций, 1 —
+                      лампа переключится).
                     </>
                   ) : (
                     <>Панель завершится сама, когда лампы совпадут с целью.</>
                   )
                 ) : isMachine ? (
                   <>
-                    Когда решение найдено, отправьте <code>done</code>; если
-                    цель недостижима — <code>impossible</code>.
+                    Ответ отправьте в чате: <code>done</code> — когда решение
+                    найдено, <code>impossible</code> — если цель недостижима.
                   </>
                 ) : isZendo ? (
                   <>
-                    Ответ отправьте в чате:{" "}
+                    Ответ отправьте в чате (пример:{" "}
                     <code>/answer да нет да нет да нет да нет</code> — восемь
-                    значений в порядке целей.
+                    значений в порядке целей).
                   </>
                 ) : task.foldPunch ? (
                   <>
                     Кликните клетки на развёрнутом листе и нажмите «Отправить
-                    отмеченные клетки», или ответьте в чате:{" "}
-                    <code>/answer 2,3 5,8</code> (строка,столбец).
+                    отмеченные клетки», или отправьте ответ в чате (пример:{" "}
+                    <code>/answer 2,3 5,8</code> — строка,столбец).
                   </>
                 ) : (
                   <>
-                    Ответ введите в чате командой{" "}
+                    Ответ отправьте в чате командой{" "}
                     <code>/answer &lt;ваш ответ&gt;</code>.
                   </>
                 )}
@@ -1939,17 +1944,6 @@ function WiringPanelScene({
 
   return (
     <figure className="wiring-panel" aria-label="Панель со скрытой проводкой">
-      <header>
-        <div>
-          <span>Скрытая проводка</span>
-          <strong>
-            {state.variant === "reach_target"
-              ? "Совладай с панелью"
-              : "Пойми проводку"}
-          </strong>
-        </div>
-      </header>
-
       <div className="machine-panel__states">
         <WiringLampRow label="Сейчас" lamps={state.current} current />
         {state.target && <WiringLampRow label="Цель" lamps={state.target} />}
@@ -2234,19 +2228,6 @@ function MachineStateDisplay({
 function MachinePanel({ state }: { state: MachinePanelPublicState }) {
   return (
     <figure className="machine-panel" aria-label="Пульт машины">
-      <header>
-        <div>
-          <span>Пульт машины</span>
-          <strong>
-            {state.subKind === "lamps_gf2"
-              ? "Лампы"
-              : state.subKind === "numeric_machine"
-                ? "Числовая машина"
-                : "Перестановки"}
-          </strong>
-        </div>
-      </header>
-
       <div className="machine-panel__states">
         <MachineStateDisplay label="Старт" state={state.start} />
         <MachineStateDisplay label="Сейчас" state={state.current} current />

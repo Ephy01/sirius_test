@@ -1169,7 +1169,7 @@ svg {
   overflow: hidden;
   margin: 0 auto;
   border-radius: 9px;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--sans);
 }
 
 .chess-grid > span {
@@ -1236,7 +1236,7 @@ svg {
   border-radius: 7px;
   background: var(--plum-soft);
   color: var(--vintage-grape);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--sans);
   font-size: 20px;
 }
 
