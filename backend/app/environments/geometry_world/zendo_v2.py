@@ -29,6 +29,24 @@ GENERATOR_VERSION = "geometry-zendo-v2"
 # Hint categories for the frozen graph DSL. The category is derived from
 # ``rule_index`` on demand: geometry-zendo-v2 private payloads are locked
 # byte-for-byte by the golden fixture, so nothing new is stored there.
+GRAPH_ATOM_DESCRIPTIONS = {
+    "vertex_count_even": "чётное число вершин",
+    "edge_count_even": "чётное число рёбер",
+    "edges_at_least_vertices": "рёбер не меньше, чем вершин",
+    "density_at_least_half": "рёбер не меньше половины возможных",
+    "all_degrees_even": "степени всех вершин чётны",
+    "exactly_two_odd_degrees": "ровно две вершины нечётной степени",
+    "max_degree_at_least_three": "есть вершина степени не меньше 3",
+    "has_isolated_vertex": "есть изолированная вершина",
+    "has_isolated_point": "есть изолированная вершина",
+    "has_leaf": "есть висячая вершина (степень 1)",
+    "connected": "граф связен",
+    "has_triangle": "есть треугольник",
+    "has_cycle": "есть цикл",
+    "bipartite": "граф двудольный",
+    "has_crossing": "есть пересекающиеся на рисунке рёбра",
+}
+
 GRAPH_ATOM_HINT_CATEGORIES = {
     "vertex_count_even": "count",
     "edge_count_even": "count",
@@ -241,6 +259,7 @@ def evaluate_geo_zendo_v2_answer(
 
 __all__ = [
     "GENERATOR_VERSION",
+    "GRAPH_ATOM_DESCRIPTIONS",
     "PROBE_BUDGET",
     "PROBE_CARD_COUNT",
     "TARGET_COUNT",

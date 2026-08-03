@@ -533,6 +533,7 @@ export type DebugAnswerResponse = {
   family: string;
   answer: string;
   commands: string[];
+  details: string[];
 };
 
 export type TaskInteractionResponse = {
@@ -2425,6 +2426,11 @@ export class ApiClient {
       answer: readString(body, "answer") ?? "",
       commands: Array.isArray(body.commands)
         ? body.commands.filter(
+            (item): item is string => typeof item === "string",
+          )
+        : [],
+      details: Array.isArray(body.details)
+        ? body.details.filter(
             (item): item is string => typeof item === "string",
           )
         : [],

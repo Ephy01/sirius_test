@@ -105,6 +105,19 @@ TOKEN_ATOMS: tuple[Atom, ...] = (
 )
 
 
+ATOM_DESCRIPTIONS = {
+    "odd_count_even": "число нечётных фишек чётно",
+    "sum_divisible_by_3": "сумма чисел кратна 3",
+    "sum_of_squares_divisible_by_4": "сумма квадратов чисел кратна 4",
+    "max_minus_min_equals_length": "максимум минус минимум равен длине полки",
+    "palindrome": "числа читаются одинаково слева направо и справа налево",
+    "adjacent_coprime": "числа любых двух соседних фишек взаимно просты",
+    "all_same_color": "все фишки одного цвета",
+    "has_red": "есть красная фишка",
+    "exactly_two_colors": "использовано ровно два цвета",
+}
+
+
 ATOM_HINT_CATEGORIES = {
     "odd_count_even": "count",
     "sum_divisible_by_3": "count",

@@ -637,6 +637,28 @@ HINT_CATEGORY_LABELS = {
 }
 
 
+def describe_rule(rule: Rule, atom_descriptions: dict[str, str]) -> str:
+    """Render a hidden rule as a human-readable Russian sentence."""
+
+    if rule.op == "atom":
+        if rule.atom_key is None:
+            raise RuntimeError("Atom rule has no atom key")
+        return atom_descriptions.get(rule.atom_key, rule.atom_key)
+    if rule.op == "not":
+        return "НЕ (" + describe_rule(rule.children[0], atom_descriptions) + ")"
+    parts = [
+        describe_rule(child, atom_descriptions)
+        for child in rule.children
+    ]
+    if rule.op == "and":
+        return "(" + " И ".join(parts) + ")"
+    if rule.op == "or":
+        return "(" + " ИЛИ ".join(parts) + ")"
+    if rule.op == "xor":
+        return "ровно одно из: (" + "; ".join(parts) + ")"
+    raise RuntimeError(f"Unknown rule operator: {rule.op!r}")
+
+
 def rule_hint_category(rule: Rule, atom_categories: dict[str, str]) -> str:
     """Resolve the fixed hint-dictionary label for a hidden rule."""
 
@@ -723,6 +745,7 @@ __all__ = [
     "ZendoUniverse",
     "build_universe_space",
     "clear_universe_space_cache",
+    "describe_rule",
     "entropy_bits",
     "evaluate_rule",
     "evaluate_zendo_answer",

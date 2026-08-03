@@ -792,6 +792,7 @@ function ParticipantContestScreen({
   async function getAnswerTask(): Promise<{
     answer: string;
     commands: string[];
+    details: string[];
   }> {
     if (!task || task.status !== "active") {
       throw new Error("Текущая задача уже закрыта.");

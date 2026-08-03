@@ -173,6 +173,16 @@ POINT_ATOMS: tuple[Atom, ...] = (
 )
 
 
+ATOM_DESCRIPTIONS = {
+    "three_collinear": "какие-то 3 точки лежат на одной прямой",
+    "convex_position": "все точки — вершины выпуклой оболочки",
+    "distances_distinct": "все попарные расстояния различны",
+    "central_symmetry": "конфигурация имеет центр симметрии",
+    "four_parallelogram": "какие-то 4 точки образуют параллелограмм",
+    "four_concyclic": "какие-то 4 точки лежат на одной окружности",
+}
+
+
 ATOM_HINT_CATEGORIES = {
     "three_collinear": "arrangement",
     "convex_position": "arrangement",

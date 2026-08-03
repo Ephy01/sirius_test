@@ -2539,6 +2539,226 @@ def interact_with_task(
     )
 
 
+def _zendo_rule_details(
+    private: dict,
+    *,
+    rules,
+    atom_descriptions: dict[str, str],
+) -> list[str]:
+    from .environments.core.zendo_engine import describe_rule
+
+    rule = rules[int(private["rule_index"])]
+    details = [
+        f"Скрытое правило: {describe_rule(rule, atom_descriptions)}",
+        f"Формула правила: {rule.key} (MDL {rule.mdl})",
+    ]
+    if private.get("hint_category"):
+        details.append(f"Категория подсказки: {private['hint_category']}")
+    version_space = int(private.get("version_space") or 0)
+    after_examples = int(private.get("version_space_after_examples") or 0)
+    details.append(
+        "Гипотез в version space: "
+        f"{version_space.bit_count()} сейчас, "
+        f"{after_examples.bit_count()} после примеров"
+    )
+    target_ids = [str(item) for item in private.get("target_card_ids", [])]
+    answers = [bool(item) for item in private.get("target_answers", [])]
+    details.append(
+        "Цели: "
+        + ", ".join(
+            f"{card_id} → {'да' if answer else 'нет'}"
+            for card_id, answer in zip(target_ids, answers, strict=False)
+        )
+    )
+    return details
+
+
+def _debug_task_details(task: TaskInstance) -> list[str]:
+    """Full causal picture of the task for the organizer debug mode."""
+
+    private = task.private_state if isinstance(task.private_state, dict) else {}
+    family = task.family
+
+    if family == TOKEN_ZENDO_FAMILY:
+        from .environments.core.zendo_engine import get_universe_space
+        from .environments.zendo.token import ATOM_DESCRIPTIONS, TokenUniverse
+
+        space = get_universe_space(TokenUniverse())
+        return _zendo_rule_details(
+            private,
+            rules=space.rules,
+            atom_descriptions=ATOM_DESCRIPTIONS,
+        )
+    if family == POINT_ZENDO_FAMILY:
+        from .environments.core.zendo_engine import get_universe_space
+        from .environments.zendo.point import ATOM_DESCRIPTIONS, PointUniverse
+
+        space = get_universe_space(PointUniverse())
+        return _zendo_rule_details(
+            private,
+            rules=space.rules,
+            atom_descriptions=ATOM_DESCRIPTIONS,
+        )
+    if family == GRID_ZENDO_FAMILY:
+        from .environments.core.zendo_engine import get_universe_space
+        from .environments.zendo.grid import ATOM_DESCRIPTIONS, GridUniverse
+
+        space = get_universe_space(GridUniverse())
+        return _zendo_rule_details(
+            private,
+            rules=space.rules,
+            atom_descriptions=ATOM_DESCRIPTIONS,
+        )
+    if family == GEO_ZENDO_FAMILY:
+        from .environments.geometry_world.zendo_v2 import (
+            GRAPH_ATOM_DESCRIPTIONS,
+        )
+
+        if "rule_index" in private:
+            from .environments.core.rule_space import get_rule_space
+
+            space = get_rule_space(str(private["dsl_version"]))
+            return _zendo_rule_details(
+                private,
+                rules=space.rules,
+                atom_descriptions=GRAPH_ATOM_DESCRIPTIONS,
+            )
+        # Legacy geometry-atlas zendo stores a plain rule key.
+        rule_key = str(private.get("rule_key"))
+        details = [
+            "Скрытое правило: "
+            + GRAPH_ATOM_DESCRIPTIONS.get(rule_key, rule_key),
+        ]
+        target_ids = [str(item) for item in private.get("target_card_ids", [])]
+        answers = [bool(item) for item in private.get("target_answers", [])]
+        details.append(
+            "Цели: "
+            + ", ".join(
+                f"{card_id} → {'да' if answer else 'нет'}"
+                for card_id, answer in zip(target_ids, answers, strict=False)
+            )
+        )
+        return details
+    if family == HIDDEN_WIRING_FAMILY:
+        lamp_count = int(private.get("lamp_count") or 0)
+        columns = [int(column) for column in private.get("columns", [])]
+        details = [
+            "Вариант: "
+            + (
+                "совладай (привести лампы к цели)"
+                if private.get("variant") == "reach_target"
+                else "пойми (экзамен: предсказать аккорды)"
+            ),
+            "Проводка (скрытая матрица):",
+        ]
+        for index, column in enumerate(columns, start=1):
+            lamps = [
+                str(lamp + 1)
+                for lamp in range(lamp_count)
+                if column >> lamp & 1
+            ]
+            details.append(
+                f"  кнопка {index} переключает лампы: {', '.join(lamps)}"
+            )
+        effects = private.get("chord_effects") or {}
+        details.append("Эффекты аккордов:")
+        for chord in sorted(effects):
+            effect = int(effects[chord])
+            lamps = [
+                str(lamp + 1)
+                for lamp in range(lamp_count)
+                if effect >> lamp & 1
+            ]
+            details.append(f"  {chord} → лампы {', '.join(lamps)}")
+        if private.get("variant") == "reach_target":
+            details.append(
+                "Кратчайшее решение: "
+                + " → ".join(private.get("certificate", []))
+                + f" (длина {private.get('min_len')})"
+            )
+        else:
+            exam_chords = [str(item) for item in private.get("exam_chords", [])]
+            exam_effects = [int(item) for item in private.get("exam_effects", [])]
+            for chord, effect in zip(exam_chords, exam_effects, strict=False):
+                lamps = [
+                    str(lamp + 1)
+                    for lamp in range(lamp_count)
+                    if effect >> lamp & 1
+                ]
+                details.append(
+                    f"Экзаменационный {chord} переключит лампы: "
+                    + (", ".join(lamps) or "ни одной")
+                )
+        return details
+    if family == MACHINE_REACH_FAMILY:
+        details = [f"Подвид: {private.get('sub_kind')}"]
+        if private.get("reachable"):
+            details.append(
+                "Цель достижима, кратчайший путь "
+                f"({private.get('min_len')} шагов): "
+                + " → ".join(private.get("witness", []))
+            )
+        else:
+            certificate = private.get("certificate") or {}
+            details.append(
+                "Цель недостижима; сертификат: "
+                + str(certificate.get("kind", certificate))
+            )
+        return details
+    if family == FOLD_PUNCH_FAMILY:
+        details = ["Сгибы по порядку:"]
+        for index, fold in enumerate(private.get("folds", []), start=1):
+            details.append(f"  {index}. {fold[0]} / {fold[1]}")
+        details.append(
+            "Дырки в сложенном листе (строка,столбец): "
+            + ", ".join(
+                f"{int(row) + 1},{int(column) + 1}"
+                for row, column in private.get("punched_holes", [])
+            )
+        )
+        details.append(
+            "Дырки развёрнутого листа: "
+            + ", ".join(
+                f"{int(row) + 1},{int(column) + 1}"
+                for row, column in private.get("expected_holes", [])
+            )
+        )
+        return details
+    if family == SPATIAL_BANK_FAMILY:
+        details = [
+            f"Вариант: {private.get('variant')}",
+            f"Правильный ответ: {private.get('correct_option')}",
+        ]
+        if private.get("rotation_steps"):
+            details.append(
+                "Правильный вариант — поворот эталона на "
+                f"{90 * int(private['rotation_steps'])}°"
+            )
+        return details
+    if family in {DICE_CHESS_FAMILY, GEO_PROBABILITY_FAMILY}:
+        probability = private.get("probability") or {}
+        favorable = private.get("favorable_faces") or private.get(
+            "favorable_outcomes"
+        )
+        total = private.get("total_faces") or private.get("total_outcomes")
+        details = [
+            "Вероятность: "
+            f"{probability.get('numerator')}/{probability.get('denominator')}"
+        ]
+        if favorable is not None and total is not None:
+            details.append(
+                f"Благоприятных исходов: {favorable} из {total}"
+            )
+        return details
+    if family == GEO_TRANSFORM_FAMILY:
+        details = [f"Загаданное преобразование: {private.get('transform_key')}"]
+        card_map = private.get("card_key_map") or {}
+        for card_id in sorted(card_map):
+            details.append(f"  {card_id} → {card_map[card_id]}")
+        return details
+    return []
+
+
 def _debug_reference_answer(task: TaskInstance) -> tuple[str, list[str]]:
     """Reference solution for the organizer debug mode («/get answer»).
 
@@ -2628,6 +2848,7 @@ def get_debug_answer(
         )
     task = _get_active_task_or_error(session, attempt=attempt, task_id=task_id)
     answer, commands = _debug_reference_answer(task)
+    details = _debug_task_details(task)
     _append_event(
         session,
         attempt_id=attempt.id,
@@ -2640,6 +2861,7 @@ def get_debug_answer(
         family=task.family,
         answer=answer,
         commands=commands,
+        details=details,
     )
 
 

@@ -160,7 +160,11 @@ export type ParticipantWorkspaceProps = {
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
   onHint?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
-  onGetAnswer?: () => Promise<{ answer: string; commands: string[] }>;
+  onGetAnswer?: () => Promise<{
+    answer: string;
+    commands: string[];
+    details: string[];
+  }>;
   onApplyOperation?: (
     opId: string,
     clientActionId: string,
@@ -985,6 +989,12 @@ export function ParticipantWorkspace({
                     ))}
                   </>
                 )}
+                {revealed.details.map((line, index) => (
+                  <span key={`detail-${index}`}>
+                    <br />
+                    {line}
+                  </span>
+                ))}
               </>,
             );
           } catch (caught) {

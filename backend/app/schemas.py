@@ -406,3 +406,4 @@ class DebugAnswerResponse(ApiModel):
     family: str
     answer: str
     commands: list[str]
+    details: list[str]

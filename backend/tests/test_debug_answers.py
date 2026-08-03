@@ -93,6 +93,10 @@ def test_debug_answer_solves_task_and_logs_event(tmp_path):
         assert payload["family"] == "token_zendo"
         assert payload["answer"].startswith("/answer ")
         assert payload["commands"] == []
+        details_text = "\n".join(payload["details"])
+        assert "Скрытое правило:" in details_text
+        assert "Формула правила:" in details_text
+        assert "Цели:" in details_text
 
         answered = client.post(
             f"/api/v1/participant/tasks/{task['id']}/answer",
@@ -150,6 +154,10 @@ def test_debug_answer_returns_commands_for_interactive_families(tmp_path):
             command.startswith("/op ")
             for command in revealed["commands"]
         )
+        details_text = "\n".join(revealed["details"])
+        assert "Проводка (скрытая матрица):" in details_text
+        assert "кнопка 1 переключает лампы:" in details_text
+        assert "Кратчайшее решение:" in details_text
 
         current = task
         for index, command in enumerate(revealed["commands"]):
