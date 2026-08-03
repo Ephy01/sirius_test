@@ -629,6 +629,72 @@ export function ParticipantWorkspace({
           .toLocaleLowerCase("ru-RU")}${task.eventDescription.slice(1)}`
       : task.eventDescription;
 
+  const zendoContent = task.geometryContent ?? {};
+  const zendoProbesRemaining =
+    typeof zendoContent.probes_remaining === "number"
+      ? (zendoContent.probes_remaining as number)
+      : undefined;
+  const transformOptionCards = Array.isArray(zendoContent.answer_cards)
+    ? (zendoContent.answer_cards as unknown[]).flatMap((option) =>
+        typeof option === "object" && option !== null && "id" in option
+          ? [
+              `${String((option as { id: unknown }).id)}${
+                "label" in option
+                  ? ` — ${String((option as { label?: unknown }).label)}`
+                  : ""
+              }`,
+            ]
+          : [],
+      )
+    : [];
+  const briefMetaLines: string[] = [];
+  if (isZendo && zendoProbesRemaining !== undefined) {
+    briefMetaLines.push(`Осталось проб: ${zendoProbesRemaining}`);
+  }
+  if (task.wiring) {
+    briefMetaLines.push(
+      `Комбинаций осталось: ${task.wiring.chordsRemaining} / ${task.wiring.chordBudget}`,
+    );
+    if (task.wiring.observations.length === 0) {
+      briefMetaLines.push("первая проба обучающая и не тратит лимит");
+    }
+    if (task.wiring.examChords && task.wiring.examChords.length > 0) {
+      briefMetaLines.push(
+        "экзаменационные комбинации (недоступны для проб): " +
+          task.wiring.examChords.map((chord) => chord.id).join(", "),
+      );
+    }
+  }
+  if (task.machinePanel) {
+    briefMetaLines.push(
+      `Шагов: ${task.machinePanel.stepsTaken} / ${task.machinePanel.stepsSoftCap}`,
+    );
+  }
+  if (task.leaperBoard) {
+    briefMetaLines.push(
+      `Сейчас ${pointToSquare(task.leaperBoard.current)} · цель ` +
+        `${pointToSquare(task.leaperBoard.target)} · шагов ` +
+        `${task.leaperBoard.stepsTaken} / ${task.leaperBoard.stepsSoftCap}`,
+    );
+    briefMetaLines.push(
+      "белый конь — текущая позиция, чёрный король — цель, пешки — препятствия",
+    );
+  }
+  if (task.foldPunch) {
+    briefMetaLines.push(
+      "сгибы выполняются по порядку; дырки пробиты через все слои сразу",
+    );
+  }
+  if (task.gridCards) {
+    briefMetaLines.push("узор проверяется целиком");
+  }
+  if (task.tokenCards) {
+    briefMetaLines.push("цвет и число каждой фишки видны на полке");
+  }
+  if (isGeometry || task.kind === "point_zendo") {
+    briefMetaLines.push("все рисунки даны в одной системе обозначений");
+  }
+
   useEffect(() => {
     const updateTimer = () => setRemainingTime(formatRemainingTime(deadlineAt));
     updateTimer();
@@ -1286,33 +1352,85 @@ export function ParticipantWorkspace({
               <p>{statementPrompt}</p>
               {statementQuestion && <p>{statementQuestion}</p>}
             </div>
-            <p className="participant-brief__answer">
-              {isWiring ? (
-                <>
-                  Кнопки срабатывают только парами: комбинация{" "}
-                  <code>/op b1+b2</code> переключает лампы.{" "}
-                  {task.wiring?.variant === "predict_chords"
-                    ? "Итог — предсказание трёх экзаменационных комбинаций через /answer."
-                    : "Панель завершится сама при совпадении с целью."}
-                </>
-              ) : isMachine ? (
-                <>
-                  Управляйте средой через <code>/op &lt;id&gt;</code> и{" "}
-                  <code>/undo</code>. Когда решение найдено, отправьте{" "}
-                  <code>done</code> или <code>impossible</code>.
-                </>
-              ) : isZendo ? (
-                <>
-                  Проверяйте карточки командой <code>/test &lt;код&gt;</code>,
-                  итог отправьте через <code>/answer</code>.
-                </>
-              ) : (
-                <>
-                  Ответ введите в чате командой{" "}
-                  <code>/answer &lt;ваш ответ&gt;</code>.
-                </>
+            <div className="participant-brief__answer">
+              <p>
+                {isWiring ? (
+                  task.wiring?.variant === "predict_chords" ? (
+                    <>
+                      Итог — предсказание трёх экзаменационных комбинаций.
+                      Ответ — три битовые строки по лампам (1 —
+                      переключится): <code>/answer 1101 0000 1000</code>.
+                    </>
+                  ) : (
+                    <>Панель завершится сама, когда лампы совпадут с целью.</>
+                  )
+                ) : isMachine ? (
+                  <>
+                    Когда решение найдено, отправьте <code>done</code>; если
+                    цель недостижима — <code>impossible</code>.
+                  </>
+                ) : isZendo ? (
+                  <>
+                    Ответ отправьте в чате:{" "}
+                    <code>/answer да нет да нет да нет да нет</code> — восемь
+                    значений в порядке целей.
+                  </>
+                ) : task.foldPunch ? (
+                  <>
+                    Кликните клетки на развёрнутом листе и нажмите «Отправить
+                    отмеченные клетки», или ответьте в чате:{" "}
+                    <code>/answer 2,3 5,8</code> (строка,столбец).
+                  </>
+                ) : task.spatialBank ? (
+                  <>
+                    Кликните карточку варианта или ответьте в чате:{" "}
+                    <code>/answer V2</code>.
+                  </>
+                ) : (
+                  <>
+                    Ответ введите в чате командой{" "}
+                    <code>/answer &lt;ваш ответ&gt;</code>.
+                  </>
+                )}
+              </p>
+              {(isWiring || isMachine || isZendo) && (
+                <p>
+                  {isWiring ? (
+                    <>
+                      Кнопки срабатывают только парами: выберите две кнопки
+                      на панели или отправьте <code>/op b1+b2</code>.{" "}
+                      <code>/hint</code> — платная подсказка (скор ×0.7).
+                    </>
+                  ) : isMachine ? (
+                    <>
+                      <code>/op &lt;id&gt;</code> — применить операцию ·{" "}
+                      <code>/undo</code> — отменить последний шаг.
+                    </>
+                  ) : task.gridCards ? (
+                    <>
+                      Пробы рисуются: закрасьте клетки в блоке «Свой узор» и
+                      нажмите «Проверить узор», или отправьте{" "}
+                      <code>/test &lt;25 нулей и единиц&gt;</code>.{" "}
+                      <code>/hint</code> — платная подсказка (скор ×0.7).
+                    </>
+                  ) : (
+                    <>
+                      <code>/test &lt;код&gt;</code> — проверить одну из
+                      карточек-проб · <code>/hint</code> — платная подсказка
+                      (скор ×0.7).
+                    </>
+                  )}
+                </p>
               )}
-            </p>
+              {transformOptionCards.length > 0 && (
+                <p>Варианты: {transformOptionCards.join(" · ")}</p>
+              )}
+              {briefMetaLines.length > 0 && (
+                <p className="participant-brief__meta">
+                  {briefMetaLines.join(" · ")}
+                </p>
+              )}
+            </div>
           </article>
 
           {task.foldPunch ? (
@@ -1542,18 +1660,6 @@ function GeometryAtlasScene({
     0.48,
     Math.min(0.72, Math.min(width, height) * 0.075),
   );
-  const options = Array.isArray(content.answer_cards)
-    ? content.answer_cards
-    : Array.isArray(content.options)
-      ? content.options
-      : [];
-  const remaining =
-    typeof content.probes_remaining === "number"
-      ? content.probes_remaining
-      : typeof content.probesRemaining === "number"
-        ? content.probesRemaining
-        : undefined;
-
   return (
     <figure className="geometry-atlas" aria-label="Геометрические конфигурации">
       <div className="geometry-atlas__cards">
@@ -1622,33 +1728,6 @@ function GeometryAtlasScene({
           );
         })}
       </div>
-      {(options.length > 0 || remaining !== undefined) && (
-        <figcaption>
-          {options.length > 0 && (
-            <span>
-              Варианты:{" "}
-              {options
-                .map((option) =>
-                  typeof option === "string"
-                    ? option
-                    : typeof option === "object" &&
-                        option !== null &&
-                        "id" in option
-                      ? `${String(option.id)}${
-                          "label" in option ? ` — ${String(option.label)}` : ""
-                        }`
-                      : "",
-                )
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          )}
-          {remaining !== undefined && (
-            <span>Осталось проб: {remaining}</span>
-          )}
-          <span>Все рисунки даны в одной системе обозначений</span>
-        </figcaption>
-      )}
     </figure>
   );
 }
@@ -1666,11 +1745,6 @@ function TokenShelfScene({
   cards: Record<string, TokenCard[]>;
   content: Record<string, unknown>;
 }) {
-  const remaining =
-    typeof content.probes_remaining === "number"
-      ? content.probes_remaining
-      : undefined;
-
   return (
     <figure className="token-shelf" aria-label="Полки с фишками">
       <div className="token-shelf__cards">
@@ -1697,12 +1771,6 @@ function TokenShelfScene({
           </section>
         ))}
       </div>
-      <figcaption>
-        {remaining !== undefined && (
-          <span>Осталось проб: {remaining}</span>
-        )}
-        <span>Цвет и число каждой фишки видны на полке</span>
-      </figcaption>
     </figure>
   );
 }
@@ -1742,10 +1810,6 @@ function GridZendoScene({
   const [drawn, setDrawn] = useState<boolean[]>(() =>
     Array(size * size).fill(false),
   );
-  const remaining =
-    typeof content.probes_remaining === "number"
-      ? content.probes_remaining
-      : undefined;
   const observations = Array.isArray(content.probe_observations)
     ? content.probe_observations
     : [];
@@ -1825,12 +1889,6 @@ function GridZendoScene({
           })}
         </div>
       )}
-      <figcaption>
-        {remaining !== undefined && (
-          <span>Осталось проб: {remaining}</span>
-        )}
-        <span>Закрашивайте клетки кликом — узор проверяется целиком</span>
-      </figcaption>
     </figure>
   );
 }
@@ -1904,12 +1962,7 @@ function WiringPanelScene({
               : "Пойми проводку"}
           </strong>
         </div>
-        <small>
-          Комбинаций осталось {state.chordsRemaining} / {state.chordBudget}
-          {state.observations.length === 0 ? " · первая проба обучающая" : ""}
-        </small>
       </header>
-      <p className="wiring-panel__legend">{state.legend}</p>
 
       <div className="machine-panel__states">
         <WiringLampRow label="Сейчас" lamps={state.current} current />
@@ -1950,15 +2003,6 @@ function WiringPanelScene({
         </p>
       )}
 
-      {state.examChords && state.examChords.length > 0 && (
-        <div className="wiring-panel__exam">
-          <span>Экзаменационные комбинации (недоступны для проб):</span>
-          {state.examChords.map((chord) => (
-            <code key={chord.id}>{chord.id}</code>
-          ))}
-        </div>
-      )}
-
       {state.observations.length > 0 && (
         <ol className="wiring-panel__log" aria-label="Наблюдения">
           {state.observations.map((observation, index) => (
@@ -1977,10 +2021,6 @@ function WiringPanelScene({
         </ol>
       )}
 
-      <figcaption>
-        Выберите две кнопки и нажмите комбинацию. Её эффект — те лампы,
-        которые переключились.
-      </figcaption>
     </figure>
   );
 }
@@ -2000,8 +2040,8 @@ function PolyominoPreview({
     <div
       className={`polyomino polyomino--${tone}`}
       style={{
-        gridTemplateColumns: `repeat(${columns}, 1fr)`,
-        aspectRatio: `${columns} / ${rows}`,
+        gridTemplateColumns: `repeat(${columns}, var(--poly-cell, 24px))`,
+        gridTemplateRows: `repeat(${rows}, var(--poly-cell, 24px))`,
       }}
       aria-hidden="true"
     >
@@ -2128,9 +2168,6 @@ function FoldPunchScene({
         </section>
       </div>
 
-      <figcaption>
-        Сгибы выполняются по порядку; дырки пробиты через все слои сразу.
-      </figcaption>
     </figure>
   );
 }
@@ -2176,9 +2213,6 @@ function SpatialBankScene({
           </button>
         ))}
       </div>
-      <figcaption>
-        Кликните вариант или ответьте в чате: <code>/answer V2</code>.
-      </figcaption>
     </figure>
   );
 }
@@ -2303,9 +2337,6 @@ function MachinePanel({ state }: { state: MachinePanelPublicState }) {
                 : "Перестановки"}
           </strong>
         </div>
-        <small>
-          Шагов {state.stepsTaken} / {state.stepsSoftCap}
-        </small>
       </header>
 
       <div className="machine-panel__states">
@@ -2323,10 +2354,6 @@ function MachinePanel({ state }: { state: MachinePanelPublicState }) {
         ))}
       </ol>
 
-      <figcaption>
-        Команда <code>/op &lt;id&gt;</code> применяет операцию к текущему
-        состоянию. <code>/undo</code> отменяет один шаг.
-      </figcaption>
     </figure>
   );
 }
@@ -2338,17 +2365,6 @@ function pointToSquare(point: { row: number; col: number }): string {
 function LeaperBoardScene({ state }: { state: LeaperBoardPublicState }) {
   return (
     <figure className="leaper-scene" aria-label="Доска прыгуна">
-      <div className="leaper-scene__meta">
-        <span>
-          Сейчас <strong>{pointToSquare(state.current)}</strong>
-        </span>
-        <span>
-          Цель <strong>{pointToSquare(state.target)}</strong>
-        </span>
-        <span>
-          Шагов <strong>{state.stepsTaken} / {state.stepsSoftCap}</strong>
-        </span>
-      </div>
       <Chessboard
         board={state.board as ChessBoard}
         goalSquare={pointToSquare(state.target)}
@@ -2361,10 +2377,6 @@ function LeaperBoardScene({ state }: { state: LeaperBoardPublicState }) {
           </li>
         ))}
       </ol>
-      <figcaption>
-        Белый конь — текущая позиция · чёрный король — цель · пешки —
-        препятствия
-      </figcaption>
     </figure>
   );
 }

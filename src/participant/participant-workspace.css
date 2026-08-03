@@ -340,8 +340,8 @@
 
 .geometry-atlas__cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 12px;
 }
 
 .geometry-card {
@@ -367,10 +367,10 @@
 
 .geometry-card svg {
   width: 100%;
-  height: 128px;
+  height: 208px;
   display: block;
   overflow: visible;
-  padding: 9px;
+  padding: 10px;
 }
 
 .geometry-card__plane {
@@ -1191,6 +1191,18 @@
   font-family: inherit;
   font-size: 10px;
   line-height: 1.55;
+}
+
+.participant-brief__answer p {
+  margin: 0 0 6px;
+}
+
+.participant-brief__answer p:last-child {
+  margin-bottom: 0;
+}
+
+.participant-brief__meta {
+  color: #8a8f90;
 }
 
 .participant-brief__answer code,
@@ -2024,6 +2036,18 @@
   font-family: inherit;
   font-size: 10px;
   line-height: 1.55;
+}
+
+.participant-brief__answer p {
+  margin: 0 0 6px;
+}
+
+.participant-brief__answer p:last-child {
+  margin-bottom: 0;
+}
+
+.participant-brief__meta {
+  color: #8a8f90;
 }
 
 .participant-brief__answer code,
@@ -3050,16 +3074,32 @@
 
 .polyomino {
   display: grid;
-  gap: 1px;
-  width: 100%;
-  max-width: 96px;
+  gap: 2px;
+  width: max-content;
+  max-width: 100%;
 }
 
 .polyomino i {
   display: block;
   width: 100%;
-  aspect-ratio: 1;
+  height: 100%;
   background: transparent;
+}
+
+.spatial-bank__reference .polyomino {
+  --poly-cell: 30px;
+}
+
+.spatial-bank__option .polyomino {
+  --poly-cell: 22px;
+}
+
+.spatial-bank__parts {
+  flex-wrap: wrap;
+}
+
+.spatial-bank__parts .polyomino {
+  --poly-cell: 20px;
 }
 
 .polyomino i.is-filled {
@@ -3090,8 +3130,8 @@
 
 .spatial-bank__options {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
 }
 
 .spatial-bank__option {
