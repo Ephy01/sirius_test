@@ -299,6 +299,17 @@ function OrganizerDashboard({
           adaptation_threshold: input.taskConfig.adaptationThreshold,
           cohort_seed: input.taskConfig.cohortSeed,
           debug_reveal_answers: input.taskConfig.debugRevealAnswers === true,
+          ...(input.taskConfig.ai
+            ? {
+                ai: {
+                  enabled: input.taskConfig.ai.enabled,
+                  mode: input.taskConfig.ai.mode,
+                  max_turns_per_attempt:
+                    input.taskConfig.ai.maxTurnsPerAttempt,
+                  max_turns_per_task: input.taskConfig.ai.maxTurnsPerTask,
+                },
+              }
+            : {}),
           trajectory: {
             mode: "adaptive",
             director_version: "director-v2",
@@ -800,6 +811,24 @@ function ParticipantContestScreen({
     return api.getParticipantDebugAnswer(task.id, { token: session.token });
   }
 
+  async function sendAiMessage(message: string, clientActionId: string) {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая задача уже закрыта.");
+    }
+    return api.sendAiTurn(
+      task.id,
+      { clientActionId, message },
+      { token: session.token },
+    );
+  }
+
+  async function loadAiHistory() {
+    if (!task) {
+      throw new Error("Задача недоступна.");
+    }
+    return api.getAiTurns(task.id, { token: session.token });
+  }
+
   async function hintTask(
     clientActionId: string,
   ): Promise<TaskMoveTransitionResult> {
@@ -1050,6 +1079,8 @@ function ParticipantContestScreen({
           onGetAnswer={getAnswerTask}
           onApplyOperation={applyOperationTask}
           onUndo={undoMachineTask}
+          onAiMessage={sendAiMessage}
+          onLoadAiHistory={loadAiHistory}
           onTelemetry={recordTelemetry}
         />
       ) : (

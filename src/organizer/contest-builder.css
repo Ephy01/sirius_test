@@ -408,3 +408,22 @@
   font-family: var(--mono, monospace);
   font-weight: 700;
 }
+
+.builder-ai-settings {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border: 1px dashed #b9c6c9;
+  background: #f6fafb;
+}
+
+.builder-ai-settings select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cfd8da;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+}

@@ -25,6 +25,13 @@ export type TaskFamilyConfig = {
   subKinds?: string[];
 };
 
+export type ContestAiConfig = {
+  enabled: boolean;
+  mode: "socratic" | "open";
+  maxTurnsPerAttempt: number;
+  maxTurnsPerTask: number;
+};
+
 export type ContestDraftInput = {
   title: string;
   durationMinutes: number;
@@ -33,6 +40,7 @@ export type ContestDraftInput = {
     adaptationThreshold: number;
     cohortSeed?: string;
     debugRevealAnswers?: boolean;
+    ai?: ContestAiConfig;
     families: TaskFamilyConfig[];
   };
 };
@@ -234,6 +242,10 @@ export function ContestBuilder({
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [cohortSeed, setCohortSeed] = useState("");
   const [debugRevealAnswers, setDebugRevealAnswers] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiMode, setAiMode] = useState<"socratic" | "open">("socratic");
+  const [aiTurnsPerAttempt, setAiTurnsPerAttempt] = useState(15);
+  const [aiTurnsPerTask, setAiTurnsPerTask] = useState(5);
   const [families, setFamilies] =
     useState<TaskFamilyConfig[]>(() => cloneFamilies(CONTENT_FAMILIES));
   const [participants, setParticipants] = useState<ParticipantDraft[]>([
@@ -330,6 +342,12 @@ export function ContestBuilder({
           adaptationThreshold: 3,
           cohortSeed: cohortSeed.trim() || undefined,
           debugRevealAnswers,
+          ai: {
+            enabled: aiEnabled,
+            mode: aiMode,
+            maxTurnsPerAttempt: aiTurnsPerAttempt,
+            maxTurnsPerTask: aiTurnsPerTask,
+          },
           families,
         },
       });
@@ -507,6 +525,60 @@ export function ContestBuilder({
                     <code>/get answer</code> (эталонный ответ задачи)
                   </span>
                 </label>
+                <label className="builder-debug-toggle">
+                  <input
+                    type="checkbox"
+                    checked={aiEnabled}
+                    onChange={(event) => setAiEnabled(event.target.checked)}
+                  />
+                  <span>
+                    ИИ-ассистент: обычные сообщения в чате отвечает Alice AI
+                  </span>
+                </label>
+                {aiEnabled && (
+                  <div className="builder-ai-settings">
+                    <label>
+                      <span>Режим ассистента</span>
+                      <select
+                        value={aiMode}
+                        onChange={(event) =>
+                          setAiMode(
+                            event.target.value === "open"
+                              ? "open"
+                              : "socratic",
+                          )
+                        }
+                      >
+                        <option value="socratic">Наводящие вопросы</option>
+                        <option value="open">Открытый диалог</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Лимит на попытку</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={200}
+                        value={aiTurnsPerAttempt}
+                        onChange={(event) =>
+                          setAiTurnsPerAttempt(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Лимит на задачу</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={aiTurnsPerTask}
+                        onChange={(event) =>
+                          setAiTurnsPerTask(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
             </section>
           ) : (

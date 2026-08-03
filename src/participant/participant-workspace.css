@@ -2301,6 +2301,23 @@
   color: #8e3648;
 }
 
+.console-entry--assistant p {
+  border-color: #79b6bf;
+  background: #e6f4f6;
+  color: #0f4d59;
+  white-space: pre-wrap;
+}
+
+.console-entry--assistant p strong,
+.console-entry--assistant p code {
+  color: #006b80;
+}
+
+.console-entry--thinking p {
+  color: #5f8d96;
+  font-style: italic;
+}
+
 .participant-console__form {
   padding: 14px clamp(20px, 2.1vw, 30px) 16px;
   border-top: 1px solid #d6e1e4;

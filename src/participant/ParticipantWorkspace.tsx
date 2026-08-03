@@ -7,7 +7,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { ApiError } from "../api";
 import type {
+  AiTurn as AiTurnResult,
+  AiTurnHistory as AiTurnHistoryResult,
   FoldPunchPublicState,
   HiddenWiringPublicState,
   LeaperBoardPublicState,
@@ -167,7 +170,11 @@ export type ParticipantWorkspaceProps = {
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
   onUndo?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
-  onMessage?: (message: string) => Promise<unknown> | unknown;
+  onAiMessage?: (
+    message: string,
+    clientActionId: string,
+  ) => Promise<AiTurnResult>;
+  onLoadAiHistory?: () => Promise<AiTurnHistoryResult>;
   onTelemetry?: (
     event: ParticipantTelemetryEvent,
   ) => Promise<unknown> | unknown;
@@ -175,7 +182,7 @@ export type ParticipantWorkspaceProps = {
 
 type ConsoleEntry = {
   id: number;
-  author: "system" | "participant";
+  author: "system" | "participant" | "assistant";
   content: ReactNode;
 };
 
@@ -557,7 +564,8 @@ export function ParticipantWorkspace({
   onGetAnswer,
   onApplyOperation,
   onUndo,
-  onMessage,
+  onAiMessage,
+  onLoadAiHistory,
   onTelemetry,
 }: ParticipantWorkspaceProps) {
   const board = useMemo(() => normalizeBoard(task), [task]);
@@ -567,6 +575,8 @@ export function ParticipantWorkspace({
     initialEntries(task),
   );
   const [commandBusy, setCommandBusy] = useState(false);
+  const [aiThinking, setAiThinking] = useState(false);
+  const aiHistoryTasks = useRef(new Set<string>());
   const [remainingTime, setRemainingTime] = useState(() =>
     formatRemainingTime(deadlineAt),
   );
@@ -723,6 +733,39 @@ export function ParticipantWorkspace({
     // задача при сохранённом scrollTop выглядит как пустая страница.
     stageRef.current?.scrollTo({ top: 0 });
   }, [task.id]);
+
+  useEffect(() => {
+    // Восстановление диалога с ассистентом после перезагрузки страницы.
+    // Для только что открытой задачи история пуста и ничего не добавляет.
+    if (!onLoadAiHistory) return;
+    if (aiHistoryTasks.current.has(task.id)) return;
+    aiHistoryTasks.current.add(task.id);
+    void (async () => {
+      try {
+        const history = await onLoadAiHistory();
+        setEntries((current) => {
+          const restored: ConsoleEntry[] = [];
+          for (const turn of history.turns) {
+            restored.push({
+              id: entryId.current++,
+              author: "participant",
+              content: turn.userMessage,
+            });
+            if (turn.assistantMessage) {
+              restored.push({
+                id: entryId.current++,
+                author: "assistant",
+                content: turn.assistantMessage,
+              });
+            }
+          }
+          return restored.length ? [...current, ...restored] : current;
+        });
+      } catch {
+        // ИИ выключен для контеста или недоступен — чат работает без него.
+      }
+    })();
+  }, [task.id, onLoadAiHistory]);
 
   useEffect(() => {
     if (telemetryViewedTasks.current.has(task.id)) return;
@@ -1273,9 +1316,41 @@ export function ParticipantWorkspace({
             break;
           }
 
-          if (onMessage) {
-            await onMessage(input);
-            appendEntry("system", "Сообщение принято.");
+          if (onAiMessage) {
+            if (task.status !== "active") {
+              appendEntry(
+                "system",
+                "Эта задача уже закрыта — ассистент доступен только в активной задаче.",
+              );
+              break;
+            }
+            setAiThinking(true);
+            try {
+              const turn = await onAiMessage(input, createClientActionId());
+              if (turn.assistantMessage) {
+                appendEntry("assistant", turn.assistantMessage);
+              } else {
+                appendEntry(
+                  "system",
+                  "Ассистент не вернул ответ. Попробуйте ещё раз.",
+                );
+              }
+              if (turn.remaining.task === 0 || turn.remaining.attempt === 0) {
+                appendEntry(
+                  "system",
+                  "Лимит обращений к ассистенту исчерпан.",
+                );
+              }
+            } catch (error) {
+              appendEntry(
+                "system",
+                error instanceof ApiError
+                  ? error.message
+                  : "Не удалось связаться с ассистентом.",
+              );
+            } finally {
+              setAiThinking(false);
+            }
           } else {
             appendEntry(
               "system",
@@ -1495,10 +1570,22 @@ export function ParticipantWorkspace({
               className={`console-entry console-entry--${entry.author}`}
               key={entry.id}
             >
-              <span>{entry.author === "system" ? "Система" : "Вы"}</span>
+              <span>
+                {entry.author === "system"
+                  ? "Система"
+                  : entry.author === "assistant"
+                    ? "Ассистент"
+                    : "Вы"}
+              </span>
               <p>{entry.content}</p>
             </article>
           ))}
+          {aiThinking && (
+            <article className="console-entry console-entry--assistant console-entry--thinking">
+              <span>Ассистент</span>
+              <p>Ассистент думает…</p>
+            </article>
+          )}
           {error && (
             <article className="console-entry console-entry--error" role="alert">
               <span>Соединение</span>
