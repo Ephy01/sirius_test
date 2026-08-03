@@ -83,6 +83,7 @@ from .schemas import (
     AttemptGrantResponse,
     AttemptStartResponse,
     ClientTelemetryRequest,
+    DebugAnswerResponse,
     CodeGenerationRequest,
     CodeGenerationResponse,
     CodeRotationRequest,
@@ -2535,6 +2536,110 @@ def interact_with_task(
         completed=transition.completed,
         message=transition.message,
         client_action_id=payload.client_action_id,
+    )
+
+
+def _debug_reference_answer(task: TaskInstance) -> tuple[str, list[str]]:
+    """Reference solution for the organizer debug mode («/get answer»).
+
+    Mirrors the oracle logic of the e2e smoke test: the returned answer
+    (plus optional console commands for interactive families) solves the
+    task exactly.
+    """
+
+    private = task.private_state if isinstance(task.private_state, dict) else {}
+    family = task.family
+    if family in {
+        GEO_ZENDO_FAMILY,
+        TOKEN_ZENDO_FAMILY,
+        POINT_ZENDO_FAMILY,
+        GRID_ZENDO_FAMILY,
+    }:
+        answer = "/answer " + " ".join(
+            "да" if value else "нет"
+            for value in private.get("target_answers", [])
+        )
+        return answer, []
+    if family == HIDDEN_WIRING_FAMILY:
+        if private.get("variant") == "reach_target":
+            return (
+                "Панель завершится сама после этих аккордов:",
+                [f"/op {chord}" for chord in private.get("certificate", [])],
+            )
+        lamp_count = int(private.get("lamp_count") or 0)
+        answer = "/answer " + " ".join(
+            "".join(
+                "1" if (int(effect) >> index) & 1 else "0"
+                for index in range(lamp_count)
+            )
+            for effect in private.get("exam_effects", [])
+        )
+        return answer, []
+    if family == MACHINE_REACH_FAMILY:
+        if private.get("reachable"):
+            return (
+                "Примените операции и завершите ответом done:",
+                [
+                    f"/op {op_id}"
+                    for op_id in private.get("witness", [])
+                ]
+                + ["done"],
+            )
+        return "impossible", []
+    if family == FOLD_PUNCH_FAMILY:
+        answer = "/answer " + " ".join(
+            f"{int(row) + 1},{int(column) + 1}"
+            for row, column in private.get("expected_holes", [])
+        )
+        return answer, []
+    if family == SPATIAL_BANK_FAMILY:
+        return f"/answer {private.get('correct_option')}", []
+    if family in {DICE_CHESS_FAMILY, GEO_PROBABILITY_FAMILY}:
+        probability = private.get("probability") or {}
+        return (
+            "/answer "
+            f"{probability.get('numerator')}/{probability.get('denominator')}",
+            [],
+        )
+    if family == GEO_TRANSFORM_FAMILY:
+        return f"/answer {private.get('correct_card_id')}", []
+    return "Эталонный ответ для этого семейства недоступен.", []
+
+
+@router.get(
+    "/participant/tasks/{task_id}/debug-answer",
+    response_model=DebugAnswerResponse,
+)
+def get_debug_answer(
+    task_id: str,
+    enrollment: ParticipantEnrollmentDependency,
+    session: SessionDependency,
+) -> DebugAnswerResponse:
+    """Reveal the reference answer when the contest runs in debug mode."""
+
+    attempt = _require_active_attempt(session, enrollment)
+    contest = enrollment.contest
+    config = contest.task_config if isinstance(contest.task_config, dict) else {}
+    if config.get("debug_reveal_answers") is not True:
+        raise api_error(
+            status.HTTP_403_FORBIDDEN,
+            "DEBUG_ANSWERS_DISABLED",
+            "Команда /get answer не включена организатором этого контеста.",
+        )
+    task = _get_active_task_or_error(session, attempt=attempt, task_id=task_id)
+    answer, commands = _debug_reference_answer(task)
+    _append_event(
+        session,
+        attempt_id=attempt.id,
+        task_instance_id=task.id,
+        event_type="debug_answer_revealed",
+        payload={"family": task.family},
+    )
+    session.commit()
+    return DebugAnswerResponse(
+        family=task.family,
+        answer=answer,
+        commands=commands,
     )
 
 

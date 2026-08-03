@@ -381,3 +381,30 @@
     gap: 7px;
   }
 }
+
+.builder-debug-toggle {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.builder-debug-toggle input[type="checkbox"] {
+  width: auto;
+  margin-top: 2px;
+}
+
+.builder-debug-toggle span {
+  font-size: 9px;
+  line-height: 1.5;
+  color: #5f686b;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.builder-debug-toggle code {
+  color: #006b80;
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+}

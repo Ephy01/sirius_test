@@ -33,6 +33,7 @@ export type ContestDraftInput = {
   taskConfig: {
     adaptationThreshold: number;
     cohortSeed?: string;
+    debugRevealAnswers?: boolean;
     families: TaskFamilyConfig[];
   };
 };
@@ -246,6 +247,7 @@ export function ContestBuilder({
   const [title, setTitle] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [cohortSeed, setCohortSeed] = useState("");
+  const [debugRevealAnswers, setDebugRevealAnswers] = useState(false);
   const [families, setFamilies] =
     useState<TaskFamilyConfig[]>(() => cloneFamilies(CONTENT_FAMILIES));
   const [participants, setParticipants] = useState<ParticipantDraft[]>([
@@ -341,6 +343,7 @@ export function ContestBuilder({
         taskConfig: {
           adaptationThreshold: 3,
           cohortSeed: cohortSeed.trim() || undefined,
+          debugRevealAnswers,
           families,
         },
       });
@@ -504,6 +507,19 @@ export function ContestBuilder({
                     onChange={(event) => setCohortSeed(event.target.value)}
                     placeholder="Волна-2026-01"
                   />
+                </label>
+                <label className="builder-debug-toggle">
+                  <input
+                    type="checkbox"
+                    checked={debugRevealAnswers}
+                    onChange={(event) =>
+                      setDebugRevealAnswers(event.target.checked)
+                    }
+                  />
+                  <span>
+                    Режим отладки: разрешить участникам команду{" "}
+                    <code>/get answer</code> (эталонный ответ задачи)
+                  </span>
                 </label>
               </div>
             </section>

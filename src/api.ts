@@ -529,6 +529,12 @@ export type TaskInteractionInput =
       clientActionId: string;
     };
 
+export type DebugAnswerResponse = {
+  family: string;
+  answer: string;
+  commands: string[];
+};
+
 export type TaskInteractionResponse = {
   task: ParticipantTask;
   accepted: boolean;
@@ -2396,6 +2402,32 @@ export class ApiClient {
       clientActionId:
         readString(body, "clientActionId", "client_action_id") ??
         input.clientActionId,
+    };
+  }
+
+  async getParticipantDebugAnswer(
+    taskId: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<DebugAnswerResponse> {
+    const body = await this.request(
+      `/participant/tasks/${encodeURIComponent(taskId)}/debug-answer`,
+      options,
+    );
+    if (!isRecord(body)) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректный эталонный ответ.",
+        details: body,
+      });
+    }
+    return {
+      family: readString(body, "family") ?? "",
+      answer: readString(body, "answer") ?? "",
+      commands: Array.isArray(body.commands)
+        ? body.commands.filter(
+            (item): item is string => typeof item === "string",
+          )
+        : [],
     };
   }
 

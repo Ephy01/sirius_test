@@ -398,3 +398,11 @@ class TaskInteractionResponse(ApiModel):
     completed: bool
     message: str
     client_action_id: str
+
+
+class DebugAnswerResponse(ApiModel):
+    """Reference answer for the active task (organizer debug mode only)."""
+
+    family: str
+    answer: str
+    commands: list[str]

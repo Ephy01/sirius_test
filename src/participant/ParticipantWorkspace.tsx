@@ -160,6 +160,7 @@ export type ParticipantWorkspaceProps = {
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
   onHint?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
+  onGetAnswer?: () => Promise<{ answer: string; commands: string[] }>;
   onApplyOperation?: (
     opId: string,
     clientActionId: string,
@@ -551,6 +552,7 @@ export function ParticipantWorkspace({
   onNext,
   onProbe,
   onHint,
+  onGetAnswer,
   onApplyOperation,
   onUndo,
   onMessage,
@@ -940,6 +942,59 @@ export function ParticipantWorkspace({
             break;
           }
           await submitZendoProbe(payload);
+          break;
+
+        case "/get":
+          if (payload.toLowerCase() !== "answer") {
+            appendEntry(
+              "system",
+              <>
+                Неизвестная команда. Возможно, вы имели в виду{" "}
+                <code>/get answer</code>.
+              </>,
+            );
+            break;
+          }
+          if (task.status !== "active") {
+            appendEntry(
+              "system",
+              "Текущая задача уже закрыта. Используйте /next.",
+            );
+            break;
+          }
+          if (!onGetAnswer) {
+            appendEntry("system", "Эталонный ответ сейчас недоступен.");
+            break;
+          }
+          try {
+            const revealed = await onGetAnswer();
+            appendEntry(
+              "system",
+              <>
+                Эталонный ответ (режим отладки):{" "}
+                <code>{revealed.answer}</code>
+                {revealed.commands.length > 0 && (
+                  <>
+                    <br />
+                    Команды:{" "}
+                    {revealed.commands.map((command, index) => (
+                      <span key={index}>
+                        <code>{command}</code>
+                        {index < revealed.commands.length - 1 && " · "}
+                      </span>
+                    ))}
+                  </>
+                )}
+              </>,
+            );
+          } catch (caught) {
+            appendEntry(
+              "system",
+              caught instanceof Error
+                ? caught.message
+                : "Не удалось получить эталонный ответ.",
+            );
+          }
           break;
 
         case "/hint":

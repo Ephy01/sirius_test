@@ -298,6 +298,7 @@ function OrganizerDashboard({
         taskConfig: {
           adaptation_threshold: input.taskConfig.adaptationThreshold,
           cohort_seed: input.taskConfig.cohortSeed,
+          debug_reveal_answers: input.taskConfig.debugRevealAnswers === true,
           trajectory: {
             mode: "adaptive",
             director_version: "director-v2",
@@ -788,6 +789,16 @@ function ParticipantContestScreen({
     });
   }
 
+  async function getAnswerTask(): Promise<{
+    answer: string;
+    commands: string[];
+  }> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая задача уже закрыта.");
+    }
+    return api.getParticipantDebugAnswer(task.id, { token: session.token });
+  }
+
   async function hintTask(
     clientActionId: string,
   ): Promise<TaskMoveTransitionResult> {
@@ -1039,6 +1050,7 @@ function ParticipantContestScreen({
           onNext={nextTask}
           onProbe={probeTask}
           onHint={hintTask}
+          onGetAnswer={getAnswerTask}
           onApplyOperation={applyOperationTask}
           onUndo={undoMachineTask}
           onTelemetry={recordTelemetry}
