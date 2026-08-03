@@ -469,8 +469,9 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
         author: "system",
         content: (
           <>
-            Жмите аккорды командой <code>/op b1+b2</code> или кнопками на
-            панели. Первая проба обучающая и не тратит лимит.
+            Нажимайте комбинации из двух кнопок командой{" "}
+            <code>/op b1+b2</code> или кнопками на панели. Первая проба
+            обучающая и не тратит лимит.
           </>
         ),
       },
@@ -784,7 +785,7 @@ export function ParticipantWorkspace({
 
   async function submitZendoProbe(probe: string) {
     if (!onProbe) {
-      appendEntry("system", "Оракул сейчас недоступен.");
+      appendEntry("system", "Проверка сейчас недоступна.");
       return;
     }
     const transition = await onProbe(probe, createClientActionId());
@@ -792,7 +793,7 @@ export function ParticipantWorkspace({
       "system",
       transition.message ??
         (transition.accepted
-          ? "Оракул классифицировал конфигурацию."
+          ? "Проверка выполнена."
           : "Эту конфигурацию нельзя проверить."),
     );
   }
@@ -877,7 +878,7 @@ export function ParticipantWorkspace({
             "system",
             isWiring ? (
               <>
-                <code>/op b1+b2</code> — нажать аккорд из двух кнопок
+                <code>/op b1+b2</code> — нажать комбинацию из двух кнопок
                 <br />
                 Кнопки срабатывают только парами; первая проба обучающая
                 и не тратит лимит.
@@ -925,7 +926,7 @@ export function ParticipantWorkspace({
           if (!isZendo) {
             appendEntry(
               "system",
-              "Команда /test доступна только в задачах Геометрического Zendo.",
+              "Команда /test доступна только в задачах со скрытым утверждением.",
             );
             break;
           }
@@ -1288,10 +1289,10 @@ export function ParticipantWorkspace({
             <p className="participant-brief__answer">
               {isWiring ? (
                 <>
-                  Кнопки срабатывают только парами: аккорд{" "}
+                  Кнопки срабатывают только парами: комбинация{" "}
                   <code>/op b1+b2</code> переключает лампы.{" "}
                   {task.wiring?.variant === "predict_chords"
-                    ? "Итог — предсказание трёх экзаменационных аккордов через /answer."
+                    ? "Итог — предсказание трёх экзаменационных комбинаций через /answer."
                     : "Панель завершится сама при совпадении с целью."}
                 </>
               ) : isMachine ? (
@@ -1643,7 +1644,7 @@ function GeometryAtlasScene({
             </span>
           )}
           {remaining !== undefined && (
-            <span>Проверок у оракула осталось: {remaining}</span>
+            <span>Осталось проб: {remaining}</span>
           )}
           <span>Все рисунки даны в одной системе обозначений</span>
         </figcaption>
@@ -1698,7 +1699,7 @@ function TokenShelfScene({
       </div>
       <figcaption>
         {remaining !== undefined && (
-          <span>Проверок у оракула осталось: {remaining}</span>
+          <span>Осталось проб: {remaining}</span>
         )}
         <span>Цвет и число каждой фишки видны на полке</span>
       </figcaption>
@@ -1826,9 +1827,9 @@ function GridZendoScene({
       )}
       <figcaption>
         {remaining !== undefined && (
-          <span>Проверок у оракула осталось: {remaining}</span>
+          <span>Осталось проб: {remaining}</span>
         )}
-        <span>Закрашивайте клетки кликом, узор уходит оракулу целиком</span>
+        <span>Закрашивайте клетки кликом — узор проверяется целиком</span>
       </figcaption>
     </figure>
   );
@@ -1904,7 +1905,7 @@ function WiringPanelScene({
           </strong>
         </div>
         <small>
-          Аккордов осталось {state.chordsRemaining} / {state.chordBudget}
+          Комбинаций осталось {state.chordsRemaining} / {state.chordBudget}
           {state.observations.length === 0 ? " · первая проба обучающая" : ""}
         </small>
       </header>
@@ -1940,18 +1941,18 @@ function WiringPanelScene({
             }
           }}
         >
-          Нажать аккорд
+          Нажать комбинацию
         </button>
       </div>
       {chordReady && !chordAllowed && (
         <p className="wiring-panel__warning">
-          Этот аккорд недоступен для проб.
+          Эта комбинация недоступна для проб.
         </p>
       )}
 
       {state.examChords && state.examChords.length > 0 && (
         <div className="wiring-panel__exam">
-          <span>Экзаменационные аккорды (недоступны для проб):</span>
+          <span>Экзаменационные комбинации (недоступны для проб):</span>
           {state.examChords.map((chord) => (
             <code key={chord.id}>{chord.id}</code>
           ))}
@@ -1977,7 +1978,7 @@ function WiringPanelScene({
       )}
 
       <figcaption>
-        Выберите две кнопки и нажмите аккорд. Эффект аккорда — те лампы,
+        Выберите две кнопки и нажмите комбинацию. Её эффект — те лампы,
         которые переключились.
       </figcaption>
     </figure>

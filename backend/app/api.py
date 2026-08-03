@@ -2661,7 +2661,7 @@ def _debug_task_details(task: TaskInstance) -> list[str]:
                 f"  кнопка {index} переключает лампы: {', '.join(lamps)}"
             )
         effects = private.get("chord_effects") or {}
-        details.append("Эффекты аккордов:")
+        details.append("Эффекты комбинаций:")
         for chord in sorted(effects):
             effect = int(effects[chord])
             lamps = [
@@ -2686,7 +2686,7 @@ def _debug_task_details(task: TaskInstance) -> list[str]:
                     if effect >> lamp & 1
                 ]
                 details.append(
-                    f"Экзаменационный {chord} переключит лампы: "
+                    f"Экзаменационная комбинация {chord} переключит лампы: "
                     + (", ".join(lamps) or "ни одной")
                 )
         return details
@@ -2783,7 +2783,7 @@ def _debug_reference_answer(task: TaskInstance) -> tuple[str, list[str]]:
     if family == HIDDEN_WIRING_FAMILY:
         if private.get("variant") == "reach_target":
             return (
-                "Панель завершится сама после этих аккордов:",
+                "Панель завершится сама после этих комбинаций:",
                 [f"/op {chord}" for chord in private.get("certificate", [])],
             )
         lamp_count = int(private.get("lamp_count") or 0)

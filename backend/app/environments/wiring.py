@@ -230,16 +230,16 @@ def generate_hidden_wiring_task(
         )
         if variant == REACH_VARIANT:
             prompt = prompt_intro + (
-                "Приведите лампы к целевому узору аккордами из двух кнопок."
+                "Приведите лампы к целевому узору комбинациями из двух кнопок."
             )
             response_hint = (
-                "Жмите аккорды: /op b1+b2. Панель завершится сама, "
-                "когда лампы совпадут с целью."
+                "Нажимайте комбинации: /op b1+b2. Панель завершится "
+                "сама, когда лампы совпадут с целью."
             )
         else:
             prompt = prompt_intro + (
                 "Изучите проводку пробами, затем предскажите, какие лампы "
-                "переключит каждый из трёх экзаменационных аккордов."
+                "переключит каждая из трёх экзаменационных комбинаций."
             )
             response_hint = (
                 "Пробы: /op b1+b2. Ответ — три битовые строки по лампам "
@@ -402,12 +402,12 @@ def transition_hidden_wiring_chord(
     if normalized not in allowed:
         return reject(
             "unknown_chord",
-            "Такого аккорда нет на панели (или он экзаменационный).",
+            "Такой комбинации нет на панели (или она экзаменационная).",
         )
     chords_used = int(next_private.get("chords_used") or 0)
     # The first chord is a free training probe; the budget applies после.
     if chords_used >= CHORD_BUDGET + 1:
-        return reject("chord_budget_exhausted", "Лимит аккордов исчерпан.")
+        return reject("chord_budget_exhausted", "Лимит комбинаций исчерпан.")
 
     lamp_count = int(next_private["lamp_count"])
     entropy_before = _entropy_bits(next_private)
@@ -446,7 +446,7 @@ def transition_hidden_wiring_chord(
 
     completed = False
     evaluation: dict[str, Any] | None = telemetry
-    message = "Аккорд применён: лампы переключились."
+    message = "Комбинация применена: лампы переключились."
     if (
         str(next_private.get("variant")) == REACH_VARIANT
         and current == int(next_private["target"])
@@ -542,7 +542,7 @@ def evaluate_hidden_wiring_answer(
             "evidence": 0,
             "feedback": (
                 "Панель завершается автоматически, когда лампы совпадут "
-                "с целью. Продолжайте аккорды."
+                "с целью. Продолжайте нажимать комбинации."
             ),
         }
     expected = [int(value) for value in private_state["exam_effects"]]
