@@ -27,8 +27,15 @@ def get_session(request: Request):
     yield from request.app.state.database.session()
 
 
+def get_ai_provider(request: Request) -> Any:
+    """Assistant provider instance created in create_app (None when off)."""
+
+    return getattr(request.app.state, "ai_provider", None)
+
+
 SessionDependency = Annotated[Session, Depends(get_session)]
 SettingsDependency = Annotated[Settings, Depends(get_settings_from_app)]
+AiProviderDependency = Annotated[Any, Depends(get_ai_provider)]
 CredentialsDependency = Annotated[
     HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
 ]

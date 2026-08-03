@@ -14,7 +14,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
+from .ai import (
+    AiRemaining,
+    attempt_ai_config,
+    remaining_turns,
+    run_ai_turn,
+)
 from .dependencies import (
+    AiProviderDependency,
     OrganizerDependency,
     ParticipantEnrollmentDependency,
     SessionDependency,
@@ -60,6 +67,8 @@ from .environments.machines import SUB_KINDS as MACHINE_REACH_SUB_KINDS
 from .models import (
     AccessCode,
     AccessCodeStatus,
+    AiTurn,
+    AiTurnStatus,
     Attempt,
     AttemptEvent,
     AttemptGrant,
@@ -79,6 +88,12 @@ from .schemas import (
     AccessRedeemRequest,
     AccessRedeemResponse,
     AccessCodeSummary,
+    AiTurnHistoryItem,
+    AiTurnHistoryResponse,
+    AiTurnRemaining,
+    AiTurnRequest,
+    AiTurnResponse,
+    AiTurnUsage,
     AttemptGrantResponse,
     AttemptStartResponse,
     ClientTelemetryRequest,
@@ -2845,6 +2860,107 @@ def get_debug_answer(
         answer=answer,
         commands=commands,
         details=details,
+    )
+
+
+def _ai_turn_response(turn: AiTurn, remaining: AiRemaining) -> AiTurnResponse:
+    return AiTurnResponse(
+        id=turn.id,
+        status=turn.status.value,
+        assistant_message=turn.assistant_message,
+        model=turn.model_uri,
+        usage=AiTurnUsage(
+            input_tokens=turn.input_tokens,
+            output_tokens=turn.output_tokens,
+            total_tokens=turn.total_tokens,
+        ),
+        remaining=AiTurnRemaining(task=remaining.task, attempt=remaining.attempt),
+    )
+
+
+@router.post(
+    "/participant/tasks/{task_id}/ai/turns",
+    response_model=AiTurnResponse,
+)
+def create_ai_turn(
+    task_id: str,
+    payload: AiTurnRequest,
+    enrollment: ParticipantEnrollmentDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    ai_provider: AiProviderDependency,
+) -> AiTurnResponse:
+    """Forward a plain chat message to the assistant (ТЗ Alice AI §9.1)."""
+
+    attempt = _require_active_attempt(session, enrollment)
+    task = _get_active_task_or_error(session, attempt=attempt, task_id=task_id)
+    turn, remaining = run_ai_turn(
+        session,
+        settings=settings,
+        provider=ai_provider,
+        attempt=attempt,
+        task=task,
+        client_action_id=payload.client_action_id,
+        message=payload.message,
+    )
+    return _ai_turn_response(turn, remaining)
+
+
+@router.get(
+    "/participant/tasks/{task_id}/ai/turns",
+    response_model=AiTurnHistoryResponse,
+)
+def list_ai_turns(
+    task_id: str,
+    enrollment: ParticipantEnrollmentDependency,
+    session: SessionDependency,
+) -> AiTurnHistoryResponse:
+    """Dialogue history of one task, for restoring the chat after reload."""
+
+    attempt = _require_active_attempt(session, enrollment)
+    task = session.scalar(
+        select(TaskInstance).where(
+            TaskInstance.id == task_id,
+            TaskInstance.attempt_id == attempt.id,
+        )
+    )
+    if task is None:
+        raise api_error(
+            status.HTTP_404_NOT_FOUND,
+            "TASK_NOT_FOUND",
+            "Задача не найдена в текущей попытке.",
+        )
+    config = attempt_ai_config(session, attempt)
+    if not config.enabled:
+        raise api_error(
+            status.HTTP_403_FORBIDDEN,
+            "AI_DISABLED",
+            "ИИ-ассистент отключён для этого контеста.",
+        )
+    turns = session.scalars(
+        select(AiTurn)
+        .where(
+            AiTurn.task_instance_id == task.id,
+            AiTurn.status == AiTurnStatus.COMPLETED,
+        )
+        .order_by(AiTurn.sequence)
+    ).all()
+    remaining = remaining_turns(
+        session, config=config, attempt_id=attempt.id, task_id=task.id
+    )
+    return AiTurnHistoryResponse(
+        turns=[
+            AiTurnHistoryItem(
+                id=turn.id,
+                status=turn.status.value,
+                user_message=turn.user_message,
+                assistant_message=turn.assistant_message,
+                created_at=turn.created_at,
+                completed_at=turn.completed_at,
+            )
+            for turn in turns
+        ],
+        remaining=AiTurnRemaining(task=remaining.task, attempt=remaining.attempt),
     )
 
 

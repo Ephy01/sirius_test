@@ -407,3 +407,62 @@ class DebugAnswerResponse(ApiModel):
     answer: str
     commands: list[str]
     details: list[str]
+
+
+class AiTurnRequest(ApiModel):
+    """Participant message to the assistant (ТЗ Alice AI, §9.1: camelCase)."""
+
+    client_action_id: str = Field(
+        min_length=1, max_length=128, alias="clientActionId"
+    )
+    message: str = Field(min_length=1, max_length=16_000)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_validator("client_action_id")
+    @classmethod
+    def clean_action_id(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("clientActionId must not be blank")
+        return cleaned
+
+
+class AiTurnUsage(ApiModel):
+    input_tokens: int | None = Field(default=None, serialization_alias="inputTokens")
+    output_tokens: int | None = Field(default=None, serialization_alias="outputTokens")
+    total_tokens: int | None = Field(default=None, serialization_alias="totalTokens")
+
+
+class AiTurnRemaining(ApiModel):
+    task: int
+    attempt: int
+
+
+class AiTurnResponse(ApiModel):
+    id: str
+    status: str
+    assistant_message: str | None = Field(
+        default=None, serialization_alias="assistantMessage"
+    )
+    model: str
+    usage: AiTurnUsage
+    remaining: AiTurnRemaining
+
+
+class AiTurnHistoryItem(ApiModel):
+    id: str
+    status: str
+    user_message: str = Field(serialization_alias="userMessage")
+    assistant_message: str | None = Field(
+        default=None, serialization_alias="assistantMessage"
+    )
+    created_at: datetime = Field(serialization_alias="createdAt")
+    completed_at: datetime | None = Field(
+        default=None, serialization_alias="completedAt"
+    )
+
+
+class AiTurnHistoryResponse(ApiModel):
+    turns: list[AiTurnHistoryItem]
+    remaining: AiTurnRemaining

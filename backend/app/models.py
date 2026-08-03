@@ -73,6 +73,13 @@ class TaskStatus(str, enum.Enum):
     SKIPPED = "skipped"
 
 
+class AiTurnStatus(str, enum.Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class Contest(Base):
     __tablename__ = "contests"
 
@@ -298,6 +305,9 @@ class TaskInstance(Base):
     interactions: Mapped[list[TaskInteraction]] = relationship(
         back_populates="task", cascade="all, delete-orphan"
     )
+    ai_turns: Mapped[list[AiTurn]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
 
 
 class TaskInteraction(Base):
@@ -333,6 +343,67 @@ class TaskInteraction(Base):
     )
 
     task: Mapped[TaskInstance] = relationship(back_populates="interactions")
+
+
+class AiTurn(Base):
+    """One participant ↔ assistant exchange inside a task.
+
+    The full dialogue text lives only here; telemetry events reference the
+    turn by id and never duplicate the transcript.
+    """
+
+    __tablename__ = "ai_turns"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_instance_id",
+            "sequence",
+            name="uq_ai_turn_task_sequence",
+        ),
+        UniqueConstraint(
+            "attempt_id",
+            "client_action_id",
+            name="uq_ai_turn_attempt_client_action",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    task_instance_id: Mapped[str] = mapped_column(
+        ForeignKey("task_instances.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    client_action_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[AiTurnStatus] = mapped_column(
+        enum_type(AiTurnStatus, "ai_turn_status"),
+        nullable=False,
+        default=AiTurnStatus.PENDING,
+    )
+    user_message: Mapped[str] = mapped_column(Text, nullable=False)
+    assistant_message: Mapped[str | None] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, default="yandex")
+    model_uri: Mapped[str] = mapped_column(String(200), nullable=False)
+    model_version: Mapped[str | None] = mapped_column(String(200))
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    public_context_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(128))
+    finish_reason: Mapped[str | None] = mapped_column(String(40))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    cached_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    task: Mapped[TaskInstance] = relationship(back_populates="ai_turns")
+    attempt: Mapped[Attempt] = relationship()
 
 
 class ClientTelemetryReceipt(Base):

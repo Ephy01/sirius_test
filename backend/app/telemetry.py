@@ -4,7 +4,15 @@ import json
 from datetime import datetime, timezone
 
 from .environments import IMPLEMENTED_FAMILIES
-from .models import Attempt, Contest, Enrollment, TaskInstance, utc_now
+from .models import (
+    AiTurn,
+    AiTurnStatus,
+    Attempt,
+    Contest,
+    Enrollment,
+    TaskInstance,
+    utc_now,
+)
 
 TELEMETRY_FORMAT_VERSION = "1"
 REDACTED_VALUE = "[REDACTED]"
@@ -160,6 +168,80 @@ def _task_lines(task: TaskInstance) -> list[str]:
     ]
 
 
+def _indent_block(text: str) -> list[str]:
+    return [f"  {line}" for line in text.splitlines()] or ["  (пусто)"]
+
+
+def _ai_transcript_lines(attempt: Attempt, tasks: list[TaskInstance]) -> list[str]:
+    """Full dialogue transcript plus usage totals (ТЗ Alice AI §19)."""
+
+    turns: list[tuple[TaskInstance, AiTurn]] = [
+        (task, turn)
+        for task in tasks
+        for turn in sorted(task.ai_turns, key=lambda item: item.sequence)
+    ]
+    turns.sort(key=lambda pair: (pair[1].created_at, pair[1].sequence))
+    lines = ["--- AI TRANSCRIPT ---"]
+    if not turns:
+        lines.append("(no ai turns)")
+        return lines
+
+    completed = 0
+    failed = 0
+    total_input = 0
+    total_output = 0
+    latencies: list[int] = []
+    tasks_with_ai: set[str] = set()
+    for task, turn in turns:
+        tasks_with_ai.add(task.id)
+        lines.append("")
+        lines.append(
+            f"[{_utc_text(turn.created_at)}] TASK {task.ordinal} / USER"
+        )
+        lines.extend(_indent_block(turn.user_message))
+        if turn.status == AiTurnStatus.COMPLETED:
+            completed += 1
+            lines.append(
+                f"[{_utc_text(turn.completed_at)}] TASK {task.ordinal} / ALICE AI"
+            )
+            lines.extend(_indent_block(turn.assistant_message or ""))
+        else:
+            failed += 1
+            lines.append(
+                f"[{_utc_text(turn.completed_at)}] TASK {task.ordinal} / "
+                f"{turn.status.value.upper()}"
+            )
+        lines.append(f"  model: {_header_text(turn.model_version or turn.model_uri)}")
+        lines.append(f"  latency_ms: {turn.latency_ms if turn.latency_ms is not None else '-'}")
+        lines.append(f"  input_tokens: {turn.input_tokens if turn.input_tokens is not None else '-'}")
+        lines.append(f"  output_tokens: {turn.output_tokens if turn.output_tokens is not None else '-'}")
+        lines.append(f"  prompt_version: {_header_text(turn.prompt_version)}")
+        lines.append(f"  context_hash: {turn.public_context_hash}")
+        lines.append(f"  status: {turn.status.value}")
+        if turn.error_code:
+            lines.append(f"  error_code: {_header_text(turn.error_code)}")
+        total_input += turn.input_tokens or 0
+        total_output += turn.output_tokens or 0
+        if turn.latency_ms is not None:
+            latencies.append(turn.latency_ms)
+
+    lines.append("")
+    lines.append("--- AI SUMMARY ---")
+    lines.append(f"ai_turns_completed: {completed}")
+    lines.append(f"ai_turns_failed: {failed}")
+    lines.append(f"ai_total_input_tokens: {total_input}")
+    lines.append(f"ai_total_output_tokens: {total_output}")
+    lines.append(
+        "ai_latency_avg_ms: "
+        + (str(round(sum(latencies) / len(latencies))) if latencies else "-")
+    )
+    lines.append(
+        "ai_latency_max_ms: " + (str(max(latencies)) if latencies else "-")
+    )
+    lines.append(f"ai_tasks_with_dialogue: {len(tasks_with_ai)}")
+    return lines
+
+
 def _attempt_lines(attempt: Attempt) -> list[str]:
     tasks = sorted(attempt.tasks, key=lambda task: (task.ordinal, task.id))
     events = sorted(attempt.events, key=lambda event: (event.sequence, event.id))
@@ -194,6 +276,9 @@ def _attempt_lines(attempt: Attempt) -> list[str]:
             )
     else:
         lines.append("(no scored tasks)")
+    lines.append("")
+
+    lines.extend(_ai_transcript_lines(attempt, tasks))
     lines.append("")
 
     lines.append("--- EVENT TIMELINE ---")
