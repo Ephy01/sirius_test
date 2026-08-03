@@ -10,7 +10,6 @@ export type TaskFamilyKey =
   | "hidden_wiring"
   | "machine_reach"
   | "fold_punch"
-  | "spatial_bank"
   | "dice_chess"
   | "geo_transform"
   | "geo_probability";
@@ -105,11 +104,6 @@ const FAMILY_LABELS: Record<
     description:
       "Лист складывают и пробивают дырки; отметьте, где они окажутся после разворота.",
   },
-  spatial_bank: {
-    title: "Повороты и сборка",
-    description:
-      "Single-select: найти правильный поворот фигуры или пару частей, собирающих цель.",
-  },
   dice_chess: {
     title: "Dice & Chess",
     description:
@@ -188,14 +182,6 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
     skin: "sheet",
     enabled: true,
     weight: 8,
-    initialDifficulty: 1,
-    maxDifficulty: 5,
-  },
-  {
-    key: "spatial_bank",
-    skin: "shapes",
-    enabled: true,
-    weight: 6,
     initialDifficulty: 1,
     maxDifficulty: 5,
   },

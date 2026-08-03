@@ -1,24 +1,12 @@
-"""Acceptance battery for fold_punch and spatial_bank (stage S)."""
+"""Acceptance battery for fold_punch (stage S)."""
 
 from __future__ import annotations
-
-import itertools
-import random
 
 from app.environments.spatial.fold_punch import (
     SHEET_SIZE,
     evaluate_fold_punch_answer,
     generate_fold_punch_task,
     unfold_holes,
-)
-from app.environments.spatial.spatial_bank import (
-    ASSEMBLY_VARIANT,
-    ROTATION_VARIANT,
-    _can_assemble,
-    _is_rotation_of,
-    _isometries,
-    evaluate_spatial_bank_answer,
-    generate_spatial_bank_task,
 )
 
 FORBIDDEN_PUBLIC_KEYS = {
@@ -157,104 +145,11 @@ def test_fold_punch_scores_exact_set_with_jaccard():
     assert malformed["continuous_score"] == 0.0
 
 
-def test_spatial_bank_has_exactly_one_correct_option_by_enumeration():
-    variants: dict[str, int] = {}
-    for seed in range(150):
-        difficulty = 1 + seed % 5
-        public, private = generate_spatial_bank_task(
-            seed=seed,
-            difficulty=difficulty,
-        )
-        assert (public, private) == generate_spatial_bank_task(
-            seed=seed,
-            difficulty=difficulty,
-        )
-        assert _nested_keys(public).isdisjoint(FORBIDDEN_PUBLIC_KEYS)
-        variants[public["variant"]] = variants.get(public["variant"], 0) + 1
-        if public["variant"] == ROTATION_VARIANT:
-            reference = frozenset(
-                (row, column) for row, column in public["reference"]
-            )
-            matches = [
-                option["id"]
-                for option in public["options"]
-                if _is_rotation_of(
-                    frozenset(
-                        (row, column) for row, column in option["cells"]
-                    ),
-                    reference,
-                )
-            ]
-        else:
-            target = frozenset(
-                (row, column) for row, column in public["target"]
-            )
-            matches = [
-                option["id"]
-                for option in public["options"]
-                if _can_assemble(
-                    target,
-                    frozenset(
-                        (row, column) for row, column in option["parts"][0]
-                    ),
-                    frozenset(
-                        (row, column) for row, column in option["parts"][1]
-                    ),
-                )
-            ]
-        assert matches == [private["correct_option"]]
-    assert variants[ROTATION_VARIANT] > 30
-    assert variants[ASSEMBLY_VARIANT] > 30
-
-
-def test_rotation_references_have_no_nontrivial_symmetry():
-    for seed in range(150):
-        public, _private = generate_spatial_bank_task(
-            seed=seed,
-            difficulty=3,
-        )
-        if public["variant"] != ROTATION_VARIANT:
-            continue
-        reference = frozenset(
-            (row, column) for row, column in public["reference"]
-        )
-        assert len(set(_isometries(reference))) == 8
-
-
-def test_spatial_bank_answer_parsing():
-    public, private = generate_spatial_bank_task(seed=1, difficulty=2)
-    correct = evaluate_spatial_bank_answer(
-        answer=f"/answer {private['correct_option'].lower()}",
-        private_state=private,
-    )
-    assert correct["correct"] is True
-    assert correct["continuous_score"] == 1.0
-
-    wrong_id = next(
-        option["id"]
-        for option in public["options"]
-        if option["id"] != private["correct_option"]
-    )
-    wrong = evaluate_spatial_bank_answer(
-        answer=wrong_id,
-        private_state=private,
-    )
-    assert wrong["correct"] is False
-    assert wrong["evidence"] == -1
-
-    malformed = evaluate_spatial_bank_answer(
-        answer="вариант пять",
-        private_state=private,
-    )
-    assert malformed["parsed"] is False
-
-
 def test_spatial_warm_generation_perf():
     import time
 
-    for generate in (generate_fold_punch_task, generate_spatial_bank_task):
-        generate(seed=0, difficulty=1)
-        started = time.perf_counter()
-        for index in range(100):
-            generate(seed=index, difficulty=1 + index % 5)
-        assert time.perf_counter() - started < 5
+    generate_fold_punch_task(seed=0, difficulty=1)
+    started = time.perf_counter()
+    for index in range(100):
+        generate_fold_punch_task(seed=index, difficulty=1 + index % 5)
+    assert time.perf_counter() - started < 5

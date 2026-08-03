@@ -13,8 +13,6 @@ import type {
   LeaperBoardPublicState,
   MachinePanelPublicState,
   MachineState,
-  PolyominoCells,
-  SpatialBankPublicState,
   TokenCard,
 } from "../api";
 import "./participant-workspace.css";
@@ -105,7 +103,6 @@ export type ParticipantTask = {
   machinePanel?: MachinePanelPublicState;
   wiring?: HiddenWiringPublicState;
   foldPunch?: FoldPunchPublicState;
-  spatialBank?: SpatialBankPublicState;
   leaperBoard?: LeaperBoardPublicState;
   responseHint?: string;
   worldPhase?: string;
@@ -1381,11 +1378,6 @@ export function ParticipantWorkspace({
                     отмеченные клетки», или ответьте в чате:{" "}
                     <code>/answer 2,3 5,8</code> (строка,столбец).
                   </>
-                ) : task.spatialBank ? (
-                  <>
-                    Кликните карточку варианта или ответьте в чате:{" "}
-                    <code>/answer V2</code>.
-                  </>
                 ) : (
                   <>
                     Ответ введите в чате командой{" "}
@@ -1438,12 +1430,6 @@ export function ParticipantWorkspace({
               state={task.foldPunch}
               canAnswer={task.status === "active" && !isBusy}
               onSubmit={(cells) => void runCommand(`/answer ${cells}`)}
-            />
-          ) : task.spatialBank ? (
-            <SpatialBankScene
-              state={task.spatialBank}
-              canAnswer={task.status === "active" && !isBusy}
-              onSelect={(optionId) => void runCommand(`/answer ${optionId}`)}
             />
           ) : task.wiring ? (
             <WiringPanelScene
@@ -2026,39 +2012,6 @@ function WiringPanelScene({
 }
 
 
-function PolyominoPreview({
-  cells,
-  tone = "cyan",
-}: {
-  cells: PolyominoCells;
-  tone?: "cyan" | "plum";
-}) {
-  const rows = Math.max(...cells.map(([row]) => row)) + 1;
-  const columns = Math.max(...cells.map(([, column]) => column)) + 1;
-  const filled = new Set(cells.map(([row, column]) => `${row}:${column}`));
-  return (
-    <div
-      className={`polyomino polyomino--${tone}`}
-      style={{
-        gridTemplateColumns: `repeat(${columns}, var(--poly-cell, 24px))`,
-        gridTemplateRows: `repeat(${rows}, var(--poly-cell, 24px))`,
-      }}
-      aria-hidden="true"
-    >
-      {Array.from({ length: rows * columns }, (_, index) => {
-        const row = Math.floor(index / columns);
-        const column = index % columns;
-        return (
-          <i
-            className={filled.has(`${row}:${column}`) ? "is-filled" : ""}
-            key={index}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 function FoldPunchScene({
   state,
   canAnswer,
@@ -2168,51 +2121,6 @@ function FoldPunchScene({
         </section>
       </div>
 
-    </figure>
-  );
-}
-
-function SpatialBankScene({
-  state,
-  canAnswer,
-  onSelect,
-}: {
-  state: SpatialBankPublicState;
-  canAnswer: boolean;
-  onSelect: (optionId: string) => void;
-}) {
-  const reference = state.reference ?? state.target;
-  return (
-    <figure className="spatial-bank" aria-label="Пространственный айтем">
-      {reference && (
-        <section className="spatial-bank__reference">
-          <header>
-            {state.variant === "rotation_match" ? "Эталон" : "Цель"}
-          </header>
-          <PolyominoPreview cells={reference} tone="plum" />
-        </section>
-      )}
-      <div className="spatial-bank__options">
-        {state.options.map((option) => (
-          <button
-            type="button"
-            className="spatial-bank__option"
-            disabled={!canAnswer}
-            onClick={() => onSelect(option.id)}
-            key={option.id}
-          >
-            <span>{option.id}</span>
-            {option.cells && <PolyominoPreview cells={option.cells} />}
-            {option.parts && (
-              <span className="spatial-bank__parts">
-                <PolyominoPreview cells={option.parts[0]} />
-                <b>+</b>
-                <PolyominoPreview cells={option.parts[1]} />
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
     </figure>
   );
 }

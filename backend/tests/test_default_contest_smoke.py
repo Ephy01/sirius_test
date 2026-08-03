@@ -19,7 +19,6 @@ DEFAULT_FAMILIES = [
     ("hidden_wiring", 14),
     ("machine_reach", 12),
     ("fold_punch", 8),
-    ("spatial_bank", 6),
     ("dice_chess", 6),
     ("geo_transform", 2),
     ("geo_probability", 2),
@@ -96,8 +95,6 @@ def _solve_task(client, application, participant, task) -> None:
             f"{row + 1},{column + 1}"
             for row, column in private["expected_holes"]
         )
-    elif family == "spatial_bank":
-        answer = str(private["correct_option"])
     elif family in {"dice_chess", "geo_probability"}:
         probability = private["probability"]
         answer = f"{probability['numerator']}/{probability['denominator']}"

@@ -33,7 +33,6 @@ from .environments import (
     HIDDEN_WIRING_FAMILY,
     MACHINE_REACH_FAMILY,
     POINT_ZENDO_FAMILY,
-    SPATIAL_BANK_FAMILY,
     TOKEN_ZENDO_FAMILY,
     derive_task_seed,
     evaluate_task,
@@ -145,8 +144,6 @@ FAMILY_ALIASES = {
     "hidden-wiring": HIDDEN_WIRING_FAMILY,
     "fold_punch": FOLD_PUNCH_FAMILY,
     "fold-punch": FOLD_PUNCH_FAMILY,
-    "spatial_bank": SPATIAL_BANK_FAMILY,
-    "spatial-bank": SPATIAL_BANK_FAMILY,
 }
 WORLD_FAMILIES = {
     "chess_world": frozenset({DICE_CHESS_FAMILY}),
@@ -167,7 +164,6 @@ WORLD_FAMILIES["mixed"] = frozenset(
         GRID_ZENDO_FAMILY,
         HIDDEN_WIRING_FAMILY,
         FOLD_PUNCH_FAMILY,
-        SPATIAL_BANK_FAMILY,
     }
 )
 WORLD_DEFAULT_FAMILY = {
@@ -2724,17 +2720,6 @@ def _debug_task_details(task: TaskInstance) -> list[str]:
             )
         )
         return details
-    if family == SPATIAL_BANK_FAMILY:
-        details = [
-            f"Вариант: {private.get('variant')}",
-            f"Правильный ответ: {private.get('correct_option')}",
-        ]
-        if private.get("rotation_steps"):
-            details.append(
-                "Правильный вариант — поворот эталона на "
-                f"{90 * int(private['rotation_steps'])}°"
-            )
-        return details
     if family in {DICE_CHESS_FAMILY, GEO_PROBABILITY_FAMILY}:
         probability = private.get("probability") or {}
         favorable = private.get("favorable_faces") or private.get(
@@ -2812,8 +2797,6 @@ def _debug_reference_answer(task: TaskInstance) -> tuple[str, list[str]]:
             for row, column in private.get("expected_holes", [])
         )
         return answer, []
-    if family == SPATIAL_BANK_FAMILY:
-        return f"/answer {private.get('correct_option')}", []
     if family in {DICE_CHESS_FAMILY, GEO_PROBABILITY_FAMILY}:
         probability = private.get("probability") or {}
         return (
