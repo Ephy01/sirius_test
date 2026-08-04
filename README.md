@@ -109,6 +109,14 @@ npm run dev
 Vite запустит приложение на `http://127.0.0.1:4173` и проксирует `/api` в
 FastAPI на порту `8001`.
 
+## Production deployment
+
+Готовый стек `Caddy + FastAPI + PostgreSQL`, первый запуск, обновление,
+резервное копирование и диагностика описаны в
+[`docs/deployment-adminvps.md`](docs/deployment-adminvps.md). На VPS после
+создания `.env.production` достаточно выполнить `./deploy/deploy.sh`, а для
+последующих обновлений — `./deploy/update.sh`.
+
 ## Локальный доступ
 
 - код организатора: `ORBIT-ADMIN`;

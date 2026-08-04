@@ -449,6 +449,28 @@ export type LeaperBoardPublicState = {
   worldContext?: WorldContext;
 };
 
+export type ClassicMathSubKind = "share_paradox" | "bar_seating";
+
+export type ClassicMathTable = {
+  columns: string[];
+  rows: string[][];
+};
+
+export type ClassicMathPublicState = {
+  kind: "classic_math_free_response";
+  family: "classic_math";
+  subKind: ClassicMathSubKind;
+  title: string;
+  prompt: string;
+  responseHint: string;
+  submissionTemplate: string;
+  answerFormat: "free_response";
+  scripted: true;
+  table?: ClassicMathTable;
+  seatCount?: number;
+  worldContext?: WorldContext;
+};
+
 export type TaskPublicState =
   | DiceChessPublicState
   | DiceChessInventoryPublicState
@@ -460,7 +482,8 @@ export type TaskPublicState =
   | HiddenWiringPublicState
   | FoldPunchPublicState
   | MachinePanelPublicState
-  | LeaperBoardPublicState;
+  | LeaperBoardPublicState
+  | ClassicMathPublicState;
 
 export type ParticipantTask = {
   id: string;
@@ -1573,6 +1596,81 @@ function parseParticipantTask(value: unknown): ParticipantTask {
           : { a: jumpA, b: jumpB },
       board,
       responseHint,
+      worldContext,
+    };
+  } else if (kind === "classic_math_free_response") {
+    const family = readString(publicStateValue, "family");
+    const subKindValue = readString(
+      publicStateValue,
+      "subKind",
+      "sub_kind",
+    );
+    const title = readString(publicStateValue, "title");
+    const answerFormat = readString(
+      publicStateValue,
+      "answerFormat",
+      "answer_format",
+    );
+    const submissionTemplate = readString(
+      publicStateValue,
+      "submissionTemplate",
+      "submission_template",
+    );
+    const subKind =
+      subKindValue === "share_paradox" || subKindValue === "bar_seating"
+        ? subKindValue
+        : undefined;
+
+    if (
+      family !== "classic_math" ||
+      !subKind ||
+      !title ||
+      !submissionTemplate ||
+      answerFormat !== "free_response"
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную классическую задачу.",
+        details: value,
+      });
+    }
+
+    const tableValue = publicStateValue.table;
+    let table: ClassicMathTable | undefined;
+    if (isRecord(tableValue) && Array.isArray(tableValue.columns)) {
+      const columns = tableValue.columns.filter(
+        (column): column is string => typeof column === "string",
+      );
+      const rows = Array.isArray(tableValue.rows)
+        ? tableValue.rows.flatMap((row): string[][] =>
+            Array.isArray(row) &&
+            row.length === columns.length &&
+            row.every((cell) => typeof cell === "string")
+              ? [row as string[]]
+              : [],
+          )
+        : [];
+      if (
+        columns.length === tableValue.columns.length &&
+        columns.length > 0 &&
+        rows.length > 0
+      ) {
+        table = { columns, rows };
+      }
+    }
+
+    publicState = {
+      kind,
+      family,
+      subKind,
+      title,
+      prompt,
+      responseHint,
+      submissionTemplate,
+      answerFormat,
+      scripted: true,
+      table,
+      seatCount: readNumber(publicStateValue, "seatCount", "seat_count"),
       worldContext,
     };
   } else {

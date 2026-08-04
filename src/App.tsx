@@ -321,6 +321,15 @@ function OrganizerDashboard({
             locked_chapter: family.lockedChapter,
             sub_kinds: family.subKinds,
           })),
+          ...(input.taskConfig.scriptedTasks.length > 0
+            ? {
+                scripted_tasks: input.taskConfig.scriptedTasks.map((task) => ({
+                  family: task.family,
+                  sub_kind: task.subKind,
+                  position: task.position,
+                })),
+              }
+            : {}),
         },
       },
       { token: session.token },
@@ -1074,6 +1083,10 @@ function ParticipantContestScreen({
             : undefined,
         leaperBoard:
           task.publicState.kind === "chess"
+            ? task.publicState
+            : undefined,
+        classicMath:
+          task.publicState.kind === "classic_math_free_response"
             ? task.publicState
             : undefined,
         worldPhase: task.publicState.worldContext?.phase,

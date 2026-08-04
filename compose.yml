@@ -1,0 +1,116 @@
+name: sirius-gate
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sirius_gate}
+      POSTGRES_USER: ${POSTGRES_USER:-sirius_gate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - database
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  api:
+    image: sirius-gate-api:${APP_VERSION:-local}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sirius_gate}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@db:5432/${POSTGRES_DB:-sirius_gate}
+      ORGANIZER_CODE: ${ORGANIZER_CODE:?Set ORGANIZER_CODE in .env.production}
+      SECURITY_SECRET: ${SECURITY_SECRET:?Set SECURITY_SECRET in .env.production}
+      CODE_HMAC_SECRET: ${CODE_HMAC_SECRET:?Set CODE_HMAC_SECRET in .env.production}
+      ACCESS_TOKEN_TTL_MINUTES: ${ACCESS_TOKEN_TTL_MINUTES:-720}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      API_WORKERS: ${API_WORKERS:-2}
+      DATABASE_STARTUP_MAX_ATTEMPTS: ${DATABASE_STARTUP_MAX_ATTEMPTS:-30}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      YANDEX_AI_API_KEY: ${YANDEX_AI_API_KEY:-}
+      YANDEX_AI_FOLDER_ID: ${YANDEX_AI_FOLDER_ID:-}
+      YANDEX_AI_MODEL_URI: ${YANDEX_AI_MODEL_URI:-}
+      YANDEX_AI_BASE_URL: ${YANDEX_AI_BASE_URL:-https://ai.api.cloud.yandex.net/v1}
+      YANDEX_AI_TIMEOUT_SECONDS: ${YANDEX_AI_TIMEOUT_SECONDS:-20}
+      YANDEX_AI_MAX_PARALLEL_REQUESTS: ${YANDEX_AI_MAX_PARALLEL_REQUESTS:-8}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - application
+      - database
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s
+    logging: *default-logging
+
+  web:
+    image: sirius-gate-web:${APP_VERSION:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - application
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+networks:
+  application:
+  database:
+    internal: true
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

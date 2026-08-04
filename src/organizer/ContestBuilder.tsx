@@ -32,6 +32,14 @@ export type ContestAiConfig = {
   maxTurnsPerTask: number;
 };
 
+export type ClassicMathTaskKey = "share_paradox" | "bar_seating";
+
+export type ScriptedTaskConfig = {
+  family: "classic_math";
+  subKind: ClassicMathTaskKey;
+  position: number;
+};
+
 export type ContestDraftInput = {
   title: string;
   durationMinutes: number;
@@ -42,6 +50,7 @@ export type ContestDraftInput = {
     debugRevealAnswers?: boolean;
     ai?: ContestAiConfig;
     families: TaskFamilyConfig[];
+    scriptedTasks: ScriptedTaskConfig[];
   };
 };
 
@@ -126,6 +135,22 @@ const FAMILY_LABELS: Record<
     title: "Комбинаторика",
     description:
       "Подсчёт конфигураций и вероятностей на сетях из точек, рёбер и областей.",
+  },
+};
+
+const CLASSIC_MATH_TASKS: Record<
+  ClassicMathTaskKey,
+  { title: string; description: string }
+> = {
+  share_paradox: {
+    title: "Парадокс долей",
+    description:
+      "Развёрнуто объяснить, почему помесячные и суммарные доли могут давать разный порядок.",
+  },
+  bar_seating: {
+    title: "Рассадка в баре",
+    description:
+      "Найти первое место, максимальное число посетителей и доказать оптимальность рассадки.",
   },
 };
 
@@ -246,6 +271,10 @@ export function ContestBuilder({
   const [aiMode, setAiMode] = useState<"socratic" | "open">("socratic");
   const [aiTurnsPerAttempt, setAiTurnsPerAttempt] = useState(15);
   const [aiTurnsPerTask, setAiTurnsPerTask] = useState(5);
+  const [classicMathEnabled, setClassicMathEnabled] = useState(false);
+  const [classicMathTask, setClassicMathTask] =
+    useState<ClassicMathTaskKey>("share_paradox");
+  const [classicMathPosition, setClassicMathPosition] = useState(1);
   const [families, setFamilies] =
     useState<TaskFamilyConfig[]>(() => cloneFamilies(CONTENT_FAMILIES));
   const [participants, setParticipants] = useState<ParticipantDraft[]>([
@@ -330,6 +359,15 @@ export function ContestBuilder({
       );
       return;
     }
+    if (
+      classicMathEnabled &&
+      (!Number.isInteger(classicMathPosition) ||
+        classicMathPosition < 1 ||
+        classicMathPosition > 100)
+    ) {
+      setError("Позиция классической задачи должна быть целым числом от 1 до 100.");
+      return;
+    }
 
     setBusy(true);
     setError("");
@@ -349,6 +387,15 @@ export function ContestBuilder({
             maxTurnsPerTask: aiTurnsPerTask,
           },
           families,
+          scriptedTasks: classicMathEnabled
+            ? [
+                {
+                  family: "classic_math",
+                  subKind: classicMathTask,
+                  position: classicMathPosition,
+                },
+              ]
+            : [],
         },
       });
       setContest(created);
@@ -585,6 +632,74 @@ export function ContestBuilder({
             <section aria-labelledby="builderWorldTitle">
               <span className="builder-section-label">02 · семейства</span>
               <h2 id="builderWorldTitle">Контент траектории</h2>
+              <article
+                className={`scripted-family${
+                  classicMathEnabled ? " is-enabled" : ""
+                }`}
+              >
+                <header>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={classicMathEnabled}
+                      onChange={(event) => {
+                        setClassicMathEnabled(event.target.checked);
+                        setError("");
+                      }}
+                    />
+                    <span>Классическая задача</span>
+                  </label>
+                  <small>classic_math · ровно один раз</small>
+                </header>
+                <p>
+                  Задача с развёрнутым ответом появится на указанной позиции и
+                  не участвует в случайной ротации семейств.
+                </p>
+                <div className="scripted-family__settings">
+                  <label>
+                    <span>Задача</span>
+                    <select
+                      value={classicMathTask}
+                      disabled={!classicMathEnabled}
+                      onChange={(event) =>
+                        setClassicMathTask(
+                          event.target.value === "bar_seating"
+                            ? "bar_seating"
+                            : "share_paradox",
+                        )
+                      }
+                    >
+                      {Object.entries(CLASSIC_MATH_TASKS).map(
+                        ([key, task]) => (
+                          <option key={key} value={key}>
+                            {task.title}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Позиция в траектории</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={classicMathPosition}
+                      disabled={!classicMathEnabled}
+                      onChange={(event) => {
+                        setClassicMathPosition(Number(event.target.value));
+                        setError("");
+                      }}
+                    />
+                  </label>
+                </div>
+                {classicMathEnabled && (
+                  <p className="scripted-family__selection">
+                    {CLASSIC_MATH_TASKS[classicMathTask].description}
+                  </p>
+                )}
+              </article>
               <div className="family-list">
                 {families.map((family) => {
                   const copy = FAMILY_LABELS[family.key];

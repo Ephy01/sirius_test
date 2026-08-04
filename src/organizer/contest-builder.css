@@ -222,6 +222,96 @@
   padding: 0 8px;
 }
 
+.scripted-family {
+  margin: 24px 0 18px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fcfbfd;
+  opacity: 0.64;
+}
+
+.scripted-family.is-enabled {
+  border-color: rgba(199, 146, 223, 0.72);
+  background: rgba(220, 171, 223, 0.13);
+  opacity: 1;
+}
+
+.scripted-family > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.scripted-family > header label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--vintage-grape);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scripted-family > header small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.scripted-family > p {
+  max-width: 720px;
+  margin: 13px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.scripted-family__settings {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(170px, 0.35fr);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.scripted-family__settings label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.scripted-family__settings input,
+.scripted-family__settings select {
+  width: 100%;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  outline: 0;
+  background: #fff;
+  color: var(--vintage-grape);
+  font: inherit;
+}
+
+.scripted-family__settings input:focus,
+.scripted-family__settings select:focus {
+  border-color: var(--wisteria);
+  box-shadow: 0 0 0 4px rgba(199, 146, 223, 0.12);
+}
+
+.scripted-family__settings input:disabled,
+.scripted-family__settings select:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.scripted-family .scripted-family__selection {
+  margin-top: 12px;
+  color: var(--vintage-grape);
+}
+
 .participant-table,
 .codes-table {
   overflow: hidden;
@@ -348,6 +438,15 @@
 
   .builder-fields,
   .family-list {
+    grid-template-columns: 1fr;
+  }
+
+  .scripted-family > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .scripted-family__settings {
     grid-template-columns: 1fr;
   }
 

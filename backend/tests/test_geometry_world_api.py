@@ -301,7 +301,9 @@ def test_geometry_world_complete_api_flow_answer_skip_and_next(tmp_path):
         third = third_response.json()["task"]
         assert third["ordinal"] == 3
         assert third["family"] == "geo_transform"
-        assert third["public_state"]["world_context"]["phase"] == "remediation"
+        # With a single enabled family there is nowhere else to rotate, but a
+        # skip still opens a fresh regular task rather than remediation.
+        assert third["public_state"]["world_context"]["phase"] == "rotation"
 
         with application.state.database.session_factory() as session:
             generated_events = list(

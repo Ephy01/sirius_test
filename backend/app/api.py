@@ -29,6 +29,7 @@ from .dependencies import (
     api_error,
 )
 from .environments import (
+    CLASSIC_MATH_FAMILY,
     DICE_CHESS_FAMILY,
     FOLD_PUNCH_FAMILY,
     GEO_PROBABILITY_FAMILY,
@@ -46,6 +47,11 @@ from .environments import (
     generate_task,
     generator_version_for,
     interact_task,
+)
+from .environments.classic_math import (
+    BAR_SEATING as CLASSIC_MATH_BAR_SEATING,
+    SHARE_PARADOX as CLASSIC_MATH_SHARE_PARADOX,
+    SUB_KINDS as CLASSIC_MATH_SUB_KINDS,
 )
 from .environments.chess_world.director import (
     DIRECTOR_VERSION as CHESS_DIRECTOR_VERSION,
@@ -159,6 +165,8 @@ FAMILY_ALIASES = {
     "hidden-wiring": HIDDEN_WIRING_FAMILY,
     "fold_punch": FOLD_PUNCH_FAMILY,
     "fold-punch": FOLD_PUNCH_FAMILY,
+    "classic_math": CLASSIC_MATH_FAMILY,
+    "classic-math": CLASSIC_MATH_FAMILY,
 }
 WORLD_FAMILIES = {
     "chess_world": frozenset({DICE_CHESS_FAMILY}),
@@ -210,6 +218,7 @@ ZENDO_PROBE_ACTIONS = {
     HIDDEN_WIRING_FAMILY: "apply_op",
 }
 FAMILY_ROUTE_VERSION = "weighted-family-route-v1"
+SCRIPTED_ROUTE_VERSION = "scripted-task-route-v1"
 ADAPTIVE_TRAJECTORY_MODE = "adaptive"
 
 
@@ -222,6 +231,13 @@ class FamilyTaskSettings:
     skin: str | None = None
     locked_chapter: bool = False
     sub_kinds: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ScriptedTaskSettings:
+    family: str
+    sub_kind: str
+    position: int
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -632,6 +648,52 @@ def _task_family_settings_from_config(
     return sorted(parsed.values(), key=lambda item: item.family), threshold
 
 
+def _scripted_task_settings_from_config(
+    config: dict,
+) -> ScriptedTaskSettings | None:
+    """Parse the single organizer-pinned classic task, if configured.
+
+    Scripted tasks are intentionally outside ``task_config.families`` so the
+    weighted/adaptive director cannot repeat them or adapt their difficulty.
+    An empty list has the same meaning as an omitted setting.
+    """
+
+    raw_tasks = config.get("scripted_tasks")
+    if raw_tasks is None or raw_tasks == []:
+        return None
+    if not isinstance(raw_tasks, list) or len(raw_tasks) != 1:
+        raise ValueError("scripted_tasks must contain exactly one item")
+    raw_task = raw_tasks[0]
+    if not isinstance(raw_task, dict):
+        raise ValueError("scripted task must be an object")
+
+    raw_family = raw_task.get("family")
+    family = (
+        FAMILY_ALIASES.get(raw_family.strip().casefold())
+        if isinstance(raw_family, str)
+        else None
+    )
+    if family != CLASSIC_MATH_FAMILY:
+        raise ValueError("only classic_math can be scripted in this version")
+
+    sub_kind = raw_task.get("sub_kind")
+    if not isinstance(sub_kind, str) or sub_kind not in CLASSIC_MATH_SUB_KINDS:
+        raise ValueError("classic_math sub_kind is not supported")
+
+    position = raw_task.get("position")
+    if (
+        isinstance(position, bool)
+        or not isinstance(position, int)
+        or not 1 <= position <= 100
+    ):
+        raise ValueError("scripted task position must be from 1 to 100")
+    return ScriptedTaskSettings(
+        family=family,
+        sub_kind=sub_kind,
+        position=position,
+    )
+
+
 def _task_family_settings(
     contest: Contest,
 ) -> tuple[list[FamilyTaskSettings], int]:
@@ -644,16 +706,22 @@ def _select_task_family(
     attempt_seed: int,
     ordinal: int,
     settings: list[FamilyTaskSettings],
+    exclude_family: str | None = None,
 ) -> FamilyTaskSettings:
+    candidates = [
+        item for item in settings if item.family != exclude_family
+    ]
+    if not candidates:
+        candidates = settings
     route_seed = derive_task_seed(
         attempt_seed,
         ordinal,
         "family_route",
         FAMILY_ROUTE_VERSION,
     )
-    selection = route_seed % sum(item.weight_units for item in settings)
+    selection = route_seed % sum(item.weight_units for item in candidates)
     cursor = 0
-    for item in settings:
+    for item in candidates:
         cursor += item.weight_units
         if selection < cursor:
             return item
@@ -894,6 +962,12 @@ def _evaluation_with_telemetry(
     enriched["difficulty"] = task.difficulty
     enriched["family"] = task.family
     enriched["generator_version"] = task.generator_version
+    # Season-one scoring is deliberately binary.  Keep continuous_score as
+    # research telemetry for existing families, but only finalized answers
+    # and skips receive an official task score.  This avoids recording a
+    # premature zero for machine answers that explicitly do not close a task.
+    if enriched.get("should_finalize") is not False:
+        enriched["score"] = 1 if enriched.get("correct") is True else 0
     return enriched
 
 
@@ -929,6 +1003,7 @@ def _director_history(
                 evidence=_director_evidence(task),
                 phase=_director_phase_for_task(task),
                 chapter_stage=chapter_stage,
+                skipped=task.status == TaskStatus.SKIPPED,
             )
         )
     return history
@@ -1071,16 +1146,43 @@ def _create_or_get_current_task(
             "TASK_FAMILY_NOT_AVAILABLE",
             "В контесте пока нет семейства задач, поддерживаемого этой версией MVP.",
         )
-    latest_ordinal = session.scalar(
-        select(func.max(TaskInstance.ordinal)).where(
-            TaskInstance.attempt_id == attempt.id
-        )
+    latest_task = session.scalar(
+        select(TaskInstance)
+        .where(TaskInstance.attempt_id == attempt.id)
+        .order_by(TaskInstance.ordinal.desc())
+        .limit(1)
     )
-    ordinal = (latest_ordinal or 0) + 1
+    ordinal = (latest_task.ordinal if latest_task is not None else 0) + 1
+    try:
+        configured_script = _scripted_task_settings_from_config(task_config)
+    except ValueError as error:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "SCRIPTED_TASK_CONFIG_INVALID",
+            "Сохранённая конфигурация заскриптованной задачи некорректна.",
+        ) from error
+    scripted_task = (
+        configured_script
+        if configured_script is not None
+        and configured_script.position == ordinal
+        else None
+    )
     adaptive, start_family = _adaptive_trajectory(task_config, environment_key)
     director_decision: DirectorDecision | None = None
     director_history: list[CompletedTask] = []
-    if adaptive:
+    if scripted_task is not None:
+        # A pinned anchor occupies this ordinal exactly once and never enters
+        # the adaptive/weighted family pool.  The next task resumes the
+        # director from its prior non-scripted history.
+        selected_family = FamilyTaskSettings(
+            family=scripted_task.family,
+            weight_units=0,
+            initial_difficulty=1,
+            max_difficulty=1,
+            sub_kinds=(scripted_task.sub_kind,),
+        )
+        difficulty = 1
+    elif adaptive:
         director_history = _director_history(session, attempt_id=attempt.id)
         director_decision = _adaptive_director_decision(
             environment_key=environment_key,
@@ -1105,6 +1207,13 @@ def _create_or_get_current_task(
             attempt_seed=attempt.seed,
             ordinal=ordinal,
             settings=family_settings,
+            exclude_family=(
+                latest_task.family
+                if latest_task is not None
+                and latest_task.status == TaskStatus.SKIPPED
+                and len(family_settings) > 1
+                else None
+            ),
         )
         difficulty = _task_difficulty(
             session,
@@ -1121,7 +1230,9 @@ def _create_or_get_current_task(
     ):
         generator_version = GEOMETRY_GENERATOR_VERSION
     seed_family = (
-        f"{environment_key}:{selected_family.family}"
+        f"{selected_family.family}:{scripted_task.sub_kind}"
+        if scripted_task is not None
+        else f"{environment_key}:{selected_family.family}"
         if environment_key == "geometry_world"
         and (
             director_decision is None
@@ -1159,6 +1270,7 @@ def _create_or_get_current_task(
                 "family": item.family,
                 "difficulty": item.difficulty,
                 "evidence": item.evidence,
+                "skipped": item.skipped,
                 "phase": item.phase.value,
                 "chapter_stage": item.chapter_stage,
             }
@@ -1223,6 +1335,12 @@ def _create_or_get_current_task(
         "world": environment_key,
         "version": f"{environment_key}-runtime-v1",
     }
+    if scripted_task is not None:
+        private_state["scripted_task"] = {
+            "route_version": SCRIPTED_ROUTE_VERSION,
+            "position": scripted_task.position,
+            "sub_kind": scripted_task.sub_kind,
+        }
     if director_decision is not None:
         public_state["world_context"] = {
             "world": environment_key,
@@ -1260,13 +1378,26 @@ def _create_or_get_current_task(
             "seed": task.seed,
             "difficulty": task.difficulty,
             "public_state": task.public_state,
-            "configured_weight": selected_family.weight_units / 1000,
+            "configured_weight": (
+                0 if scripted_task is not None else selected_family.weight_units / 1000
+            ),
             "family_route_version": (
-                director_decision.version
+                SCRIPTED_ROUTE_VERSION
+                if scripted_task is not None
+                else director_decision.version
                 if director_decision is not None
                 else FAMILY_ROUTE_VERSION
             ),
         }
+        if scripted_task is not None:
+            generated_event_payload.update(
+                {
+                    "decision_reason": "configured_scripted_task",
+                    "scripted_position": scripted_task.position,
+                    "scripted_sub_kind": scripted_task.sub_kind,
+                    "task_config_hash": _canonical_hash(task_config),
+                }
+            )
         if director_decision is not None:
             generated_event_payload.update(
                 {
@@ -1339,6 +1470,17 @@ def _get_active_task_or_error(
 
 @router.get("/health", response_model=HealthResponse)
 def health(settings: SettingsDependency) -> HealthResponse:
+    return HealthResponse(status="ok", service=settings.app_name)
+
+
+@router.get("/ready", response_model=HealthResponse)
+def ready(
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> HealthResponse:
+    """Report readiness only after the database accepts a query."""
+
+    session.execute(select(1))
     return HealthResponse(status="ok", service=settings.app_name)
 
 
@@ -1486,6 +1628,18 @@ def create_contest(
             and legacy_families <= WORLD_FAMILIES["geometry_world"]
         ):
             environment_key = "geometry_world"
+    try:
+        _scripted_task_settings_from_config(task_config)
+    except ValueError as error:
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "SCRIPTED_TASK_CONFIG_INVALID",
+            (
+                "Заскриптованная задача должна быть единственным элементом "
+                "scripted_tasks: classic_math с вариантом share_paradox или "
+                "bar_seating и номером от 1 до 100."
+            ),
+        ) from error
     allowed_families = WORLD_FAMILIES[environment_key]
     foreign_families: list[str] = []
     unknown_families: list[str] = []
@@ -2756,6 +2910,12 @@ def _debug_task_details(task: TaskInstance) -> list[str]:
         for card_id in sorted(card_map):
             details.append(f"  {card_id} → {card_map[card_id]}")
         return details
+    if family == CLASSIC_MATH_FAMILY:
+        return [
+            f"Вариант: {private.get('sub_kind')}",
+            f"Автоматический вывод: {private.get('judge_version')}",
+            "Проверяются точный итог и наличие обоснования; не смысл доказательства.",
+        ]
     return []
 
 
@@ -2821,6 +2981,28 @@ def _debug_reference_answer(task: TaskInstance) -> tuple[str, list[str]]:
         )
     if family == GEO_TRANSFORM_FAMILY:
         return f"/answer {private.get('correct_card_id')}", []
+    if family == CLASSIC_MATH_FAMILY:
+        if private.get("sub_kind") == CLASSIC_MATH_SHARE_PARADOX:
+            return (
+                "/answer Сравнения: 5/6 > 8/10; 6/14 > 4/10; "
+                "11/20 < 12/20 Обоснование: "
+                "Общая доля является взвешенным средним. У Егора на более "
+                "успешный месяц приходится 6 задач, а на менее успешный — "
+                "14; у Васи распределение 10 и 10. Поэтому разные веса "
+                "меняют итоговое сравнение.",
+                [],
+            )
+        if private.get("sub_kind") == CLASSIC_MATH_BAR_SEATING:
+            return (
+                "/answer Ответ: первое место 9; максимум 13 "
+                "Обоснование: затем получаются все нечётные "
+                "места 1, 3, 5, ..., 25 — всего 13. Порядок строится "
+                "последовательным делением промежутков пополам. Больше 13 "
+                "невозможно: между любыми двумя соседними посетителями "
+                "должно остаться свободное место, поэтому на 25 местах "
+                "можно посадить не более 13 человек.",
+                [],
+            )
     return "Эталонный ответ для этого семейства недоступен.", []
 
 

@@ -50,6 +50,10 @@ class CompletedTask:
     * ``0`` — a supported or noisy success;
     * ``-1`` — an incorrect answer or a skip.
 
+    ``skipped`` keeps those two cases distinct for routing: an incorrect
+    answer may receive remediation, while a deliberate skip should expose the
+    participant to another enabled family whenever possible.
+
     History must be passed from oldest to newest.
     """
 
@@ -59,6 +63,7 @@ class CompletedTask:
     evidence: int
     phase: DirectorPhase = DirectorPhase.ROTATION
     chapter_stage: int | None = None
+    skipped: bool = False
 
     def __post_init__(self) -> None:
         if not self.task_id:
@@ -69,6 +74,8 @@ class CompletedTask:
             raise ValueError("difficulty must be at least 1")
         if self.evidence not in (-1, 0, 1):
             raise ValueError("evidence must be one of -1, 0, or 1")
+        if self.skipped and self.evidence != -1:
+            raise ValueError("a skipped task must have evidence -1")
         if self.chapter_stage is not None and self.chapter_stage < 1:
             raise ValueError("chapter_stage must be at least 1")
 
@@ -215,10 +222,11 @@ def decide_next_task(
 
     Precedence is intentional:
 
-    1. an unfinished configured chapter stays locked to its family;
-    2. a failed or skipped task receives at most one immediate remediation;
-    3. every enabled family receives a seeded calibration task;
-    4. later tasks follow weighted coverage debt.
+    1. a skip avoids the same family on the next turn whenever possible;
+    2. an unfinished configured chapter stays locked to its family;
+    3. an incorrect answer receives at most one immediate remediation;
+    4. every enabled family receives a seeded calibration task;
+    5. later tasks follow weighted coverage debt.
 
     ``min_family_exposures`` is the learning-slope soft quota: while any
     active family has fewer exposures, rotation prefers those families
@@ -233,6 +241,7 @@ def decide_next_task(
 
     if (
         latest is not None
+        and not latest.skipped
         and active[latest.family].locked_chapter
         and latest.chapter_stage is not None
         and latest.chapter_stage < 3
@@ -275,6 +284,7 @@ def decide_next_task(
     if (
         latest is not None
         and latest.evidence == -1
+        and not latest.skipped
         and latest.phase != DirectorPhase.REMEDIATION
     ):
         return _decision(
@@ -336,11 +346,16 @@ def decide_next_task(
         and latest.evidence == -1
         and latest.phase == DirectorPhase.REMEDIATION
     )
+    avoid_skipped_family = (
+        latest is not None
+        and latest.skipped
+        and len(active) > 1
+    )
     route_candidates = [
         family
         for family in active
         if not (
-            capped_remediation
+            (capped_remediation or avoid_skipped_family)
             and len(active) > 1
             and latest is not None
             and family == latest.family
@@ -375,7 +390,9 @@ def decide_next_task(
         history=relevant_history,
         phase=DirectorPhase.ROTATION,
         reason=(
-            "remediation_cap_weighted_rotation"
+            "skipped_task_diversity_rotation"
+            if avoid_skipped_family
+            else "remediation_cap_weighted_rotation"
             if capped_remediation
             else "soft_exposure_quota"
             if quota_applied

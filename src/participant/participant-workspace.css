@@ -384,6 +384,17 @@
   stroke-linecap: round;
 }
 
+.geometry-card__grid line {
+  stroke: #e4e9ed;
+  stroke-width: 0.045;
+  stroke-linecap: butt;
+}
+
+.geometry-card__grid line.is-axis {
+  stroke: #c8d4db;
+  stroke-width: 0.075;
+}
+
 .geometry-card circle {
   stroke: rgba(255, 255, 255, 0.94);
   stroke-width: 0.11;
@@ -3023,4 +3034,80 @@
   color: #6f7678;
   font-size: 8px;
   line-height: 1.5;
+}
+
+.participant-task__stage--text-only {
+  gap: 0;
+}
+
+.participant-brief--classic {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.participant-brief--classic .participant-brief__statement,
+.participant-brief--classic > .participant-brief__answer {
+  max-width: 760px;
+}
+
+.participant-brief--classic .participant-brief__statement h2 {
+  margin: 0 0 18px;
+  color: #202020;
+  font-family: var(--sans);
+  font-size: clamp(19px, 1.7vw, 25px);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.28;
+}
+
+.participant-brief--classic .participant-brief__statement p {
+  font-size: clamp(15px, 1.2vw, 17px);
+  line-height: 1.68;
+}
+
+.classic-math-table-wrap {
+  max-width: 680px;
+  margin-top: 22px;
+  overflow-x: auto;
+}
+
+.classic-math-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #292929;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.classic-math-table th,
+.classic-math-table td {
+  padding: 10px 12px;
+  border: 1px solid #d8d6cf;
+  text-align: left;
+}
+
+.classic-math-table th {
+  background: #f6f7f5;
+  font-weight: 700;
+}
+
+.participant-brief__answer .classic-math-submission-template {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border: 1px solid #d8d6cf;
+  background: #f6f7f5;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .participant-brief--classic .participant-brief__statement h2 {
+    margin-bottom: 14px;
+  }
+
+  .classic-math-table {
+    min-width: 500px;
+  }
 }

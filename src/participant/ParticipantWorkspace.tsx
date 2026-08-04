@@ -11,6 +11,7 @@ import { ApiError } from "../api";
 import type {
   AiTurn as AiTurnResult,
   AiTurnHistory as AiTurnHistoryResult,
+  ClassicMathPublicState,
   FoldPunchPublicState,
   HiddenWiringPublicState,
   LeaperBoardPublicState,
@@ -107,6 +108,7 @@ export type ParticipantTask = {
   wiring?: HiddenWiringPublicState;
   foldPunch?: FoldPunchPublicState;
   leaperBoard?: LeaperBoardPublicState;
+  classicMath?: ClassicMathPublicState;
   responseHint?: string;
   worldPhase?: string;
 };
@@ -614,6 +616,9 @@ export function ParticipantWorkspace({
     (task.kind === "chess" && task.family === "machine_reach");
   const isWiring = task.kind === "hidden_wiring";
   const isLeaperBoard = task.kind === "chess" && Boolean(task.leaperBoard);
+  const isClassicMath =
+    task.kind === "classic_math_free_response" &&
+    task.family === "classic_math";
   const worldPhaseLabel =
     task.worldPhase === "calibration"
       ? "знакомство со средой"
@@ -636,6 +641,10 @@ export function ParticipantWorkspace({
           .charAt(0)
           .toLocaleLowerCase("ru-RU")}${task.eventDescription.slice(1)}`
       : task.eventDescription;
+  const statementParagraphs = statementPrompt
+    .split(/\n{2,}/u)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
 
   const zendoContent = task.geometryContent ?? {};
   const zendoProbesRemaining =
@@ -1219,7 +1228,9 @@ export function ParticipantWorkspace({
                     ? "/answer done"
                     : isDiceChess
                       ? "/answer 5/12"
-                      : "/answer да, допустима"}
+                      : isClassicMath
+                        ? "/answer <развёрнутое решение>"
+                        : "/answer да, допустима"}
                 </code>
                 .
               </>,
@@ -1419,14 +1430,52 @@ export function ParticipantWorkspace({
           </span>
         </header>
 
-        <div className="participant-task__stage" ref={stageRef}>
-          <article className="participant-brief">
+        <div
+          className={`participant-task__stage${
+            isClassicMath ? " participant-task__stage--text-only" : ""
+          }`}
+          ref={stageRef}
+        >
+          <article
+            className={`participant-brief${
+              isClassicMath ? " participant-brief--classic" : ""
+            }`}
+          >
             <h1 id="participantTaskTitle">
               Задача {task.ordinal}
             </h1>
             <div className="participant-brief__statement">
-              <p>{statementPrompt}</p>
+              {isClassicMath && task.classicMath?.title && (
+                <h2>{task.classicMath.title}</h2>
+              )}
+              {statementParagraphs.map((paragraph, index) => (
+                <p key={`${task.id}-paragraph-${index}`}>{paragraph}</p>
+              ))}
               {statementQuestion && <p>{statementQuestion}</p>}
+              {isClassicMath && task.classicMath?.table && (
+                <div className="classic-math-table-wrap">
+                  <table className="classic-math-table">
+                    <thead>
+                      <tr>
+                        {task.classicMath.table.columns.map((column) => (
+                          <th key={column} scope="col">
+                            {column}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {task.classicMath.table.rows.map((row, rowIndex) => (
+                        <tr key={`${task.id}-table-row-${rowIndex}`}>
+                          {row.map((cell, cellIndex) => (
+                            <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
             <div className="participant-brief__answer">
               <p>
@@ -1457,6 +1506,16 @@ export function ParticipantWorkspace({
                     Кликните клетки на развёрнутом листе и нажмите «Отправить
                     отмеченные клетки», или отправьте ответ в чате (пример:{" "}
                     <code>/answer 2,3 5,8</code> — строка,столбец).
+                  </>
+                ) : isClassicMath && task.classicMath ? (
+                  <>
+                    Ответ отправьте в чате одной командой по шаблону:
+                    <code className="classic-math-submission-template">
+                      {task.classicMath.submissionTemplate.replace(
+                        /\s*\n+\s*/gu,
+                        " ",
+                      )}
+                    </code>
                   </>
                 ) : (
                   <>
@@ -1537,6 +1596,7 @@ export function ParticipantWorkspace({
             <GeometryAtlasScene
               scene={task.geometryScene}
               content={task.geometryContent ?? {}}
+              showGrid={task.kind === "point_zendo"}
             />
           ) : isDicePosition ? (
             <DicePositionScene
@@ -1546,7 +1606,7 @@ export function ParticipantWorkspace({
             />
           ) : isDiceChess ? (
             <DiceScene dice={dice} />
-          ) : (
+          ) : isClassicMath ? null : (
             <Chessboard board={board} />
           )}
         </div>
@@ -1606,7 +1666,9 @@ export function ParticipantWorkspace({
               placeholder={
                 timeIsUp
                   ? "Время попытки завершено"
-                  : task.responseHint ?? "/answer ваш ответ"
+                  : isClassicMath
+                    ? "/answer <развёрнутое решение>"
+                    : task.responseHint ?? "/answer ваш ответ"
               }
               autoComplete="off"
               spellCheck={false}
@@ -1718,9 +1780,11 @@ function geometryGroupLabel(
 function GeometryAtlasScene({
   scene,
   content,
+  showGrid = false,
 }: {
   scene: GeometryScene;
   content: Record<string, unknown>;
+  showGrid?: boolean;
 }) {
   const groups = Array.from(
     new Set([
@@ -1741,6 +1805,24 @@ function GeometryAtlasScene({
   const radius = Math.max(
     0.48,
     Math.min(0.72, Math.min(width, height) * 0.075),
+  );
+  const verticalGridLines = Array.from(
+    {
+      length: Math.max(
+        0,
+        Math.floor(scene.bounds.maxX) - Math.ceil(scene.bounds.minX) + 1,
+      ),
+    },
+    (_, index) => Math.ceil(scene.bounds.minX) + index,
+  );
+  const horizontalGridLines = Array.from(
+    {
+      length: Math.max(
+        0,
+        Math.floor(scene.bounds.maxY) - Math.ceil(scene.bounds.minY) + 1,
+      ),
+    },
+    (_, index) => Math.ceil(scene.bounds.minY) + index,
   );
   return (
     <figure className="geometry-atlas" aria-label="Геометрические конфигурации">
@@ -1765,6 +1847,30 @@ function GeometryAtlasScene({
                   width={width}
                   height={height}
                 />
+                {showGrid && (
+                  <g className="geometry-card__grid" aria-hidden="true">
+                    {verticalGridLines.map((x) => (
+                      <line
+                        className={x === 0 ? "is-axis" : undefined}
+                        x1={x}
+                        y1={scene.bounds.minY}
+                        x2={x}
+                        y2={scene.bounds.maxY}
+                        key={`grid-x-${x}`}
+                      />
+                    ))}
+                    {horizontalGridLines.map((y) => (
+                      <line
+                        className={y === 0 ? "is-axis" : undefined}
+                        x1={scene.bounds.minX}
+                        y1={flipY(y)}
+                        x2={scene.bounds.maxX}
+                        y2={flipY(y)}
+                        key={`grid-y-${y}`}
+                      />
+                    ))}
+                  </g>
+                )}
                 {edges.map((edge) => {
                   const source = pointByKey.get(`${group}:${edge.source}`);
                   const target = pointByKey.get(`${group}:${edge.target}`);

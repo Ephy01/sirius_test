@@ -155,6 +155,63 @@ def test_failure_gets_one_remediation_then_returns_to_rotation() -> None:
     assert after_remediation.family == "machine_reach"
 
 
+def test_skip_immediately_rotates_to_a_different_family() -> None:
+    families = (
+        FamilySettings(family="dice_chess"),
+        FamilySettings(family="machine_reach"),
+    )
+    history = (
+        CompletedTask(
+            task_id="dice-calibration",
+            family="dice_chess",
+            difficulty=1,
+            evidence=1,
+            phase=DirectorPhase.CALIBRATION,
+        ),
+        CompletedTask(
+            task_id="machine-calibration",
+            family="machine_reach",
+            difficulty=1,
+            evidence=1,
+            phase=DirectorPhase.CALIBRATION,
+        ),
+        CompletedTask(
+            task_id="dice-skip",
+            family="dice_chess",
+            difficulty=1,
+            evidence=-1,
+            phase=DirectorPhase.ROTATION,
+            skipped=True,
+        ),
+    )
+
+    decision = decide_next_task(seed=88, families=families, history=history)
+
+    assert decision.family == "machine_reach"
+    assert decision.phase == DirectorPhase.ROTATION
+    assert decision.reason == "skipped_task_diversity_rotation"
+    assert decision.parent_task_id == "machine-calibration"
+
+
+def test_skip_can_leave_an_unfinished_locked_chapter() -> None:
+    history = (
+        CompletedTask(
+            task_id="chapter-skip",
+            family="geo_zendo",
+            difficulty=3,
+            evidence=-1,
+            phase=DirectorPhase.CHAPTER,
+            chapter_stage=2,
+            skipped=True,
+        ),
+    )
+
+    decision = decide_next_task(seed=7, families=FAMILIES, history=history)
+
+    assert decision.family != "geo_zendo"
+    assert decision.phase == DirectorPhase.CALIBRATION
+
+
 def test_failed_chapter_remediation_can_leave_the_chapter_temporarily() -> None:
     history = [
         CompletedTask(

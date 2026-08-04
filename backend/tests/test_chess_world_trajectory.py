@@ -262,3 +262,52 @@ def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
         # capped remediation lands on its seeded calibration task.
         assert switched["family"] == "machine_reach"
         assert switched["public_state"]["world_context"]["phase"] == "calibration"
+
+
+def test_skip_switches_family_immediately_without_remediation(tmp_path):
+    application = create_app(_settings(tmp_path / "adaptive-skip-rotation.db"))
+    families = [
+        {
+            "key": "dice_chess",
+            "enabled": True,
+            "weight": 1,
+            "initial_difficulty": 1,
+            "max_difficulty": 5,
+        },
+        {
+            "key": "machine_reach",
+            "enabled": True,
+            "weight": 1,
+            "initial_difficulty": 1,
+            "max_difficulty": 5,
+        },
+    ]
+    with TestClient(application) as client:
+        participant, _contest_id = _prepare_participant(
+            client,
+            families=families,
+            start_family="dice_chess",
+            director_version=None,
+        )
+        client.post(
+            "/api/v1/participant/attempts/start",
+            headers=auth(participant),
+        )
+
+        first = client.get(
+            "/api/v1/participant/tasks/current",
+            headers=auth(participant),
+        ).json()["task"]
+        assert first["family"] == "dice_chess"
+        skipped = client.post(
+            f"/api/v1/participant/tasks/{first['id']}/skip",
+            headers=auth(participant),
+        )
+        assert skipped.status_code == 200
+
+        second = client.post(
+            "/api/v1/participant/tasks/next",
+            headers=auth(participant),
+        ).json()["task"]
+        assert second["family"] == "machine_reach"
+        assert second["public_state"]["world_context"]["phase"] == "calibration"

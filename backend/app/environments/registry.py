@@ -5,6 +5,12 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from .classic_math import (
+    FAMILY_KEY as CLASSIC_MATH_FAMILY,
+    GENERATOR_VERSION as CLASSIC_MATH_GENERATOR_VERSION,
+    evaluate_classic_math_answer,
+    generate_classic_math_task,
+)
 from .chess_world.dice_chess import (
     GENERATOR_VERSION as DICE_CHESS_PROBABILITY_GENERATOR_VERSION,
     evaluate_dice_chess_answer,
@@ -98,6 +104,7 @@ IMPLEMENTED_FAMILIES = frozenset(
         GRID_ZENDO_FAMILY,
         HIDDEN_WIRING_FAMILY,
         FOLD_PUNCH_FAMILY,
+        CLASSIC_MATH_FAMILY,
         *GEOMETRY_FAMILIES,
     }
 )
@@ -119,6 +126,7 @@ GENERATOR_VERSIONS = {
     GRID_ZENDO_FAMILY: GRID_ZENDO_GENERATOR_VERSION,
     HIDDEN_WIRING_FAMILY: HIDDEN_WIRING_GENERATOR_VERSION,
     FOLD_PUNCH_FAMILY: FOLD_PUNCH_GENERATOR_VERSION,
+    CLASSIC_MATH_FAMILY: CLASSIC_MATH_GENERATOR_VERSION,
     **{
         family: (
             GEO_ZENDO_GENERATOR_VERSION
@@ -322,6 +330,19 @@ def generate_task(
             public_state=public_state,
             private_state=private_state,
         )
+    if (
+        family == CLASSIC_MATH_FAMILY
+        and generator_version == CLASSIC_MATH_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_classic_math_task(
+            seed=seed,
+            difficulty=difficulty,
+            context=context,
+        )
+        return GeneratedTask(
+            public_state=public_state,
+            private_state=private_state,
+        )
     if family in GEOMETRY_FAMILIES and generator_version == GEOMETRY_GENERATOR_VERSION:
         public_state, private_state = generate_geometry_atlas_task(
             family=family,
@@ -423,6 +444,14 @@ def evaluate_task(
         and generator_version == FOLD_PUNCH_GENERATOR_VERSION
     ):
         return evaluate_fold_punch_answer(
+            answer=answer,
+            private_state=private_state,
+        )
+    if (
+        family == CLASSIC_MATH_FAMILY
+        and generator_version == CLASSIC_MATH_GENERATOR_VERSION
+    ):
+        return evaluate_classic_math_answer(
             answer=answer,
             private_state=private_state,
         )
