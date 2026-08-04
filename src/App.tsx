@@ -183,29 +183,23 @@ function AccessScreen({ onAuthenticate }: { onAuthenticate: Authenticate }) {
       <header className="public-header">
         <Brand />
         <div className="public-header__meta">
-          <span className="status-dot" />
-          <span>Система отбора</span>
-          <strong>2026</strong>
+          <span>ver. 0.0.1 under development</span>
         </div>
       </header>
 
       <main className="access-layout">
         <section className="gate-panel" aria-labelledby="gateTitle">
           <div className="gate-panel__content">
-            <p className="eyebrow">Sirius Gate</p>
             <h2 id="gateTitle">Введите код доступа</h2>
-            <p className="gate-description">
-              Код определит вашу роль и откроет доступное рабочее пространство.
-            </p>
 
             <form className="access-form" onSubmit={submitAccess} noValidate>
-              <label htmlFor="accessCode">Персональный код</label>
               <div className={`access-input ${error ? "access-input--error" : ""}`}>
                 <span aria-hidden="true">SG</span>
                 <input
                   ref={inputRef}
                   id="accessCode"
                   name="accessCode"
+                  aria-label="Персональный код"
                   value={code}
                   onChange={(event) => {
                     setCode(event.target.value.toUpperCase());
