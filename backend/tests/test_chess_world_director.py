@@ -80,7 +80,7 @@ def test_configured_start_family_is_used_before_seeded_calibration() -> None:
     assert first.reason == "configured_start_family"
 
 
-def test_locked_chapter_family_stays_locked_until_stage_three() -> None:
+def test_locked_chapter_interleaves_when_another_family_is_available() -> None:
     history = (
         CompletedTask(
             task_id="chapter-stage-2",
@@ -94,6 +94,31 @@ def test_locked_chapter_family_stays_locked_until_stage_three() -> None:
 
     decision = decide_next_task(seed=7, families=FAMILIES, history=history)
 
+    assert decision.family != "geo_zendo"
+    assert decision.phase == DirectorPhase.CALIBRATION
+
+
+def test_locked_chapter_can_continue_when_it_is_the_only_family() -> None:
+    family = (
+        FamilySettings(
+            family="geo_zendo",
+            max_difficulty=5,
+            locked_chapter=True,
+        ),
+    )
+    history = (
+        CompletedTask(
+            task_id="chapter-stage-2",
+            family="geo_zendo",
+            difficulty=3,
+            evidence=1,
+            phase=DirectorPhase.CHAPTER,
+            chapter_stage=2,
+        ),
+    )
+
+    decision = decide_next_task(seed=7, families=family, history=history)
+
     assert decision.family == "geo_zendo"
     assert decision.difficulty == 3
     assert decision.phase == DirectorPhase.CHAPTER
@@ -101,7 +126,7 @@ def test_locked_chapter_family_stays_locked_until_stage_three() -> None:
     assert decision.parent_task_id == "chapter-stage-2"
 
 
-def test_failure_gets_one_remediation_then_returns_to_rotation() -> None:
+def test_failure_rotates_before_the_family_can_return() -> None:
     families = (
         FamilySettings(family="dice_chess"),
         FamilySettings(family="machine_reach"),
@@ -130,29 +155,30 @@ def test_failure_gets_one_remediation_then_returns_to_rotation() -> None:
         ),
     ]
 
-    remediation = decide_next_task(seed=88, families=families, history=history)
-    assert remediation.family == "dice_chess"
-    assert remediation.phase == DirectorPhase.REMEDIATION
-    assert remediation.parent_task_id == "dice-failure"
+    rotated = decide_next_task(seed=88, families=families, history=history)
+    assert rotated.family == "machine_reach"
+    assert rotated.phase == DirectorPhase.ROTATION
+    assert rotated.reason == "failed_task_diversity_rotation"
+    assert rotated.parent_task_id == "machine-calibration"
 
     history.append(
         CompletedTask(
-            task_id="dice-remediation",
-            family=remediation.family,
-            difficulty=remediation.difficulty,
-            evidence=-1,
-            phase=remediation.phase,
+            task_id="machine-after-failure",
+            family=rotated.family,
+            difficulty=rotated.difficulty,
+            evidence=1,
+            phase=rotated.phase,
         )
     )
-    after_remediation = decide_next_task(
+    returned = decide_next_task(
         seed=88,
         families=families,
         history=history,
     )
 
-    assert after_remediation.phase == DirectorPhase.ROTATION
-    assert after_remediation.reason == "remediation_cap_weighted_rotation"
-    assert after_remediation.family == "machine_reach"
+    assert returned.phase == DirectorPhase.ROTATION
+    assert returned.family == "dice_chess"
+    assert returned.parent_task_id == "dice-failure"
 
 
 def test_skip_immediately_rotates_to_a_different_family() -> None:
@@ -273,6 +299,35 @@ def test_rotation_uses_weighted_coverage_debt() -> None:
     assert decision.reason == "weighted_coverage_debt"
     assert decision.family == "dice_chess"
     assert decision.parent_task_id == "dice-calibration"
+
+
+def test_weighted_rotation_never_repeats_the_latest_family() -> None:
+    families = (
+        FamilySettings(family="heavy", weight=100),
+        FamilySettings(family="light", weight=1),
+    )
+    history = (
+        CompletedTask(
+            task_id="light-calibration",
+            family="light",
+            difficulty=1,
+            evidence=1,
+            phase=DirectorPhase.CALIBRATION,
+        ),
+        CompletedTask(
+            task_id="heavy-calibration",
+            family="heavy",
+            difficulty=1,
+            evidence=1,
+            phase=DirectorPhase.CALIBRATION,
+        ),
+    )
+
+    decision = decide_next_task(seed=13, families=families, history=history)
+
+    # Coverage debt strongly favours ``heavy``, but diversity is a hard
+    # invariant while another enabled family exists.
+    assert decision.family == "light"
 
 
 def test_recent_evidence_raises_and_lowers_per_family_level() -> None:

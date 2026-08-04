@@ -191,6 +191,7 @@ def test_default_contest_covers_every_family_end_to_end(tmp_path):
             session.commit()
 
         seen_families: set[str] = set()
+        previous_family: str | None = None
         expected = {family for family, _weight in DEFAULT_FAMILIES}
         assert expected <= IMPLEMENTED_FAMILIES
         for ordinal in range(1, 31):
@@ -206,6 +207,8 @@ def test_default_contest_covers_every_family_end_to_end(tmp_path):
             )
             assert request.status_code == 200, request.text
             task = request.json()["task"]
+            assert task["family"] != previous_family
+            previous_family = task["family"]
             seen_families.add(task["family"])
             _solve_task(client, application, participant, task)
             if seen_families == expected:

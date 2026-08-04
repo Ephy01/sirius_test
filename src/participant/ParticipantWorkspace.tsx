@@ -928,10 +928,20 @@ export function ParticipantWorkspace({
     );
     appendEntry(
       "system",
-      transition.message ??
-        (transition.accepted
-          ? `Операция ${opId} применена.`
-          : `Операцию ${opId} применить нельзя.`),
+      transition.advanced ? (
+        <>
+          {transition.message ?? "Задача завершена."} Открыта задача{" "}
+          <strong>
+            №{String(transition.ordinal).padStart(2, "0")}
+          </strong>
+          .
+        </>
+      ) : (
+        transition.message ??
+          (transition.accepted
+            ? `Операция ${opId} применена.`
+            : `Операцию ${opId} применить нельзя.`)
+      ),
     );
   }
 

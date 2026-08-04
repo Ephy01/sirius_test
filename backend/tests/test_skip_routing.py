@@ -110,6 +110,29 @@ def skip_and_get_next(
     return next_response.json()["task"]
 
 
+def answer_and_get_next(
+    client: TestClient,
+    participant: str,
+    task: dict,
+    *,
+    answer: str = "3,3",
+) -> dict:
+    answered = client.post(
+        f"/api/v1/participant/tasks/{task['id']}/answer",
+        headers=auth(participant),
+        json={"answer": answer},
+    )
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["task"]["status"] == "answered"
+    next_response = client.post(
+        "/api/v1/participant/tasks/next",
+        headers=auth(participant),
+    )
+    assert next_response.status_code == 200, next_response.text
+    assert next_response.json()["created"] is True
+    return next_response.json()["task"]
+
+
 def test_non_adaptive_skip_rotates_between_enabled_families(tmp_path) -> None:
     application = create_app(settings(tmp_path / "non-adaptive-skip.db"))
     with TestClient(application) as client:
@@ -127,6 +150,27 @@ def test_non_adaptive_skip_rotates_between_enabled_families(tmp_path) -> None:
         assert second["family"] != first["family"]
         assert third["family"] != second["family"]
         assert [first["ordinal"], second["ordinal"], third["ordinal"]] == [1, 2, 3]
+
+
+def test_non_adaptive_answer_never_repeats_a_family(tmp_path) -> None:
+    application = create_app(settings(tmp_path / "non-adaptive-answer.db"))
+    with TestClient(application) as client:
+        participant = prepare_participant(
+            client,
+            families=[
+                {"family": "fold_punch", "weight": 100},
+                {"family": "dice_chess", "weight": 1},
+            ],
+        )
+        current = start_and_get_task(client, participant)
+        observed = [current["family"]]
+
+        for _ in range(7):
+            current = answer_and_get_next(client, participant, current)
+            assert current["family"] != observed[-1]
+            observed.append(current["family"])
+
+        assert set(observed) == {"fold_punch", "dice_chess"}
 
 
 def test_skip_with_one_family_generates_a_fresh_variant(tmp_path) -> None:

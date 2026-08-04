@@ -34,9 +34,11 @@ def test_soft_exposure_quota_prefers_families_below_three_shows() -> None:
     families = (
         FamilySettings(family="dice_chess", weight=100),
         FamilySettings(family="machine_reach", weight=1),
+        FamilySettings(family="geo_transform", weight=1),
     )
     # dice_chess dominates by weight and already has three exposures;
-    # machine_reach has one. The quota must route to machine_reach.
+    # machine_reach has one. geo_transform is saturated and most recent, so
+    # it is excluded by the no-repeat guard. The quota must route to machine.
     history = [
         CompletedTask(
             task_id=f"dice-{index}",
@@ -58,6 +60,19 @@ def test_soft_exposure_quota_prefers_families_below_three_shows() -> None:
             evidence=1,
             phase=DirectorPhase.CALIBRATION,
         ),
+    ] + [
+        CompletedTask(
+            task_id=f"geo-{index}",
+            family="geo_transform",
+            difficulty=1,
+            evidence=1,
+            phase=(
+                DirectorPhase.CALIBRATION
+                if index == 0
+                else DirectorPhase.ROTATION
+            ),
+        )
+        for index in range(3)
     ]
 
     without_quota = decide_next_task(

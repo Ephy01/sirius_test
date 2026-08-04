@@ -4,6 +4,7 @@ import {
   api,
   type ContestSummary as ApiContestSummary,
   type ParticipantTask as ApiParticipantTask,
+  type TaskInteractionResponse as ApiTaskInteractionResponse,
 } from "./api";
 import {
   clearAccessSession,
@@ -808,6 +809,42 @@ function ParticipantContestScreen({
     });
   }
 
+  async function resolveCompletedOperation(
+    response: ApiTaskInteractionResponse,
+  ): Promise<TaskMoveTransitionResult> {
+    setTask(response.task);
+    if (!response.completed) {
+      return {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: response.completed,
+        message: response.message,
+      };
+    }
+    try {
+      const next = await api.getNextTask({ token: session.token });
+      setTask(next.task);
+      return {
+        ordinal: next.task.ordinal,
+        advanced: true,
+        accepted: response.accepted,
+        completed: true,
+        message: response.message,
+      };
+    } catch {
+      return {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: true,
+        message:
+          `${response.message} Следующая задача не открылась. ` +
+          "Используйте /next.",
+      };
+    }
+  }
+
   async function probeTask(
     probe: string,
     clientActionId: string,
@@ -908,14 +945,7 @@ function ParticipantContestScreen({
         },
         { token: session.token },
       );
-      setTask(response.task);
-      return {
-        ordinal: response.task.ordinal,
-        advanced: false,
-        accepted: response.accepted,
-        completed: response.completed,
-        message: response.message,
-      };
+      return resolveCompletedOperation(response);
     });
   }
 

@@ -198,18 +198,18 @@ def test_adaptive_route_uses_snapshot_and_promotes_one_family(tmp_path):
             )
 
 
-def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
-    application = create_app(_settings(tmp_path / "adaptive-remediation.db"))
+def test_failure_switches_family_before_returning_to_it(tmp_path):
+    application = create_app(_settings(tmp_path / "adaptive-no-repeat.db"))
     families = [
         {
-            "key": "dice_chess",
+            "key": "fold_punch",
             "enabled": True,
             "weight": 1,
             "initial_difficulty": 1,
             "max_difficulty": 5,
         },
         {
-            "key": "machine_reach",
+            "key": "dice_chess",
             "enabled": True,
             "weight": 1,
             "initial_difficulty": 1,
@@ -220,7 +220,7 @@ def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
         participant, _contest_id = _prepare_participant(
             client,
             families=families,
-            start_family="dice_chess",
+            start_family="fold_punch",
             director_version=None,
         )
         started = client.post(
@@ -233,35 +233,35 @@ def test_failure_gets_one_related_remediation_then_switches_family(tmp_path):
             "/api/v1/participant/tasks/current",
             headers=auth(participant),
         ).json()["task"]
-        assert failed["family"] == "dice_chess"
-        correct = _correct_answer(application, failed["id"])
+        assert failed["family"] == "fold_punch"
         wrong = client.post(
             f"/api/v1/participant/tasks/{failed['id']}/answer",
             headers=auth(participant),
-            json={"answer": "1/6" if correct != "1/6" else "5/6"},
+            # Literal regression for the pilot report: one punched cell can
+            # never be the complete unfolded answer generated here.
+            json={"answer": "3,3"},
         )
         assert wrong.status_code == 200
 
-        remediation = client.post(
+        rotated = client.post(
             "/api/v1/participant/tasks/next",
             headers=auth(participant),
         ).json()["task"]
-        assert remediation["family"] == failed["family"]
-        assert remediation["public_state"]["world_context"]["phase"] == "remediation"
+        assert rotated["family"] != failed["family"]
+        assert rotated["family"] == "dice_chess"
+        assert rotated["public_state"]["world_context"]["phase"] == "calibration"
         client.post(
-            f"/api/v1/participant/tasks/{remediation['id']}/skip",
+            f"/api/v1/participant/tasks/{rotated['id']}/skip",
             headers=auth(participant),
         )
 
-        switched = client.post(
+        returned = client.post(
             "/api/v1/participant/tasks/next",
             headers=auth(participant),
         ).json()["task"]
-        assert switched["family"] != remediation["family"]
-        # The second family has not been calibrated yet, so leaving the
-        # capped remediation lands on its seeded calibration task.
-        assert switched["family"] == "machine_reach"
-        assert switched["public_state"]["world_context"]["phase"] == "calibration"
+        assert returned["family"] != rotated["family"]
+        assert returned["family"] == "fold_punch"
+        assert returned["public_state"]["world_context"]["phase"] == "rotation"
 
 
 def test_skip_switches_family_immediately_without_remediation(tmp_path):

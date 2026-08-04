@@ -1210,7 +1210,6 @@ def _create_or_get_current_task(
             exclude_family=(
                 latest_task.family
                 if latest_task is not None
-                and latest_task.status == TaskStatus.SKIPPED
                 and len(family_settings) > 1
                 else None
             ),

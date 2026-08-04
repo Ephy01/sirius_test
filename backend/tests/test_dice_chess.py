@@ -532,4 +532,16 @@ def test_weighted_mixed_route_is_reproducible_and_adapts_per_family(tmp_path):
     assert first_families == second_families
     assert first_difficulties == second_difficulties
     assert set(first_families) == {"geo_transform", "dice_chess"}
-    assert first_families.count("dice_chess") > first_families.count("geo_transform")
+    assert all(
+        current != previous
+        for previous, current in zip(
+            first_families,
+            first_families[1:],
+            strict=False,
+        )
+    )
+    # With exactly two enabled families, a hard no-repeat rule necessarily
+    # produces a 1:1 route even when their configured weights differ.
+    assert first_families.count("dice_chess") == first_families.count(
+        "geo_transform"
+    )

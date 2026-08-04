@@ -222,11 +222,13 @@ def decide_next_task(
 
     Precedence is intentional:
 
-    1. a skip avoids the same family on the next turn whenever possible;
-    2. an unfinished configured chapter stays locked to its family;
-    3. an incorrect answer receives at most one immediate remediation;
-    4. every enabled family receives a seeded calibration task;
-    5. later tasks follow weighted coverage debt.
+    1. when several families are enabled, the latest family is never selected
+       twice in a row, regardless of whether the task was answered or skipped;
+    2. with a single enabled family, an unfinished configured chapter stays
+       locked and an incorrect answer may receive one remediation task;
+    3. every enabled family receives a seeded calibration task;
+    4. later tasks follow weighted coverage debt while preserving the
+       no-consecutive-family invariant.
 
     ``min_family_exposures`` is the learning-slope soft quota: while any
     active family has fewer exposures, rotation prefers those families
@@ -241,6 +243,7 @@ def decide_next_task(
 
     if (
         latest is not None
+        and len(active) == 1
         and not latest.skipped
         and active[latest.family].locked_chapter
         and latest.chapter_stage is not None
@@ -283,6 +286,7 @@ def decide_next_task(
 
     if (
         latest is not None
+        and len(active) == 1
         and latest.evidence == -1
         and not latest.skipped
         and latest.phase != DirectorPhase.REMEDIATION
@@ -346,17 +350,12 @@ def decide_next_task(
         and latest.evidence == -1
         and latest.phase == DirectorPhase.REMEDIATION
     )
-    avoid_skipped_family = (
-        latest is not None
-        and latest.skipped
-        and len(active) > 1
-    )
+    avoid_latest_family = latest is not None and len(active) > 1
     route_candidates = [
         family
         for family in active
         if not (
-            (capped_remediation or avoid_skipped_family)
-            and len(active) > 1
+            avoid_latest_family
             and latest is not None
             and family == latest.family
         )
@@ -391,7 +390,14 @@ def decide_next_task(
         phase=DirectorPhase.ROTATION,
         reason=(
             "skipped_task_diversity_rotation"
-            if avoid_skipped_family
+            if latest is not None and latest.skipped and avoid_latest_family
+            else "failed_task_diversity_rotation"
+            if (
+                latest is not None
+                and latest.evidence == -1
+                and avoid_latest_family
+                and not capped_remediation
+            )
             else "remediation_cap_weighted_rotation"
             if capped_remediation
             else "soft_exposure_quota"
