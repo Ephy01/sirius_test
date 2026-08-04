@@ -777,22 +777,16 @@ svg {
 }
 
 .participant-waiting__status {
-  width: 58px;
-  height: 58px;
   display: grid;
   place-items: center;
   margin-bottom: 26px;
-  border: 1px solid rgba(75, 190, 207, 0.32);
-  border-radius: 50%;
-  background: var(--cyan-soft);
 }
 
-.participant-waiting__status i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--strong-cyan);
-  box-shadow: 0 0 0 8px rgba(75, 190, 207, 0.12);
+.sirius-dots {
+  width: 108px;
+  height: 108px;
+  fill: var(--strong-cyan);
+  stroke: none;
 }
 
 .participant-waiting h1 {
