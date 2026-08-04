@@ -42,14 +42,91 @@ jobs:
   containers:
     runs-on: ubuntu-latest
     needs: [frontend, backend]
+    env:
+      APP_VERSION: test
+      SITE_ADDRESS: ":80"
+      POSTGRES_DB: sirius_gate
+      POSTGRES_USER: sirius_gate
+      POSTGRES_PASSWORD: "ci-database-password"
+      ORGANIZER_CODE: "CI-ORGANIZER"
+      SECURITY_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      CODE_HMAC_SECRET: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+      AI_ENABLED: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - run: docker compose config --quiet
-        env:
-          POSTGRES_PASSWORD: "ci-database-password"
-          ORGANIZER_CODE: "CI-ORGANIZER"
-          SECURITY_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-          CODE_HMAC_SECRET: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
       - run: docker build --file Dockerfile.frontend --tag sirius-gate-web:test .
       - run: docker build --file backend/Dockerfile --tag sirius-gate-api:test backend
+      - name: Start the production stack
+        run: docker compose up -d --no-build --wait --wait-timeout 180
+      - name: Create data through the public API
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          def call(path, *, payload=None, token=None):
+              body = None if payload is None else json.dumps(payload).encode()
+              request = urllib.request.Request(
+                  f"http://127.0.0.1{path}",
+                  data=body,
+                  headers={
+                      "Content-Type": "application/json",
+                      **({"Authorization": f"Bearer {token}"} if token else {}),
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=10) as response:
+                  return response.status, json.load(response)
+
+          status, ready = call("/api/v1/ready")
+          assert status == 200 and ready["status"] == "ok"
+          status, access = call(
+              "/api/v1/access/redeem",
+              payload={"code": os.environ["ORGANIZER_CODE"]},
+          )
+          assert status == 200
+          status, contest = call(
+              "/api/v1/contests",
+              token=access["access_token"],
+              payload={
+                  "title": "CI persistence probe",
+                  "environment_key": "mixed",
+                  "task_config": {"families": ["dice_chess"]},
+              },
+          )
+          assert status == 201
+          with open("/tmp/sirius-ci-state.json", "w", encoding="utf-8") as output:
+              json.dump(
+                  {"contest_id": contest["id"], "token": access["access_token"]},
+                  output,
+              )
+          PY
+      - name: Recreate API and database containers with the same volume
+        run: |
+          docker compose stop api db
+          docker compose rm -f api db
+          docker compose up -d --no-build --wait --wait-timeout 180
+      - name: Verify persisted data
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          with open("/tmp/sirius-ci-state.json", encoding="utf-8") as source:
+              state = json.load(source)
+          request = urllib.request.Request(
+              "http://127.0.0.1/api/v1/contests",
+              headers={"Authorization": f"Bearer {state['token']}"},
+          )
+          with urllib.request.urlopen(request, timeout=10) as response:
+              contests = json.load(response)["items"]
+          assert any(item["id"] == state["contest_id"] for item in contests)
+          PY
+      - name: Show service logs after a failure
+        if: failure()
+        run: docker compose logs --no-color --tail=300
+      - name: Remove the disposable CI stack
+        if: always()
+        run: docker compose down -v --remove-orphans
