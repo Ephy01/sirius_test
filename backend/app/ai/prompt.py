@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
-PROMPT_VERSION_SOCRATIC = "sirius-assistant-socratic-v2"
-PROMPT_VERSION_OPEN = "sirius-assistant-open-v2"
+PROMPT_VERSION_SOCRATIC = "sirius-assistant-socratic-v3"
+PROMPT_VERSION_OPEN = "sirius-assistant-open-v3"
 
 # Оставляем запас под историю и ответ: контекст задачи не должен вытеснять
 # диалог из окна модели.
@@ -41,8 +41,14 @@ _SOCRATIC_PARAGRAPH = """
 """
 
 _CLOSING_PARAGRAPH = """
-Отвечай по-русски, ясно и компактно. Учитывай, что участник учится в 9 классе.
-Не используй HTML."""
+Отвечай по-русски, ясно и коротко: обычно 3–6 предложений или короткий
+список. Разбирай не всё сразу, а один следующий шаг; полный разбор всех
+карточек не нужен. Всегда завершай мысль — лучше сказать меньше, но
+целиком. Учитывай, что участник учится в 9 классе.
+
+Пиши обычным текстом без разметки: не используй HTML и Markdown —
+никаких **звёздочек**, заголовков #, таблиц. Список оформляй строками,
+начинающимися с «—»."""
 
 
 def prompt_version(mode: str) -> str:

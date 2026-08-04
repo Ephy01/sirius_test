@@ -413,6 +413,31 @@ def test_organizer_export_contains_ai_transcript(tmp_path):
         assert "--- AI TRANSCRIPT ---" in text
         assert "Правило про степени?" in text
         assert "Какие степени у вершин?" in text
-        assert "prompt_version: sirius-assistant-socratic-v2" in text
+        assert "prompt_version: sirius-assistant-socratic-v3" in text
         assert "--- AI SUMMARY ---" in text
         assert "ai_turns_completed: 1" in text
+
+
+def test_assistant_reply_markdown_is_stripped(tmp_path):
+    """Жирность/заголовки Markdown вычищаются, буллеты и дефисы остаются."""
+
+    application = create_app(_settings(tmp_path / "ai-md.db"))
+    fake = FakeAssistantProvider(
+        reply=(
+            "## Проверка\n"
+            "**E01:** вершина B имеет степень **3**.\n"
+            "* пункт со звёздочкой\n"
+            "— обычное тире и 2*3=6 не трогаем"
+        )
+    )
+    application.state.ai_provider = fake
+    with TestClient(application) as client:
+        participant, _ = _prepare(client, ai=DEFAULT_AI_CONFIG)
+        task = _start_task(client, participant)
+        body = _send(client, participant, task["id"], "Проверь гипотезу").json()
+        message = body["assistantMessage"]
+        assert "**" not in message
+        assert "##" not in message
+        assert "E01: вершина B имеет степень 3." in message
+        assert "* пункт со звёздочкой" in message
+        assert "2*3=6" in message

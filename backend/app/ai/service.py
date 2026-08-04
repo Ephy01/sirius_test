@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass
 from datetime import timedelta
@@ -53,6 +54,22 @@ QUEUE_WAIT_SECONDS = 10
 _SEMAPHORE_LOCK = threading.Lock()
 _SEMAPHORES: dict[int, threading.BoundedSemaphore] = {}
 
+_BOLD_MARKS = re.compile(r"\*\*(.+?)\*\*|__(.+?)__", re.DOTALL)
+_HEADING_MARKS = re.compile(r"^#{1,6}\s+", re.MULTILINE)
+
+
+def _strip_markdown(text: str) -> str:
+    """Убрать жирность и заголовки Markdown: чат рендерит простой текст.
+
+    Промпт запрещает разметку, но модель иногда всё равно её вставляет.
+    Одиночные звёздочки (буллеты) и дефисы не трогаем.
+    """
+
+    without_bold = _BOLD_MARKS.sub(
+        lambda match: match.group(1) or match.group(2), text
+    )
+    return _HEADING_MARKS.sub("", without_bold)
+
 
 @dataclass(frozen=True)
 class AiConfig:
@@ -61,7 +78,9 @@ class AiConfig:
     max_turns_per_attempt: int = 15
     max_turns_per_task: int = 5
     max_input_characters: int = 4_000
-    max_output_tokens: int = 500
+    # Краткость задаёт промпт; потолок токенов — только страховка от обрыва
+    # мысли на полуслове (finish_reason=length).
+    max_output_tokens: int = 800
     history_turns: int = 6
 
 
@@ -91,7 +110,7 @@ def parse_ai_config(raw: Any) -> AiConfig:
         max_input_characters=_bounded(
             raw.get("max_input_characters"), 4_000, 100, 16_000
         ),
-        max_output_tokens=_bounded(raw.get("max_output_tokens"), 500, 50, 4_000),
+        max_output_tokens=_bounded(raw.get("max_output_tokens"), 800, 50, 4_000),
         history_turns=_bounded(raw.get("history_turns"), 6, 0, 20),
     )
 
@@ -423,7 +442,7 @@ def run_ai_turn(
         semaphore.release()
 
     turn.status = AiTurnStatus.COMPLETED
-    turn.assistant_message = result.text
+    turn.assistant_message = _strip_markdown(result.text)
     turn.model_version = result.model_version
     turn.provider_request_id = result.provider_request_id
     turn.finish_reason = result.finish_reason
