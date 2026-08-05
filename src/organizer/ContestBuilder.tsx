@@ -25,6 +25,17 @@ export type TaskFamilyConfig = {
   subKinds?: string[];
 };
 
+type NumericDraft = number | "";
+
+type TaskFamilyDraftConfig = Omit<
+  TaskFamilyConfig,
+  "weight" | "initialDifficulty" | "maxDifficulty"
+> & {
+  weight: NumericDraft;
+  initialDifficulty: NumericDraft;
+  maxDifficulty: NumericDraft;
+};
+
 export type ContestAiConfig = {
   enabled: boolean;
   mode: "socratic" | "open";
@@ -243,7 +254,32 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
   },
 ];
 
-function cloneFamilies(families: readonly TaskFamilyConfig[]) {
+function numericDraft(value: string): NumericDraft {
+  if (value === "") return "";
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : "";
+}
+
+function isIntegerInRange(
+  value: NumericDraft,
+  minimum: number,
+  maximum: number,
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= minimum &&
+    value <= maximum
+  );
+}
+
+function draftNumber(value: NumericDraft, fallback: number): number {
+  return typeof value === "number" ? value : fallback;
+}
+
+function cloneFamilies(
+  families: readonly TaskFamilyConfig[],
+): TaskFamilyDraftConfig[] {
   return families.map((family) => ({
     ...family,
     subKinds: family.subKinds ? [...family.subKinds] : undefined,
@@ -263,19 +299,21 @@ export function ContestBuilder({
 }: ContestBuilderProps) {
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState(60);
+  const [durationMinutes, setDurationMinutes] = useState<NumericDraft>(60);
   const [cohortSeed, setCohortSeed] = useState("");
   const [debugRevealAnswers, setDebugRevealAnswers] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiMode, setAiMode] = useState<"socratic" | "open">("socratic");
-  const [aiTurnsPerAttempt, setAiTurnsPerAttempt] = useState(15);
-  const [aiTurnsPerTask, setAiTurnsPerTask] = useState(5);
+  const [aiTurnsPerAttempt, setAiTurnsPerAttempt] =
+    useState<NumericDraft>(15);
+  const [aiTurnsPerTask, setAiTurnsPerTask] = useState<NumericDraft>(5);
   const [classicMathEnabled, setClassicMathEnabled] = useState(false);
   const [classicMathTask, setClassicMathTask] =
     useState<ClassicMathTaskKey>("share_paradox");
-  const [classicMathPosition, setClassicMathPosition] = useState(1);
+  const [classicMathPosition, setClassicMathPosition] =
+    useState<NumericDraft>(1);
   const [families, setFamilies] =
-    useState<TaskFamilyConfig[]>(() => cloneFamilies(CONTENT_FAMILIES));
+    useState<TaskFamilyDraftConfig[]>(() => cloneFamilies(CONTENT_FAMILIES));
   const [participants, setParticipants] = useState<ParticipantDraft[]>([
     newParticipant(),
   ]);
@@ -299,7 +337,7 @@ export function ContestBuilder({
 
   function updateFamily(
     key: TaskFamilyKey,
-    patch: Partial<TaskFamilyConfig>,
+    patch: Partial<TaskFamilyDraftConfig>,
   ) {
     setFamilies((current) =>
       current.map((family) =>
@@ -327,11 +365,7 @@ export function ContestBuilder({
       setError("Введите название контеста.");
       return;
     }
-    if (
-      !Number.isFinite(durationMinutes) ||
-      durationMinutes < 15 ||
-      durationMinutes > 240
-    ) {
+    if (!isIntegerInRange(durationMinutes, 15, 240)) {
       setError("Продолжительность должна быть от 15 до 240 минут.");
       return;
     }
@@ -341,15 +375,41 @@ export function ContestBuilder({
   }
 
   async function createContest() {
+    if (!isIntegerInRange(durationMinutes, 15, 240)) {
+      setError("Продолжительность должна быть от 15 до 240 минут.");
+      return;
+    }
     if (!activeFamilies.length) {
       setError("Выберите хотя бы одно семейство задач.");
       return;
     }
     if (
       activeFamilies.some(
+        (family) => !isIntegerInRange(family.weight, 1, 100),
+      )
+    ) {
+      setError(
+        "Вес каждого выбранного семейства должен быть целым числом от 1 до 100.",
+      );
+      return;
+    }
+    if (
+      activeFamilies.some(
         (family) =>
-          family.initialDifficulty < 1 ||
-          family.maxDifficulty > 5 ||
+          !isIntegerInRange(family.initialDifficulty, 1, 5) ||
+          !isIntegerInRange(family.maxDifficulty, 1, 5),
+      )
+    ) {
+      setError(
+        "Сложность каждого выбранного семейства должна быть целым числом от 1 до 5.",
+      );
+      return;
+    }
+    if (
+      activeFamilies.some(
+        (family) =>
+          family.initialDifficulty !== "" &&
+          family.maxDifficulty !== "" &&
           family.initialDifficulty > family.maxDifficulty,
       )
     ) {
@@ -359,14 +419,31 @@ export function ContestBuilder({
       return;
     }
     if (
-      classicMathEnabled &&
-      (!Number.isInteger(classicMathPosition) ||
-        classicMathPosition < 1 ||
-        classicMathPosition > 100)
+      aiEnabled &&
+      (!isIntegerInRange(aiTurnsPerAttempt, 1, 200) ||
+        !isIntegerInRange(aiTurnsPerTask, 1, 50))
     ) {
-      setError("Позиция классической задачи должна быть целым числом от 1 до 100.");
+      setError(
+        "Лимиты ИИ должны быть заполнены целыми числами в допустимых пределах.",
+      );
       return;
     }
+    if (
+      classicMathEnabled &&
+      !isIntegerInRange(classicMathPosition, 1, 100)
+    ) {
+      setError(
+        "Позиция классической задачи должна быть целым числом от 1 до 100.",
+      );
+      return;
+    }
+
+    const normalizedFamilies: TaskFamilyConfig[] = families.map((family) => ({
+      ...family,
+      weight: draftNumber(family.weight, 1),
+      initialDifficulty: draftNumber(family.initialDifficulty, 1),
+      maxDifficulty: draftNumber(family.maxDifficulty, 5),
+    }));
 
     setBusy(true);
     setError("");
@@ -382,16 +459,16 @@ export function ContestBuilder({
           ai: {
             enabled: aiEnabled,
             mode: aiMode,
-            maxTurnsPerAttempt: aiTurnsPerAttempt,
-            maxTurnsPerTask: aiTurnsPerTask,
+            maxTurnsPerAttempt: draftNumber(aiTurnsPerAttempt, 15),
+            maxTurnsPerTask: draftNumber(aiTurnsPerTask, 5),
           },
-          families,
+          families: normalizedFamilies,
           scriptedTasks: classicMathEnabled
             ? [
                 {
                   family: "classic_math",
                   subKind: classicMathTask,
-                  position: classicMathPosition,
+                  position: draftNumber(classicMathPosition, 1),
                 },
               ]
             : [],
@@ -546,7 +623,7 @@ export function ContestBuilder({
                     max={240}
                     value={durationMinutes}
                     onChange={(event) =>
-                      setDurationMinutes(Number(event.target.value))
+                      setDurationMinutes(numericDraft(event.target.value))
                     }
                   />
                 </label>
@@ -607,7 +684,7 @@ export function ContestBuilder({
                         max={200}
                         value={aiTurnsPerAttempt}
                         onChange={(event) =>
-                          setAiTurnsPerAttempt(Number(event.target.value))
+                          setAiTurnsPerAttempt(numericDraft(event.target.value))
                         }
                       />
                     </label>
@@ -619,7 +696,7 @@ export function ContestBuilder({
                         max={50}
                         value={aiTurnsPerTask}
                         onChange={(event) =>
-                          setAiTurnsPerTask(Number(event.target.value))
+                          setAiTurnsPerTask(numericDraft(event.target.value))
                         }
                       />
                     </label>
@@ -687,7 +764,7 @@ export function ContestBuilder({
                       value={classicMathPosition}
                       disabled={!classicMathEnabled}
                       onChange={(event) => {
-                        setClassicMathPosition(Number(event.target.value));
+                        setClassicMathPosition(numericDraft(event.target.value));
                         setError("");
                       }}
                     />
@@ -737,7 +814,7 @@ export function ContestBuilder({
                             value={family.weight}
                             onChange={(event) =>
                               updateFamily(family.key, {
-                                weight: Number(event.target.value),
+                                weight: numericDraft(event.target.value),
                               })
                             }
                           />
@@ -753,7 +830,9 @@ export function ContestBuilder({
                             value={family.initialDifficulty}
                             onChange={(event) =>
                               updateFamily(family.key, {
-                                initialDifficulty: Number(event.target.value),
+                                initialDifficulty: numericDraft(
+                                  event.target.value,
+                                ),
                               })
                             }
                           />
@@ -769,7 +848,7 @@ export function ContestBuilder({
                             value={family.maxDifficulty}
                             onChange={(event) =>
                               updateFamily(family.key, {
-                                maxDifficulty: Number(event.target.value),
+                                maxDifficulty: numericDraft(event.target.value),
                               })
                             }
                           />

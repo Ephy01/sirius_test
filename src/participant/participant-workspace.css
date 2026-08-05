@@ -3034,6 +3034,25 @@
   line-height: 1.5;
 }
 
+.participant-brief > .participant-brief__answer {
+  color: #292929;
+  font-family: var(--sans);
+  font-size: clamp(14px, 1.15vw, 16px);
+  line-height: 1.62;
+}
+
+.participant-brief__answer p {
+  margin-bottom: 14px;
+}
+
+.participant-brief__meta {
+  color: inherit;
+}
+
+.participant-brief__answer code {
+  font-size: 1em;
+}
+
 .participant-task__stage--text-only {
   gap: 0;
 }
@@ -3059,6 +3078,11 @@
 }
 
 .participant-brief--classic .participant-brief__statement p {
+  font-size: clamp(15px, 1.2vw, 17px);
+  line-height: 1.68;
+}
+
+.participant-brief--classic > .participant-brief__answer {
   font-size: clamp(15px, 1.2vw, 17px);
   line-height: 1.68;
 }
