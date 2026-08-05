@@ -84,9 +84,6 @@ def _payload_text(value: object) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-    # JSON permits these Unicode separators as literal characters, while many
-    # editors render them as line breaks. Escape them so one event always
-    # remains exactly one physical line in the exported timeline.
     return (
         encoded.replace("\u0085", "\\u0085")
         .replace("\u2028", "\\u2028")

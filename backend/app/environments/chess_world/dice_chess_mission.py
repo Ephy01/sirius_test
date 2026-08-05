@@ -50,7 +50,6 @@ def evaluate_dice_chess_mission_answer(
     answer: str,
     private_state: dict[str, Any],
 ) -> dict[str, Any]:
-    # Both mission variants intentionally share one answer contract.
     return evaluate_dice_chess_answer(
         answer=answer,
         private_state=private_state,

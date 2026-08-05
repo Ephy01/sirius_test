@@ -35,8 +35,6 @@ EXAM_CHORD_COUNT = 3
 REACH_VARIANT = "reach_target"
 PREDICT_VARIANT = "predict_chords"
 
-# Fixed hint dictionary for the wiring panel (stage C.2): a structural
-# category of the hidden matrix, recorded in private at generation time.
 HINT_SCORE_MULTIPLIER = 0.7
 WIRING_HINT_CATEGORIES = {
     "sparse_wiring": "каждая кнопка переключает не больше двух ламп",
@@ -162,8 +160,6 @@ def generate_hidden_wiring_task(
         if columns is None:
             continue
         effects = _chord_effects(columns)
-        # Degenerate wirings where a chord does nothing are rejected with
-        # the duplicate-column filter above, but keep the guard explicit.
         if any(effect == 0 for effect in effects.values()):
             continue
         all_chords = sorted(effects)
@@ -178,8 +174,6 @@ def generate_hidden_wiring_task(
                 _chord_indicator(chord, button_count)
                 for chord in allowed_chords
             ]
-            # The exam must be solvable from probes alone: every exam
-            # chord's indicator lies in the span of the allowed probes.
             if not all(
                 _in_span(
                     _chord_indicator(chord, button_count),
@@ -193,8 +187,6 @@ def generate_hidden_wiring_task(
         else:
             exam_chords = []
             allowed_chords = all_chords
-            # The target is a XOR of chord effects by construction, so
-            # variant (а) is always solvable; keep the shortest witness.
             chord_sample = rng.sample(
                 all_chords,
                 rng.randint(2, min(4, len(all_chords))),
@@ -405,7 +397,6 @@ def transition_hidden_wiring_chord(
             "Такой комбинации нет на панели (или она экзаменационная).",
         )
     chords_used = int(next_private.get("chords_used") or 0)
-    # The first chord is a free training probe; the budget applies после.
     if chords_used >= CHORD_BUDGET + 1:
         return reject("chord_budget_exhausted", "Лимит комбинаций исчерпан.")
 

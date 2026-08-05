@@ -1,11 +1,3 @@
-"""Safe, family-aware serialization of the visible task state for the model.
-
-Единственный источник данных — ``task.public_state`` (то, что уже отрисовано
-участнику) и видимые ``TaskInteraction``. Никаких private_state, сидов,
-эталонных ответов и вычисленных математических признаков: сериализаторы
-только переупаковывают уже показанное.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -15,7 +7,6 @@ from typing import Any, Callable
 
 from ..models import TaskInstance, TaskInteraction
 
-# Rendered classification labels, matching what the participant UI shows.
 _CLASSIFICATION_LABELS = {
     "positive": "подходит",
     "negative": "не подходит",

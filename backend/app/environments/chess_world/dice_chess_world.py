@@ -35,7 +35,6 @@ def _is_in_region(region: str, file_index: int, rank_index: int) -> bool:
         return rank_index >= 4
     if region == "lower_half":
         return rank_index <= 3
-    # a1 is dark; files and ranks are zero-indexed here.
     if region == "light_squares":
         return (file_index + rank_index) % 2 == 1
     if region == "dark_squares":

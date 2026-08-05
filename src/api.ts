@@ -1818,7 +1818,6 @@ function contentDispositionFilename(value: string | null): string | undefined {
     try {
       return decodeURIComponent(filenameValue);
     } catch {
-      // Fall back to the regular filename parameter below.
     }
   }
 

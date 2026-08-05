@@ -10,7 +10,6 @@ from app.environments import IMPLEMENTED_FAMILIES
 from app.main import create_app
 from app.models import Attempt, TaskInstance
 
-# Coverage weights of the default contest config (ТЗ v3 §7).
 DEFAULT_FAMILIES = [
     ("geo_zendo", 14),
     ("token_zendo", 12),
@@ -100,7 +99,7 @@ def _solve_task(client, application, participant, task) -> None:
         answer = f"{probability['numerator']}/{probability['denominator']}"
     elif family == "geo_transform":
         answer = str(private["correct_card_id"])
-    else:  # pragma: no cover - защита от появления неизвестного семейства
+    else:
         raise AssertionError(f"No oracle for family {family!r}")
 
     answered = client.post(
@@ -217,7 +216,6 @@ def test_default_contest_covers_every_family_end_to_end(tmp_path):
             f"families not covered after 30 tasks: {expected - seen_families}"
         )
 
-        # Every family produced a scored, answered task instance.
         with application.state.database.session_factory() as session:
             tasks = list(session.scalars(select(TaskInstance)).all())
             for stored in tasks:

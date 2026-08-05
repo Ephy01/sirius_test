@@ -5,7 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app import models  # noqa: F401 - registers all model metadata
+from app import models
 from app.config import get_settings
 from app.database import Base
 
@@ -15,8 +15,6 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Alembic reads this value through ConfigParser, where percent signs have a
-# special meaning. Doubling them preserves percent-encoded credentials.
 database_url = get_settings().database_url.replace("%", "%%")
 config.set_main_option("sqlalchemy.url", database_url)
 

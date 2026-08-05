@@ -264,7 +264,6 @@ export function loadAccessSession(): AccessSession | null {
         : parsed;
     const session = parseAccessSession(candidate);
 
-    // Old demo sessions had no server token. They are intentionally invalidated.
     if (!session) storage.removeItem(SESSION_KEY);
     return session;
   } catch {

@@ -99,9 +99,6 @@ def _random_position(
         if board.is_game_over(claim_draw=True):
             return None
 
-    # The public contract deliberately contains only the board and side to move.
-    # Removing the two history-dependent move rights makes that representation
-    # sufficient for independently reconstructing every legal move.
     board.castling_rights = chess.BB_EMPTY
     board.ep_square = None
     board.clear_stack()

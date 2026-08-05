@@ -58,9 +58,6 @@ def _submission_parts(answer: str) -> tuple[str, str]:
 
 
 def _reasoning_supplied(reasoning: str) -> bool:
-    # We intentionally do not claim semantic proof checking.  Six tokens keep
-    # an empty or one-word placeholder from receiving the binary score while
-    # still allowing concise ninth-grade arguments.
     return len(re.findall(r"[0-9A-Za-zА-Яа-яЁё]+", reasoning)) >= 6
 
 
@@ -86,7 +83,7 @@ def generate_classic_math_task(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return one of the two versioned fixed tasks selected by contest config."""
 
-    del seed  # Fixed pilot content is intentionally independent of randomness.
+    del seed
     if isinstance(difficulty, bool) or difficulty < 1:
         raise ValueError("classic_math difficulty must be positive")
     sub_kind = _selected_sub_kind(context)

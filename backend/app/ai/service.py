@@ -1,11 +1,3 @@
-"""Orchestration of one assistant turn.
-
-Последовательность фиксирована ТЗ: проверки → pending-запись → commit →
-безопасный контекст → сетевой вызов вне транзакции → короткая транзакция
-с результатом и телеметрией. Автоповторов после тайм-аута нет: провайдер
-мог обработать запрос, даже если ответ не дошёл.
-"""
-
 from __future__ import annotations
 
 import re
@@ -46,8 +38,6 @@ from .tripwire import (
 )
 
 AI_MODES = frozenset({"off", "socratic", "open"})
-# A pending turn older than this is considered orphaned (process died between
-# commit and completion) and no longer blocks the participant.
 PENDING_STALE_SECONDS = 90
 QUEUE_WAIT_SECONDS = 10
 
@@ -78,8 +68,6 @@ class AiConfig:
     max_turns_per_attempt: int = 15
     max_turns_per_task: int = 5
     max_input_characters: int = 4_000
-    # Краткость задаёт промпт; потолок токенов — только страховка от обрыва
-    # мысли на полуслове (finish_reason=length).
     max_output_tokens: int = 800
     history_turns: int = 6
 
@@ -133,8 +121,6 @@ def attempt_ai_config(session: Session, attempt: Attempt) -> AiConfig:
         if isinstance(config_snapshot, dict):
             snapshot = config_snapshot.get("ai")
     if snapshot is None:
-        # Attempts started before the AI feature existed fall back to the
-        # contest configuration (frozen semantics are impossible in hindsight).
         contest_config = attempt.enrollment.contest.task_config
         if isinstance(contest_config, dict):
             snapshot = contest_config.get("ai")
@@ -142,7 +128,6 @@ def attempt_ai_config(session: Session, attempt: Attempt) -> AiConfig:
 
 
 def _completed_turns(session: Session, *, attempt_id: str, task_id: str) -> tuple[int, int]:
-    # Ответы tripwire (кризисные сообщения) лимит участника не расходуют.
     attempt_count = session.scalar(
         select(func.count(AiTurn.id)).where(
             AiTurn.attempt_id == attempt_id,
@@ -228,7 +213,6 @@ def _append_ai_event(
     event_type: str,
     payload: dict[str, Any],
 ) -> None:
-    # Local import breaks the api ↔ service import cycle.
     from ..api import _append_event
 
     _append_event(
@@ -278,7 +262,6 @@ def run_ai_turn(
             "Сообщение слишком длинное.",
         )
 
-    # Идемпотентность: повтор client_action_id возвращает прежний результат.
     existing = session.scalar(
         select(AiTurn).where(
             AiTurn.attempt_id == attempt.id,
@@ -291,8 +274,6 @@ def run_ai_turn(
         )
         return existing, remaining
 
-    # Кризисный tripwire — до лимитов и очереди: поддерживающий ответ
-    # приходит всегда, модель не вызывается, лимит не тратится.
     category = crisis_category(stripped)
     if category is not None:
         turn = AiTurn(
@@ -311,8 +292,6 @@ def run_ai_turn(
             completed_at=utc_now(),
         )
         session.add(turn)
-        # Python-side id default применяется на flush; без него событие
-        # получило бы aiTurnId=null.
         session.flush()
         _append_ai_event(
             session,
@@ -422,8 +401,6 @@ def run_ai_turn(
             "Ассистент занят, попробуйте через несколько секунд.",
         )
     try:
-        # Сетевой вызов — вне какой-либо транзакции БД (предыдущий commit
-        # закрыл её; следующая начнётся лениво при записи результата).
         result = provider.generate(request)
     except ProviderError as error:
         semaphore.release()

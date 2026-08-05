@@ -874,8 +874,6 @@ def test_export_survives_and_marks_tasks_of_retired_families(tmp_path):
                 seed=123,
                 difficulty=2,
                 status=TaskStatus.ANSWERED,
-                # ``None`` would re-trigger the Python-side default; ``False``
-                # keeps the answered row outside the unique active slot.
                 active_slot=False,
                 public_state={"kind": "chess960_mission"},
                 private_state={"variant": "single_swap_repair"},

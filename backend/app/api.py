@@ -207,9 +207,6 @@ FAMILY_INTERACTION_ACTIONS = {
     HIDDEN_WIRING_FAMILY: frozenset({"apply_op", "hint"}),
     MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
 }
-# Family → action whose accepted interactions append a ``zendo_probe``
-# event with exact ΔH telemetry to the attempt journal. hidden_wiring
-# chords carry the same telemetry shape, so they share the event kind.
 ZENDO_PROBE_ACTIONS = {
     GEO_ZENDO_FAMILY: "probe",
     TOKEN_ZENDO_FAMILY: "probe",
@@ -376,8 +373,6 @@ def _require_active_attempt(
     session: SessionDependency,
     enrollment: Enrollment,
 ) -> Attempt:
-    # PostgreSQL serializes task commands per attempt. SQLite ignores
-    # FOR UPDATE but still enforces the uniqueness constraints used below.
     attempt = _active_attempt(session, enrollment.id, lock=True)
     if attempt is None:
         raise api_error(
@@ -577,8 +572,6 @@ def _task_family_settings_from_config(
     if isinstance(families, list):
         raw_families = families
     else:
-        # Empty and older contests predate the family constructor and fall
-        # back to the world default.
         raw_families = [WORLD_DEFAULT_FAMILY.get(environment_key, DICE_CHESS_FAMILY)]
 
     parsed: dict[str, FamilyTaskSettings] = {}
@@ -962,10 +955,6 @@ def _evaluation_with_telemetry(
     enriched["difficulty"] = task.difficulty
     enriched["family"] = task.family
     enriched["generator_version"] = task.generator_version
-    # Season-one scoring is deliberately binary.  Keep continuous_score as
-    # research telemetry for existing families, but only finalized answers
-    # and skips receive an official task score.  This avoids recording a
-    # premature zero for machine answers that explicitly do not close a task.
     if enriched.get("should_finalize") is not False:
         enriched["score"] = 1 if enriched.get("correct") is True else 0
     return enriched
@@ -1009,11 +998,7 @@ def _director_history(
     return history
 
 
-# The learning-slope soft quota: with enough remaining time every active
-# family gets at least this many exposures per attempt.
 MIN_FAMILY_EXPOSURES = 3
-# A conservative per-missing-exposure time allowance used to decide
-# whether the quota still fits into the attempt.
 QUOTA_SECONDS_PER_TASK = 90
 
 
@@ -1171,9 +1156,6 @@ def _create_or_get_current_task(
     director_decision: DirectorDecision | None = None
     director_history: list[CompletedTask] = []
     if scripted_task is not None:
-        # A pinned anchor occupies this ordinal exactly once and never enters
-        # the adaptive/weighted family pool.  The next task resumes the
-        # director from its prior non-scripted history.
         selected_family = FamilyTaskSettings(
             family=scripted_task.family,
             weight_units=0,
@@ -1591,10 +1573,6 @@ def create_contest(
     _organizer: OrganizerDependency,
 ) -> Contest:
     task_config = payload.task_config if isinstance(payload.task_config, dict) else {}
-    # Older API clients did not send ``environment_key`` and identified the
-    # chess runtime solely by its pinned director version.  Keep those payloads
-    # reproducible, while every new client (the current constructor sends the
-    # field explicitly) writes the skin-independent ``mixed`` environment.
     environment_key = payload.environment_key
     trajectory = task_config.get("trajectory")
     if (
@@ -2787,7 +2765,6 @@ def _debug_task_details(task: TaskInstance) -> list[str]:
                 rules=space.rules,
                 atom_descriptions=GRAPH_ATOM_DESCRIPTIONS,
             )
-        # Legacy geometry-atlas zendo stores a plain rule key.
         rule_key = str(private.get("rule_key"))
         details = [
             "Скрытое правило: "

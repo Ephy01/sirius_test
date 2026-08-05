@@ -267,7 +267,6 @@ class Atom:
         return bool(self.predicate(graph))
 
 
-# Order is part of graph-dsl-v1 and must only change with a new DSL version.
 GRAPH_ATOMS: tuple[Atom, ...] = (
     Atom("vertex_count_even", 3, _vertex_count_even),
     Atom("edge_count_even", 3, _edge_count_even),
@@ -390,7 +389,6 @@ def enumerate_rules(
             for op in ("and", "or", "xor")
         )
 
-    # Mixed literals add useful high-MDL alternatives without arbitrary nesting.
     for first_index, first in enumerate(atom_rules):
         for second_index, second in enumerate(atom_rules):
             if first_index == second_index:
@@ -401,7 +399,6 @@ def enumerate_rules(
                 for op in ("and", "or")
             )
 
-    # Three-way positive clauses form the open-ended difficulty-five bucket.
     for children in itertools.combinations(atom_rules, 3):
         rules.extend(
             Rule.combine(op, children)

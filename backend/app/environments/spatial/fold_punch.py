@@ -28,7 +28,6 @@ PUBLIC_KIND = "fold_punch"
 
 SHEET_SIZE = 8
 
-# (axis, direction) pairs; directions name the half that moves.
 VERTICAL_RIGHT_ONTO_LEFT = ("vertical", "right_onto_left")
 VERTICAL_LEFT_ONTO_RIGHT = ("vertical", "left_onto_right")
 HORIZONTAL_TOP_ONTO_BOTTOM = ("horizontal", "top_onto_bottom")
@@ -43,7 +42,7 @@ FOLD_LABELS = {
     DIAGONAL_MAIN: "по диагонали: правый верхний угол к левому нижнему",
 }
 
-Cell = tuple[int, int]  # (row, column), zero-based, row 0 is the top row.
+Cell = tuple[int, int]
 
 
 def _forward_fold_stacks(
@@ -90,8 +89,6 @@ def _forward_fold_stacks(
         else:
             if width != height:
                 raise ValueError("diagonal fold requires a square sheet")
-            # The upper-right triangle (column > row) folds onto the
-            # lower-left one across the main diagonal.
             for row in range(height):
                 for column in range(row + 1):
                     base = stacks[(row, column)]

@@ -58,7 +58,6 @@ def test_seeded_calibration_covers_every_enabled_family_once() -> None:
                 difficulty=decision.difficulty,
                 evidence=1,
                 phase=decision.phase,
-                # A calibration task represents a complete miniature chapter.
                 chapter_stage=3 if decision.family == "geo_zendo" else None,
             )
         )
@@ -325,8 +324,6 @@ def test_weighted_rotation_never_repeats_the_latest_family() -> None:
 
     decision = decide_next_task(seed=13, families=families, history=history)
 
-    # Coverage debt strongly favours ``heavy``, but diversity is a hard
-    # invariant while another enabled family exists.
     assert decision.family == "light"
 
 

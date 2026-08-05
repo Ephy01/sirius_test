@@ -486,8 +486,6 @@ def transition_zendo_probe(
         int(probe_truth_masks[candidate_id])
         for candidate_id in available_ids
     ]
-    # ``pick_probe_by_entropy`` only touches the pre-compiled masks, so
-    # the serialized payloads can stand in for the live objects.
     best = pick_probe_by_entropy(
         candidates=[probe_cards[candidate_id] for candidate_id in available_ids],
         rules=(),
@@ -623,8 +621,6 @@ def entropy_bits(count: int) -> float:
     return math.log2(count) if count > 0 else 0.0
 
 
-# Fixed dictionary of graduated-prompt categories (stage C.2). Season one
-# treats /hint as a research metric only.
 HINT_SCORE_MULTIPLIER = 0.7
 HINT_CATEGORY_LABELS = {
     "count": "правило про количество",

@@ -78,7 +78,6 @@ def test_wiring_is_deterministic_solvable_and_does_not_leak():
         assert public["legend"] == "Кнопки срабатывают только парами."
         assert public["chords_remaining"] == CHORD_BUDGET
         if private["variant"] == REACH_VARIANT:
-            # Variant (а) always solvable, certificate stored in private.
             assert private["certificate"]
             assert len(private["certificate"]) <= CHORD_BUDGET
         else:
@@ -102,7 +101,6 @@ def test_chords_are_idempotent_pure_and_carry_exact_gain_bits():
         private_state=private,
         client_action_id="chord-1",
     )
-    # Pure transition: inputs must stay unmutated.
     assert public == original_public
     assert private == original_private
     assert first.accepted is True
@@ -114,7 +112,6 @@ def test_chords_are_idempotent_pure_and_carry_exact_gain_bits():
     )
     assert telemetry["gain_bits_actual"] == float(lamp_count)
     assert telemetry["gain_bits_best"] == float(lamp_count)
-    # The first probe is a free training one.
     assert first.public_state["chords_remaining"] == CHORD_BUDGET
     assert first.public_state["observations"][0]["training"] is True
 
@@ -137,10 +134,9 @@ def test_chords_are_idempotent_pure_and_carry_exact_gain_bits():
         )
     except ValueError as error:
         assert "already used" in str(error)
-    else:  # pragma: no cover - защита от регрессии
+    else:
         raise AssertionError("reused client_action_id must raise")
 
-    # A dependent chord repeat yields zero information.
     second = transition_hidden_wiring_chord(
         op_id=chord,
         public_state=first.public_state,
@@ -173,7 +169,6 @@ def test_reach_variant_completes_on_target_and_scores_length():
     assert evaluation["continuous_score"] == 1.0
     assert evaluation["efficient"] is True
 
-    # /answer never finalizes the reach variant on its own.
     answered = evaluate_hidden_wiring_answer(
         answer="done",
         private_state=private,
@@ -303,7 +298,6 @@ def test_wiring_api_chords_log_zendo_probe_events(tmp_path):
             current = response.json()["task"]
         assert current["status"] == "answered"
 
-        # Idempotent replay of the completing chord.
         replay = client.post(
             f"/api/v1/participant/tasks/{task['id']}/interactions",
             headers=auth(participant),

@@ -154,7 +154,6 @@ const CLASSIC_MATH_TASKS: Record<
   },
 };
 
-// Веса coverage дефолтного контеста (ТЗ v3 §7); правится организатором.
 const CONTENT_FAMILIES: TaskFamilyConfig[] = [
   {
     key: "geo_zendo",

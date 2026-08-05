@@ -301,8 +301,6 @@ def test_geometry_world_complete_api_flow_answer_skip_and_next(tmp_path):
         third = third_response.json()["task"]
         assert third["ordinal"] == 3
         assert third["family"] == "geo_transform"
-        # With a single enabled family there is nowhere else to rotate, but a
-        # skip still opens a fresh regular task rather than remediation.
         assert third["public_state"]["world_context"]["phase"] == "rotation"
 
         with application.state.database.session_factory() as session:
@@ -553,7 +551,6 @@ def test_geometry_world_adapts_after_strong_answers_and_route_is_reproducible(
     for family, difficulty, _phase in first_route:
         difficulties_by_family[family].append(difficulty)
 
-    # Three strong answers at one level promote the next task of that family.
     assert difficulties_by_family["geo_transform"][:3] == [1, 1, 1]
     assert difficulties_by_family["geo_transform"][3] == 2
     assert difficulties_by_family["geo_probability"][:3] == [1, 1, 1]

@@ -57,7 +57,6 @@ def test_crisis_message_gets_support_without_model_call(tmp_path):
         body = response.json()
         assert body["status"] == "completed"
         assert "8-800-2000-122" in body["assistantMessage"]
-        # Модель не вызывалась, лимит не потрачен.
         assert fake.requests == []
         assert body["remaining"] == {"task": 5, "attempt": 15}
 
@@ -72,10 +71,8 @@ def test_crisis_message_gets_support_without_model_call(tmp_path):
             assert len(flagged) == 1
             assert flagged[0].payload["category"] == CRISIS_CATEGORY
             assert flagged[0].payload["aiTurnId"] == body["id"]
-            # Текст сообщения в телеметрию не дублируется.
             assert "покончить" not in str(flagged[0].payload)
 
-        # Ответ tripwire восстанавливается в истории диалога.
         history = client.get(
             f"/api/v1/participant/tasks/{task['id']}/ai/turns",
             headers=auth(participant),
@@ -83,7 +80,6 @@ def test_crisis_message_gets_support_without_model_call(tmp_path):
         assert len(history["turns"]) == 1
         assert "8-800-2000-122" in history["turns"][0]["assistantMessage"]
 
-        # Обычное сообщение после этого работает как раньше.
         normal = _send(client, participant, task["id"], "Как искать правило?", "cr-2")
         assert normal.status_code == 200
         assert len(fake.requests) == 1

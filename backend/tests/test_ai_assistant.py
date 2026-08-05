@@ -28,8 +28,6 @@ def _settings(database_path, *, ai_enabled: bool = True) -> Settings:
         code_hmac_secret="test-code-secret-that-is-different",
         ai_enabled=ai_enabled,
         yandex_ai_model_uri="gpt://test-folder/aliceai-llm",
-        # Ключ не задан: create_app не создаёт сетевой провайдер,
-        # тесты подставляют fake через app.state.ai_provider.
     )
 
 
@@ -124,7 +122,6 @@ def test_successful_turn_returns_answer_and_context_is_safe(tmp_path):
         assert body["usage"]["totalTokens"] == 142
         assert body["remaining"] == {"task": 4, "attempt": 14}
 
-        # Сценарий 14: скрытые данные не попали в запрос провайдеру.
         assert len(fake.requests) == 1
         request = fake.requests[0]
         assert '"target_answers"' not in request.context_text
@@ -133,7 +130,6 @@ def test_successful_turn_returns_answer_and_context_is_safe(tmp_path):
         assert request.user_message == "С чего начать анализ?"
         assert '"family":"token_zendo"' in request.context_text
 
-        # Телеметрия: события есть, полного текста диалога в них нет.
         with application.state.database.session_factory() as session:
             events = list(
                 session.scalars(
@@ -260,7 +256,7 @@ def test_client_action_id_replay_returns_same_turn(tmp_path):
         replay = _send(client, participant, task["id"], "Вопрос", "same-id")
         assert first.status_code == replay.status_code == 200
         assert first.json()["id"] == replay.json()["id"]
-        assert len(fake.requests) == 1  # модель вызвана один раз
+        assert len(fake.requests) == 1
 
 
 def test_second_concurrent_request_is_blocked(tmp_path):
@@ -304,7 +300,6 @@ def test_provider_timeout_maps_to_504_and_keeps_limit(tmp_path):
         assert failed.status_code == 504
         assert failed.json()["detail"]["code"] == "AI_PROVIDER_TIMEOUT"
 
-        # Неуспешный вызов не тратит пользовательский лимит.
         application.state.ai_provider = FakeAssistantProvider()
         retry = _send(client, participant, task["id"], "Повтор", "f2")
         assert retry.status_code == 200, retry.text

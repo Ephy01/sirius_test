@@ -1,17 +1,8 @@
-"""System prompt of the participant assistant.
-
-Промпт — не единственный механизм защиты: основная защита в том, что в
-запросе нет скрытых данных и инструментов (см. context.py). Версия промпта
-хранится в каждом ``AiTurn`` для воспроизводимости диалогов.
-"""
-
 from __future__ import annotations
 
 PROMPT_VERSION_SOCRATIC = "sirius-assistant-socratic-v3"
 PROMPT_VERSION_OPEN = "sirius-assistant-open-v3"
 
-# Оставляем запас под историю и ответ: контекст задачи не должен вытеснять
-# диалог из окна модели.
 MAX_CONTEXT_CHARACTERS = 24_000
 _TRUNCATION_NOTE = '…","note":"контекст сокращён из-за ограничения размера"}'
 

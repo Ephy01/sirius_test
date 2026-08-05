@@ -237,8 +237,6 @@ def test_failure_switches_family_before_returning_to_it(tmp_path):
         wrong = client.post(
             f"/api/v1/participant/tasks/{failed['id']}/answer",
             headers=auth(participant),
-            # Literal regression for the pilot report: one punched cell can
-            # never be the complete unfolded answer generated here.
             json={"answer": "3,3"},
         )
         assert wrong.status_code == 200

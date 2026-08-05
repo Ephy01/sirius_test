@@ -26,9 +26,6 @@ from .universe import graph_key, graph_mutations, serialize_graph
 
 GENERATOR_VERSION = "geometry-zendo-v2"
 
-# Hint categories for the frozen graph DSL. The category is derived from
-# ``rule_index`` on demand: geometry-zendo-v2 private payloads are locked
-# byte-for-byte by the golden fixture, so nothing new is stored there.
 GRAPH_ATOM_DESCRIPTIONS = {
     "vertex_count_even": "чётное число вершин",
     "edge_count_even": "чётное число рёбер",

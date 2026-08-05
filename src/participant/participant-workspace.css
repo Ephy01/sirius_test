@@ -1104,7 +1104,6 @@
   }
 }
 
-/* Quiet contest layout: the task reads like an olympiad sheet, not a promo page. */
 .participant-workspace {
   grid-template-columns: minmax(0, 1.62fr) minmax(360px, 0.78fr);
   background: #f1f0ec;
@@ -1949,7 +1948,6 @@
   }
 }
 
-/* Quiet contest layout: the task reads like an olympiad sheet, not a promo page. */
 .participant-workspace {
   grid-template-columns: minmax(0, 1.62fr) minmax(360px, 0.78fr);
   background: #f1f0ec;

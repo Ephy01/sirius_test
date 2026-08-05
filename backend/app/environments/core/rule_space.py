@@ -94,7 +94,6 @@ def _random_graph(rng: random.Random) -> MiniGraph:
     vertex_count = rng.randint(3, 7)
     points = tuple(rng.sample(_COORDINATES, vertex_count))
     possible_edges = tuple(itertools.combinations(range(vertex_count), 2))
-    # A varying density is important for balanced primitives and composites.
     density = rng.uniform(0.12, 0.88)
     edges = _normalize_edges(
         [

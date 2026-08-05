@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import models  # noqa: F401 - registers SQLAlchemy metadata
+from . import models
 from .ai import provider_from_settings
 from .api import router
 from .config import Settings, get_settings
@@ -19,10 +19,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        # Local development and tests keep their zero-setup SQLite workflow.
-        # Production schema changes are applied only by Alembic in the
-        # container entrypoint, so a missing revision cannot be hidden by
-        # create_all silently creating new tables.
         if not is_production:
             database.create_schema()
         yield

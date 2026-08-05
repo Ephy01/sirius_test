@@ -36,9 +36,6 @@ def test_soft_exposure_quota_prefers_families_below_three_shows() -> None:
         FamilySettings(family="machine_reach", weight=1),
         FamilySettings(family="geo_transform", weight=1),
     )
-    # dice_chess dominates by weight and already has three exposures;
-    # machine_reach has one. geo_transform is saturated and most recent, so
-    # it is excluded by the no-repeat guard. The quota must route to machine.
     history = [
         CompletedTask(
             task_id=f"dice-{index}",
@@ -92,7 +89,6 @@ def test_soft_exposure_quota_prefers_families_below_three_shows() -> None:
     assert with_quota.family == "machine_reach"
     assert with_quota.reason == "soft_exposure_quota"
 
-    # Once every family reached the quota, the debt rotation returns.
     saturated_history = history + [
         CompletedTask(
             task_id=f"machine-{index}",
@@ -202,7 +198,6 @@ def test_hint_api_flow_logs_prompt_used_and_scales_score(tmp_path):
         assert "Подсказка" in hinted.json()["message"]
         assert "hint" in hinted.json()["task"]["public_state"]
 
-        # The second hint is rejected; a replay of the first stays 200.
         second = client.post(
             f"/api/v1/participant/tasks/{task['id']}/interactions",
             headers=auth(participant),
@@ -256,8 +251,6 @@ def test_hint_api_flow_logs_prompt_used_and_scales_score(tmp_path):
             evaluation = stored.evaluation_state
             assert evaluation["correct"] is True
             assert evaluation["hint_used"] is True
-            # Exact answer with all probes unused scores 1.0 raw; the
-            # paid hint multiplies it by 0.7.
             assert abs(evaluation["continuous_score"] - 0.7) < 1e-9
 
 

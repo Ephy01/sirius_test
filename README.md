@@ -111,11 +111,11 @@ FastAPI на порту `8001`.
 
 ## Production deployment
 
-Готовый стек `Caddy + FastAPI + PostgreSQL`, первый запуск, обновление,
-резервное копирование и диагностика описаны в
-[`docs/deployment-adminvps.md`](docs/deployment-adminvps.md). На VPS после
-создания `.env.production` достаточно выполнить `./deploy/deploy.sh`, а для
-последующих обновлений — `./deploy/update.sh`.
+Для production используется стек `Caddy + FastAPI + PostgreSQL`. После
+создания `.env.production` первый запуск выполняется через
+`./deploy/deploy.sh`, последующие обновления — через `./deploy/update.sh`,
+резервное копирование — через `./deploy/backup.sh`, откат — через
+`./deploy/rollback.sh`.
 
 ## Локальный доступ
 
@@ -161,6 +161,3 @@ npm run check
 npm run build
 cd backend && .venv/bin/python -m pytest
 ```
-
-Предыдущий консольный прототип полностью сохранён в
-`legacy/console-prototype`.

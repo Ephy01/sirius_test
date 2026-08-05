@@ -140,9 +140,6 @@ def generate_dice_chess_task(
         if events_by_type:
             break
     else:
-        # Formal fallback: at least one K has probability 1/6, regardless of
-        # dice_count. It is reached only if every deterministic retry was
-        # degenerate.
         dice_faces = (
             ("K", "Q", "Q", "Q", "Q", "Q"),
             *(("R", "R", "R", "R", "R", "R"),) * (dice_count - 1),

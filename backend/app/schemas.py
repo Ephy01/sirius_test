@@ -18,9 +18,6 @@ class ApiModel(BaseModel):
 
     @model_validator(mode="after")
     def normalize_naive_datetimes_as_utc(self):
-        # SQLite drops timezone metadata even for DateTime(timezone=True).
-        # The service stores UTC, so restore the offset before JSON serialization
-        # instead of letting browsers interpret naive values as local time.
         for field_name in type(self).model_fields:
             value = getattr(self, field_name, None)
             if isinstance(value, datetime) and value.tzinfo is None:

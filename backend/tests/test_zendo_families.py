@@ -132,13 +132,9 @@ def test_zendo_family_space_filters_hold(family, universe, generate):
     for truth_mask in space.truth_masks:
         base_rate = truth_mask.bit_count() / population_size
         assert 0.12 <= base_rate <= 0.88
-    # Deduplication: the distilled catalogue keeps exactly one (cheapest)
-    # rule per semantic truth mask.
     assert len(set(space.truth_masks)) == len(space.truth_masks)
     for bucket in space.mdl_buckets:
         assert bucket
-    # Spot-check the "no cheaper equivalent" invariant against a raw
-    # re-enumeration of the rule space.
     from app.environments.core.rule_dsl import compile_truth_masks
 
     raw_rules = universe.enumerate_rules()
@@ -170,8 +166,6 @@ def test_zendo_family_items_have_minimal_pairs_over_sweep(
     for seed in range(200):
         _public, private = generate(seed=seed, difficulty=1 + seed % 5)
         answers = [bool(value) for value in private["target_answers"]]
-        # The near-miss exam mutates positive examples one attribute at a
-        # time, so every item ships a minimal pair for the hidden rule.
         assert answers.count(True) >= 1
         assert answers.count(False) >= 1
         assert len(answers) == 8
@@ -291,7 +285,6 @@ def test_zendo_api_probe_logs_gain_bits(
         assert probed.status_code == 200
         assert probed.json()["accepted"] is True
 
-        # Idempotent replay of the same probe.
         replayed = client.post(
             f"/api/v1/participant/tasks/{task['id']}/interactions",
             headers=auth(participant),
@@ -359,8 +352,6 @@ def test_grid_symmetry_literals_survive_distillation():
         for rule in space.rules
         if rule.op == "atom" and rule.atom_key
     }
-    # rotate_90 and rotate_270 share a truth mask, so exactly one of the
-    # pair represents C4 invariance after deduplication.
     assert literal_keys & {"sym_rotate_90", "sym_rotate_270"}
     assert {
         "sym_rotate_180",

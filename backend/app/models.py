@@ -165,7 +165,6 @@ class Enrollment(Base):
 class AccessCode(Base):
     __tablename__ = "access_codes"
     __table_args__ = (
-        # As with attempts, NULLs stay non-conflicting while true marks the sole active row.
         UniqueConstraint("enrollment_id", "active_slot", name="uq_access_code_one_active"),
     )
 
@@ -195,7 +194,6 @@ class Attempt(Base):
     __tablename__ = "attempts"
     __table_args__ = (
         UniqueConstraint("enrollment_id", "number", name="uq_attempt_enrollment_number"),
-        # SQL treats NULLs as distinct, so only rows with active_slot=true are unique.
         UniqueConstraint("enrollment_id", "active_slot", name="uq_attempt_one_active"),
     )
 
@@ -272,7 +270,6 @@ class TaskInstance(Base):
     __tablename__ = "task_instances"
     __table_args__ = (
         UniqueConstraint("attempt_id", "ordinal", name="uq_task_attempt_ordinal"),
-        # NULLs remain non-conflicting while true identifies the one current task.
         UniqueConstraint("attempt_id", "active_slot", name="uq_task_one_active"),
     )
 

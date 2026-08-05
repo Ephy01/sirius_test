@@ -135,8 +135,6 @@ def _difficulty_for(
     latest_raw_level = family_history[-1].difficulty
     current_level = min(settings.max_difficulty, max(1, latest_raw_level))
 
-    # A level change starts a new evidence window. This prevents an old success
-    # from being counted again immediately after promotion.
     same_level_suffix: list[CompletedTask] = []
     for task in reversed(family_history):
         if task.difficulty != latest_raw_level:
@@ -173,8 +171,6 @@ def _exposure_count(
     family_history = _history_for_family(history, settings.family)
     if not settings.locked_chapter:
         return len(family_history)
-    # A linked chapter counts as one exposure for route balancing, while every
-    # goal still contributes adaptation evidence.
     return sum(
         task.chapter_stage in (None, 3)
         for task in family_history
@@ -270,7 +266,6 @@ def decide_next_task(
             reason=reason,
             parent_task_id=latest.task_id,
             version=version,
-            # Rule complexity remains stable until the three-stage chapter ends.
             preserve_latest_difficulty=True,
         )
 
@@ -336,10 +331,6 @@ def decide_next_task(
     total_completed = sum(counts.values())
     total_weight = sum(settings.weight for settings in active.values())
 
-    # All candidates share the same positive denominator (total_weight), so
-    # comparing these integer numerators is exact and deterministic:
-    #
-    # debt_f = (total_completed + 1) * weight_f / total_weight - count_f
     debt_numerators = {
         family: (total_completed + 1) * settings.weight
         - counts[family] * total_weight

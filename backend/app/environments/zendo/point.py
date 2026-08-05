@@ -162,7 +162,6 @@ def _distances_distinct(config: PointConfig) -> bool:
     return True
 
 
-# Order is part of point-dsl-v1 and must only change with a new DSL version.
 POINT_ATOMS: tuple[Atom, ...] = (
     Atom("three_collinear", 3, _three_collinear),
     Atom("convex_position", 3, _convex_position),

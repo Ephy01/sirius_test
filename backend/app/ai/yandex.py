@@ -51,7 +51,6 @@ class YandexAssistantProvider:
     ) -> None:
         headers = {
             "Authorization": f"Bearer {api_key}",
-            # Provider-side request logging must stay off for school data.
             "x-data-logging-enabled": "false",
         }
         if folder_id:
@@ -101,7 +100,6 @@ class YandexAssistantProvider:
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         if response.status_code != 200:
-            # Never propagate the provider body: it may echo request details.
             raise ProviderError(
                 "AI_PROVIDER_UNAVAILABLE",
                 f"Провайдер вернул статус {response.status_code}.",

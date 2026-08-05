@@ -423,7 +423,6 @@ function persistTelemetryQueue(
       ),
     );
   } catch {
-    // The in-memory queue continues to work if browser storage is unavailable.
   }
 }
 
@@ -738,14 +737,10 @@ export function ParticipantWorkspace({
     if (activeTaskId.current === task.id) return;
     activeTaskId.current = task.id;
     setDraft("");
-    // Прокрутка сцены остаётся от прошлой задачи; более короткая новая
-    // задача при сохранённом scrollTop выглядит как пустая страница.
     stageRef.current?.scrollTo({ top: 0 });
   }, [task.id]);
 
   useEffect(() => {
-    // Восстановление диалога с ассистентом после перезагрузки страницы.
-    // Для только что открытой задачи история пуста и ничего не добавляет.
     if (!onLoadAiHistory) return;
     if (aiHistoryTasks.current.has(task.id)) return;
     aiHistoryTasks.current.add(task.id);
@@ -771,7 +766,6 @@ export function ParticipantWorkspace({
           return restored.length ? [...current, ...restored] : current;
         });
       } catch {
-        // ИИ выключен для контеста или недоступен — чат работает без него.
       }
     })();
   }, [task.id, onLoadAiHistory]);
@@ -1383,7 +1377,6 @@ export function ParticipantWorkspace({
           }
       }
     } catch {
-      // The parent exposes the concrete API error through the connection entry.
     } finally {
       inFlight.current = false;
       setCommandBusy(false);
@@ -1807,9 +1800,6 @@ function GeometryAtlasScene({
   );
   const width = Math.max(1, scene.bounds.maxX - scene.bounds.minX);
   const height = Math.max(1, scene.bounds.maxY - scene.bounds.minY);
-  // Бэкенд считает в математических координатах (ось y вверх), SVG рисует
-  // ось y вниз — без переворота «поворот против часовой» выглядит поворотом
-  // по часовой, а отражение y = x — отражением y = −x.
   const flipY = (value: number) => scene.bounds.maxY + scene.bounds.minY - value;
   const viewPadding = Math.max(width, height) * 0.09;
   const radius = Math.max(

@@ -40,10 +40,6 @@ SubKind = Literal[
     "leaper_board",
 ]
 
-# The literal B.3 range cannot be reached by an XOR machine with at most five
-# involutive buttons: every shortest word uses every independent button at
-# most once.  The lamps radical therefore saturates at five; the other
-# generators use the full family range.
 DISTANCE_RANGES: dict[int, tuple[int, int]] = {
     1: (2, 3),
     2: (3, 5),
@@ -93,8 +89,6 @@ def _rng(seed: int, namespace: str) -> random.Random:
 
 
 def _is_reachable_seed(seed: int, sub_kind: str) -> bool:
-    # Consecutive seeds contain exactly 50% of each class.  The namespace
-    # changes which parity means reachable without changing the ratio.
     offset = SUB_KINDS.index(sub_kind)
     return (seed + offset) % 2 == 0
 
@@ -593,8 +587,6 @@ def generate_perm_puzzle_task(
 
 
 def _all_permutations(n: int) -> list[tuple[int, ...]]:
-    # Local iterative implementation avoids importing itertools into the hot
-    # generator path and is still bounded by 6! = 720 states.
     result: list[tuple[int, ...]] = [()]
     for value in range(n):
         result = [
@@ -747,8 +739,6 @@ def generate_leaper_board_task(
     ] | None = None
     points = [(row, col) for row in range(rows) for col in range(cols)]
     for attempt in range(MAX_GENERATION_ATTEMPTS):
-        # The diagonal step is used more often at high difficulty because
-        # obstacles can form long, still understandable routes.
         a, b = (
             (1, 1)
             if difficulty >= 4 or attempt >= MAX_GENERATION_ATTEMPTS // 2
@@ -791,8 +781,6 @@ def generate_leaper_board_task(
                 target_point = rng.choice(candidates)
                 witness = _restore_leaper_witness(target_point, parents)
             else:
-                # All catalog jumps have even a+b, so checkerboard colour is
-                # an exact, human-readable invariant.
                 candidates = sorted(
                     point
                     for point in free
@@ -1125,7 +1113,6 @@ def telemetry_aggregates(private_state: dict[str, Any]) -> dict[str, Any]:
             if apply_count
             else 0.0
         ),
-        # len_ratio is actual/minimal; 1 is optimal and larger is less efficient.
         "len_ratio": (
             apply_count / min_len if min_len is not None and min_len > 0 else None
         ),

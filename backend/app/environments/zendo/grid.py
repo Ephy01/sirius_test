@@ -44,13 +44,9 @@ GRID_SIZE = 5
 CELL_COUNT = GRID_SIZE * GRID_SIZE
 MIN_FILLED = 4
 MAX_FILLED = 13
-# Only ~82 C4-symmetric patterns exist within the fill bounds, so the
-# population stays small enough for every D4-invariance literal to clear
-# the 0.12 base-rate floor.
 POPULATION_SIZE = 640
 _POPULATION_SEED = 0x6B1D_2026
 
-# A pattern is a 25-bit mask, row-major from the top-left corner.
 GridPattern = int
 
 
@@ -84,16 +80,16 @@ def _symmetry_atom(name: str, transform: Any) -> Any:
     return predicate
 
 
-_ROTATE_90 = lambda row, column: (column, GRID_SIZE - 1 - row)  # noqa: E731
-_ROTATE_180 = lambda row, column: (  # noqa: E731
+_ROTATE_90 = lambda row, column: (column, GRID_SIZE - 1 - row)
+_ROTATE_180 = lambda row, column: (
     GRID_SIZE - 1 - row,
     GRID_SIZE - 1 - column,
 )
-_ROTATE_270 = lambda row, column: (GRID_SIZE - 1 - column, row)  # noqa: E731
-_REFLECT_H = lambda row, column: (GRID_SIZE - 1 - row, column)  # noqa: E731
-_REFLECT_V = lambda row, column: (row, GRID_SIZE - 1 - column)  # noqa: E731
-_REFLECT_MAIN = lambda row, column: (column, row)  # noqa: E731
-_REFLECT_ANTI = lambda row, column: (  # noqa: E731
+_ROTATE_270 = lambda row, column: (GRID_SIZE - 1 - column, row)
+_REFLECT_H = lambda row, column: (GRID_SIZE - 1 - row, column)
+_REFLECT_V = lambda row, column: (row, GRID_SIZE - 1 - column)
+_REFLECT_MAIN = lambda row, column: (column, row)
+_REFLECT_ANTI = lambda row, column: (
     GRID_SIZE - 1 - column,
     GRID_SIZE - 1 - row,
 )
@@ -213,7 +209,6 @@ def _make_symmetry_predicate(transform):
     return predicate
 
 
-# Order is part of grid-dsl-v1 and must only change with a new DSL version.
 GRID_ATOMS: tuple[Atom, ...] = (
     Atom("cell_count_even", 3, _cell_count_even),
     Atom("connected", 3, _connected),

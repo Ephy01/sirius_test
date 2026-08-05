@@ -37,7 +37,6 @@ MAX_LENGTH = 7
 POPULATION_SIZE = 1200
 _POPULATION_SEED = 0x70CE_2026
 
-# One token is a (num, color) pair; a configuration is a tuple of tokens.
 TokenSequence = tuple[tuple[int, str], ...]
 
 
@@ -91,7 +90,6 @@ def _exactly_two_colors(sequence: TokenSequence) -> bool:
     return len(set(_colors(sequence))) == 2
 
 
-# Order is part of token-dsl-v1 and must only change with a new DSL version.
 TOKEN_ATOMS: tuple[Atom, ...] = (
     Atom("odd_count_even", 3, _odd_count_even),
     Atom("sum_divisible_by_3", 3, _sum_divisible_by_three),

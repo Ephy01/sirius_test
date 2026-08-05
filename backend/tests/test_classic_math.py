@@ -314,8 +314,6 @@ def test_classic_math_is_inserted_once_and_all_closed_tasks_get_binary_score(
         assert answered_script.json()["task"]["status"] == "answered"
         assert "evaluation_state" not in answered_script.json()["task"]
 
-        # Continue past the pinned ordinal.  The scripted family is not part
-        # of weighted rotation and therefore cannot appear again.
         for expected_ordinal in range(3, 7):
             task = client.post(
                 "/api/v1/participant/tasks/next",

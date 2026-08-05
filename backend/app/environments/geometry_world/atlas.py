@@ -468,8 +468,6 @@ def _select_zendo_material(
         break
 
     if selected_examples is None or selected_probes is None:
-        # The fallback uniquely identifies the rule from the shown examples.
-        # Probe cards remain useful as confirmation and still obey a hard budget.
         best_examples: list[tuple[str, MiniGraph]] | None = None
         best_version_space: tuple[str, ...] = tuple(available_rules)
         for _ in range(320):

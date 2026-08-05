@@ -425,8 +425,6 @@ def _run_mixed_sequence(database_path) -> tuple[list[str], list[int]]:
                 ],
             },
         )
-        # Unknown families stored in older configs must be skipped at
-        # runtime, while new configs are rejected at creation time.
         with application.state.database.session_factory() as session:
             contest = session.scalar(select(Contest))
             assert contest is not None
@@ -540,8 +538,6 @@ def test_weighted_mixed_route_is_reproducible_and_adapts_per_family(tmp_path):
             strict=False,
         )
     )
-    # With exactly two enabled families, a hard no-repeat rule necessarily
-    # produces a 1:1 route even when their configured weights differ.
     assert first_families.count("dice_chess") == first_families.count(
         "geo_transform"
     )
