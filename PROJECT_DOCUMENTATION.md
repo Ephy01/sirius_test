@@ -996,13 +996,16 @@ zendo_score = max(0, accuracy - 0.5) × 2 × (1 + 0.05 × unused_probes)
 
 ### 15.1. Провайдер
 
-Реализован Yandex AI Studio через OpenAI-compatible Chat Completions endpoint:
+Реализован Yandex AI Studio с моделью Alice AI LLM Flash через
+OpenAI-compatible Chat Completions endpoint:
 
 ```text
 https://ai.api.cloud.yandex.net/v1/chat/completions
 ```
 
-Backend использует `httpx`, Bearer API key, folder ID и model URI. В запросе выставляются:
+Рабочий URI модели имеет вид
+`gpt://<YANDEX_AI_FOLDER_ID>/aliceai-llm-flash`. Backend использует `httpx`,
+Bearer API key, folder ID и model URI. В запросе выставляются:
 
 - `store=false`;
 - `x-data-logging-enabled: false`;
@@ -1180,7 +1183,7 @@ Frontend дополнительно отправляет:
 | `AI_ENABLED` | `false` | Глобальный переключатель ИИ |
 | `YANDEX_AI_API_KEY` | пусто | API key |
 | `YANDEX_AI_FOLDER_ID` | пусто | Yandex folder ID |
-| `YANDEX_AI_MODEL_URI` | пусто | URI модели |
+| `YANDEX_AI_MODEL_URI` | пусто | URI Alice AI LLM Flash: `gpt://<folder-id>/aliceai-llm-flash` |
 | `YANDEX_AI_BASE_URL` | Yandex v1 URL | OpenAI-compatible base URL |
 | `YANDEX_AI_TIMEOUT_SECONDS` | `20` | Timeout 1–120 секунд |
 | `YANDEX_AI_MAX_PARALLEL_REQUESTS` | `8` | Semaphore 1–64 на worker |
@@ -1362,7 +1365,7 @@ SITE_ADDRESS=gate.example.ru
 AI_ENABLED=true
 YANDEX_AI_API_KEY=...
 YANDEX_AI_FOLDER_ID=...
-YANDEX_AI_MODEL_URI=...
+YANDEX_AI_MODEL_URI=gpt://<YANDEX_AI_FOLDER_ID>/aliceai-llm-flash
 ```
 
 Затем:

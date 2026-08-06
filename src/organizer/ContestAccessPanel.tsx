@@ -151,13 +151,18 @@ export function ContestAccessPanel({
   const [notice, setNotice] = useState("");
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [freshCodes, setFreshCodes] = useState<Record<string, string>>({});
+  const [recoveringCodes, setRecoveringCodes] = useState(false);
 
-  async function refreshRows(signal?: AbortSignal) {
+  async function refreshRows(
+    signal?: AbortSignal,
+    preserveVisibleCodes = false,
+  ) {
     const items = await api.listContestEnrollments(contest.id, {
       token,
       signal,
     });
     setRows(items);
+    if (!preserveVisibleCodes) setFreshCodes({});
   }
 
   useEffect(() => {
@@ -199,14 +204,50 @@ export function ContestAccessPanel({
         ...current,
         [row.id]: result.code,
       }));
-      await refreshRows();
+      await refreshRows(undefined, true);
       setNotice(
-        `Новый код для «${row.participant.displayName}» выпущен. Скопируйте его сейчас: после обновления страницы он будет скрыт.`,
+        `Новый код для «${row.participant.displayName}» выпущен.`,
       );
     } catch (caught) {
       setError(actionError(caught, "Не удалось перевыпустить код."));
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  async function recoverCodes() {
+    setRecoveringCodes(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api.generateCodes(
+        contest.id,
+        { recoverOnly: true },
+        { token },
+      );
+      if (!result.codes.length) {
+        setNotice(
+          result.skippedCount
+            ? "Действующие коды старого формата восстановить нельзя. Перевыпустите их по одному."
+            : "Действующих кодов пока нет.",
+        );
+        return;
+      }
+      setFreshCodes(
+        Object.fromEntries(
+          result.codes.map((item) => [item.enrollmentId, item.code]),
+        ),
+      );
+      await refreshRows(undefined, true);
+      setNotice(
+        result.skippedCount
+          ? `Восстановлено кодов: ${result.codes.length}. Ещё ${result.skippedCount} нужно перевыпустить.`
+          : "Действующие коды восстановлены. Их можно скопировать из таблицы.",
+      );
+    } catch (caught) {
+      setError(actionError(caught, "Не удалось восстановить коды."));
+    } finally {
+      setRecoveringCodes(false);
     }
   }
 
@@ -283,27 +324,39 @@ export function ContestAccessPanel({
             <h2 id="accessRosterTitle">Участники и доступы</h2>
             <p>{loading ? "Загружаем…" : participantCountLabel(rows.length)}</p>
           </div>
-          <button
-            className="access-manager__refresh"
-            type="button"
-            onClick={() => {
-              setLoading(true);
-              setError("");
-              refreshRows()
-                .catch((caught) =>
-                  setError(
-                    actionError(
-                      caught,
-                      "Не удалось обновить список участников.",
+          <div className="access-roster__heading-actions">
+            <button
+              className="access-manager__refresh"
+              type="button"
+              onClick={() => void recoverCodes()}
+              disabled={
+                loading || recoveringCodes || busyAction !== null || !rows.length
+              }
+            >
+              {recoveringCodes ? "Получаем…" : "Показать коды"}
+            </button>
+            <button
+              className="access-manager__refresh"
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                setError("");
+                refreshRows()
+                  .catch((caught) =>
+                    setError(
+                      actionError(
+                        caught,
+                        "Не удалось обновить список участников.",
+                      ),
                     ),
-                  ),
-                )
-                .finally(() => setLoading(false));
-            }}
-            disabled={loading || busyAction !== null}
-          >
-            Обновить
-          </button>
+                  )
+                  .finally(() => setLoading(false));
+              }}
+              disabled={loading || recoveringCodes || busyAction !== null}
+            >
+              Обновить
+            </button>
+          </div>
         </div>
 
         <div className="access-manager__messages" aria-live="polite">
@@ -367,7 +420,7 @@ export function ContestAccessPanel({
                             >
                               Копировать
                             </button>
-                            <small>Показывается только сейчас</small>
+                            <small>Можно скрыть обновлением списка</small>
                           </div>
                         ) : (
                           <>

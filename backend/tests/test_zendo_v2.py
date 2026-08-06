@@ -20,6 +20,8 @@ from app.environments.geometry_world.zendo_v2 import (
     generate_geo_zendo_v2_task,
     transition_geo_zendo_v2_probe,
 )
+from app.environments.geometry_world import GENERATOR_VERSION as LEGACY_GENERATOR_VERSION
+from app.environments.registry import interact_task
 
 
 def nested_keys(value: object) -> set[str]:
@@ -164,3 +166,20 @@ def test_zendo_warm_generation_smoke_and_legacy_evaluator():
         answer=legacy_answer,
         private_state=legacy_private,
     )["correct"] is True
+
+
+def test_legacy_zendo_isolated_point_hint_is_supported():
+    public, private = generate_geo_zendo_task(seed=0, difficulty=2)
+    assert private["rule_key"] == "has_isolated_point"
+
+    transition = interact_task(
+        family="geo_zendo",
+        generator_version=LEGACY_GENERATOR_VERSION,
+        action_type="hint",
+        action_payload={},
+        public_state=public,
+        private_state=private,
+    )
+
+    assert transition.accepted is True
+    assert "Подсказка" in transition.message

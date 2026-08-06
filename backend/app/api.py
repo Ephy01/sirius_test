@@ -89,6 +89,7 @@ from .models import (
     TaskInstance,
     TaskStatus,
     utc_now,
+    uuid_string,
 )
 from .schemas import (
     AccessRedeemRequest,
@@ -127,7 +128,7 @@ from .schemas import (
     TaskInteractionResponse,
 )
 from .security import (
-    generate_access_code,
+    derive_access_code,
     hash_access_code,
     issue_bearer_token,
     normalize_code,
@@ -290,20 +291,32 @@ def _expire_access_code_if_needed(code: AccessCode, now: datetime) -> bool:
 def _new_access_code_values(
     session: SessionDependency,
     settings: SettingsDependency,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     for _ in range(12):
-        plaintext = generate_access_code()
+        code_id = uuid_string()
+        plaintext = derive_access_code(code_id, settings)
         lookup_hash = hash_access_code(plaintext, settings)
         hash_exists = session.scalar(
             select(AccessCode.id).where(AccessCode.lookup_hash == lookup_hash)
         )
         if hash_exists is None:
-            return plaintext, lookup_hash
+            return code_id, plaintext, lookup_hash
     raise api_error(
         status.HTTP_503_SERVICE_UNAVAILABLE,
         "CODE_GENERATION_FAILED",
         "Не удалось создать уникальный код.",
     )
+
+
+def _recover_access_code_plaintext(
+    code: AccessCode,
+    settings: SettingsDependency,
+) -> str | None:
+    plaintext = derive_access_code(code.id, settings)
+    expected_hash = hash_access_code(plaintext, settings)
+    if not hmac.compare_digest(expected_hash, code.lookup_hash):
+        return None
+    return plaintext
 
 
 def _expire_attempt_if_needed(
@@ -1422,7 +1435,7 @@ def _create_or_get_current_task(
     return task, True
 
 
-def _get_active_task_or_error(
+def _get_task_or_error(
     session: SessionDependency,
     *,
     attempt: Attempt,
@@ -1440,6 +1453,16 @@ def _get_active_task_or_error(
             "TASK_NOT_FOUND",
             "Задача не найдена в текущей попытке.",
         )
+    return task
+
+
+def _get_active_task_or_error(
+    session: SessionDependency,
+    *,
+    attempt: Attempt,
+    task_id: str,
+) -> TaskInstance:
+    task = _get_task_or_error(session, attempt=attempt, task_id=task_id)
     if task.status != TaskStatus.ACTIVE:
         raise api_error(
             status.HTTP_409_CONFLICT,
@@ -1925,14 +1948,81 @@ def download_enrollment_telemetry(
     )
 
 
+@router.post(
+    "/contests/{contest_id}/codes/recover",
+    response_model=CodeGenerationResponse,
+)
+def recover_codes(
+    contest_id: str,
+    response: Response,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    _organizer: OrganizerDependency,
+) -> CodeGenerationResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    _get_contest_or_404(session, contest_id)
+    enrollments = list(
+        session.scalars(
+            select(Enrollment)
+            .options(joinedload(Enrollment.participant), joinedload(Enrollment.access_codes))
+            .where(Enrollment.contest_id == contest_id)
+            .order_by(Enrollment.created_at)
+        )
+        .unique()
+        .all()
+    )
+    now = utc_now()
+    recovered: list[GeneratedCodeResponse] = []
+    unavailable_count = 0
+    status_changed = False
+    for enrollment in enrollments:
+        active_codes: list[AccessCode] = []
+        for code in enrollment.access_codes:
+            status_changed = _expire_access_code_if_needed(code, now) or status_changed
+            if code.status == AccessCodeStatus.ACTIVE:
+                active_codes.append(code)
+        active_code = (
+            max(active_codes, key=lambda code: (code.created_at, code.id))
+            if active_codes
+            else None
+        )
+        plaintext = (
+            _recover_access_code_plaintext(active_code, settings)
+            if active_code is not None
+            else None
+        )
+        if active_code is None or plaintext is None:
+            unavailable_count += 1
+            continue
+        recovered.append(
+            GeneratedCodeResponse(
+                enrollment_id=enrollment.id,
+                participant=enrollment.participant,
+                code=plaintext,
+                last4=active_code.last4,
+                status=active_code.status,
+                expires_at=active_code.expires_at,
+            )
+        )
+    if status_changed:
+        session.commit()
+    return CodeGenerationResponse(
+        items=recovered,
+        generated_count=0,
+        skipped_count=unavailable_count,
+    )
+
+
 @router.post("/contests/{contest_id}/codes", response_model=CodeGenerationResponse)
 def generate_codes(
     contest_id: str,
+    response: Response,
     session: SessionDependency,
     settings: SettingsDependency,
     _organizer: OrganizerDependency,
     payload: CodeGenerationRequest = Body(default_factory=CodeGenerationRequest),
 ) -> CodeGenerationResponse:
+    response.headers["Cache-Control"] = "private, no-store"
     _get_contest_or_404(session, contest_id)
     enrollments = list(
         session.scalars(
@@ -1946,6 +2036,7 @@ def generate_codes(
     )
     now = utc_now()
     generated: list[GeneratedCodeResponse] = []
+    generated_count = 0
     skipped_count = 0
 
     for enrollment in enrollments:
@@ -1956,6 +2047,22 @@ def generate_codes(
             and not _expire_access_code_if_needed(code, now)
         ]
         if active_codes and not payload.rotate:
+            active_code = max(
+                active_codes,
+                key=lambda code: (code.created_at, code.id),
+            )
+            recovered = _recover_access_code_plaintext(active_code, settings)
+            if recovered is not None:
+                generated.append(
+                    GeneratedCodeResponse(
+                        enrollment_id=enrollment.id,
+                        participant=enrollment.participant,
+                        code=recovered,
+                        last4=active_code.last4,
+                        status=active_code.status,
+                        expires_at=active_code.expires_at,
+                    )
+                )
             skipped_count += 1
             continue
         if payload.rotate:
@@ -1964,9 +2071,10 @@ def generate_codes(
                 code.active_slot = None
                 code.revoked_at = now
 
-        plaintext, lookup_hash = _new_access_code_values(session, settings)
+        code_id, plaintext, lookup_hash = _new_access_code_values(session, settings)
 
         code = AccessCode(
+            id=code_id,
             enrollment_id=enrollment.id,
             lookup_hash=lookup_hash,
             last4=plaintext[-4:],
@@ -1975,6 +2083,7 @@ def generate_codes(
         )
         session.add(code)
         session.flush()
+        generated_count += 1
         generated.append(
             GeneratedCodeResponse(
                 enrollment_id=enrollment.id,
@@ -1998,7 +2107,7 @@ def generate_codes(
 
     return CodeGenerationResponse(
         items=generated,
-        generated_count=len(generated),
+        generated_count=generated_count,
         skipped_count=skipped_count,
     )
 
@@ -2010,11 +2119,13 @@ def generate_codes(
 def rotate_enrollment_code(
     contest_id: str,
     enrollment_id: str,
+    response: Response,
     session: SessionDependency,
     settings: SettingsDependency,
     _organizer: OrganizerDependency,
     payload: CodeRotationRequest = Body(default_factory=CodeRotationRequest),
 ) -> GeneratedCodeResponse:
+    response.headers["Cache-Control"] = "private, no-store"
     _get_contest_or_404(session, contest_id)
     enrollment = _get_enrollment_for_contest_or_404(
         session,
@@ -2039,8 +2150,9 @@ def rotate_enrollment_code(
         code.active_slot = None
         code.revoked_at = now
 
-    plaintext, lookup_hash = _new_access_code_values(session, settings)
+    code_id, plaintext, lookup_hash = _new_access_code_values(session, settings)
     code = AccessCode(
+        id=code_id,
         enrollment_id=enrollment.id,
         lookup_hash=lookup_hash,
         last4=plaintext[-4:],
@@ -3133,7 +3245,21 @@ def answer_task(
     session: SessionDependency,
 ) -> TaskActionResponse:
     attempt = _require_active_attempt(session, enrollment)
-    task = _get_active_task_or_error(session, attempt=attempt, task_id=task_id)
+    task = _get_task_or_error(session, attempt=attempt, task_id=task_id)
+    if (
+        task.status == TaskStatus.ANSWERED
+        and task.participant_answer == payload.answer
+    ):
+        return TaskActionResponse(
+            task=task,
+            message="Ответ уже был зафиксирован. Можно перейти к следующей задаче.",
+        )
+    if task.status != TaskStatus.ACTIVE:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "TASK_ALREADY_CLOSED",
+            "Ответ на эту задачу уже зафиксирован.",
+        )
     _require_task_input_available(task)
     if task.family == MACHINE_REACH_FAMILY:
         next_private = dict(
@@ -3258,7 +3384,18 @@ def skip_task(
     session: SessionDependency,
 ) -> TaskActionResponse:
     attempt = _require_active_attempt(session, enrollment)
-    task = _get_active_task_or_error(session, attempt=attempt, task_id=task_id)
+    task = _get_task_or_error(session, attempt=attempt, task_id=task_id)
+    if task.status == TaskStatus.SKIPPED:
+        return TaskActionResponse(
+            task=task,
+            message="Пропуск уже был зафиксирован. Можно перейти к следующей задаче.",
+        )
+    if task.status != TaskStatus.ACTIVE:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "TASK_ALREADY_CLOSED",
+            "Ответ на эту задачу уже зафиксирован.",
+        )
     task.evaluation_state = _evaluation_with_telemetry(
         task,
         {

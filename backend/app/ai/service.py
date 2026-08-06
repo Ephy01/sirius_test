@@ -184,6 +184,7 @@ def _history_messages(
         .where(
             AiTurn.task_instance_id == task_id,
             AiTurn.status == AiTurnStatus.COMPLETED,
+            AiTurn.provider != TRIPWIRE_PROVIDER,
         )
         .order_by(AiTurn.sequence.desc())
         .limit(history_turns)
@@ -222,6 +223,14 @@ def _append_ai_event(
         event_type=event_type,
         payload=payload,
     )
+
+
+def _lock_attempt_for_event(session: Session, attempt_id: str) -> None:
+    locked_id = session.scalar(
+        select(Attempt.id).where(Attempt.id == attempt_id).with_for_update()
+    )
+    if locked_id is None:
+        raise RuntimeError("AI turn attempt no longer exists")
 
 
 def run_ai_turn(
@@ -269,6 +278,18 @@ def run_ai_turn(
         )
     )
     if existing is not None:
+        if (
+            existing.task_instance_id != task.id
+            or existing.user_message != stripped
+        ):
+            raise api_error(
+                status.HTTP_409_CONFLICT,
+                "AI_TURN_ID_REUSED",
+                (
+                    "Этот идентификатор сообщения уже использован "
+                    "с другими данными."
+                ),
+            )
         remaining = remaining_turns(
             session, config=config, attempt_id=attempt.id, task_id=task.id
         )
@@ -418,6 +439,7 @@ def run_ai_turn(
     else:
         semaphore.release()
 
+    _lock_attempt_for_event(session, attempt.id)
     turn.status = AiTurnStatus.COMPLETED
     turn.assistant_message = _strip_markdown(result.text)
     turn.model_version = result.model_version
@@ -459,6 +481,7 @@ def _finish_turn_failed(
     turn: AiTurn,
     error_code: str,
 ) -> None:
+    _lock_attempt_for_event(session, attempt.id)
     turn.status = AiTurnStatus.FAILED
     turn.error_code = error_code
     turn.completed_at = utc_now()

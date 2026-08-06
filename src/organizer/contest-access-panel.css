@@ -79,6 +79,11 @@
   font-size: 9px;
 }
 
+.access-roster__heading-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .access-manager__refresh {
   min-height: 38px;
   padding: 0 14px;

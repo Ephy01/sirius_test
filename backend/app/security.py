@@ -33,6 +33,21 @@ def generate_access_code() -> str:
     return f"SG-{first}-{second}"
 
 
+def derive_access_code(code_id: str, settings: Settings) -> str:
+    digest = hmac.new(
+        settings.code_hmac_secret.encode("utf-8"),
+        b"sirius-gate/access-code/v1\0" + code_id.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    value = int.from_bytes(digest, "big")
+    symbols: list[str] = []
+    for _ in range(8):
+        value, index = divmod(value, len(CODE_ALPHABET))
+        symbols.append(CODE_ALPHABET[index])
+    plaintext = "".join(symbols)
+    return f"SG-{plaintext[:4]}-{plaintext[4:]}"
+
+
 def _base64url_encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
@@ -119,4 +134,3 @@ def decode_bearer_token(token: str, settings: Settings) -> dict[str, Any]:
     if payload["exp"] <= int(datetime.now(timezone.utc).timestamp()):
         raise InvalidTokenError("Token expired")
     return payload
-

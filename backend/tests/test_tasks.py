@@ -226,10 +226,18 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
         assert "participant_answer" not in action["task"]
         assert "seed" not in action["task"]
 
+        repeated_same_answer = client.post(
+            f"/api/v1/participant/tasks/{task['id']}/answer",
+            headers=auth(participant),
+            json={"answer": correct_answer},
+        )
+        assert repeated_same_answer.status_code == 200
+        assert repeated_same_answer.json()["task"]["status"] == "answered"
+
         repeated_answer = client.post(
             f"/api/v1/participant/tasks/{task['id']}/answer",
             headers=auth(participant),
-            json={"answer": "1/2"},
+            json={"answer": f"{correct_answer} другой"},
         )
         assert repeated_answer.status_code == 409
         assert repeated_answer.json()["detail"]["code"] == "TASK_ALREADY_CLOSED"
@@ -251,6 +259,13 @@ def test_task_api_is_idempotent_and_does_not_leak_evaluation(tmp_path):
         assert skipped.status_code == 200
         assert skipped.json()["task"]["status"] == "skipped"
         assert set(skipped.json()) == {"task", "message"}
+
+        repeated_skip = client.post(
+            f"/api/v1/participant/tasks/{next_task['id']}/skip",
+            headers=auth(participant),
+        )
+        assert repeated_skip.status_code == 200
+        assert repeated_skip.json()["task"]["status"] == "skipped"
 
         with application.state.database.session_factory() as session:
             stored_tasks = list(

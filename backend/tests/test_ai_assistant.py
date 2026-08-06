@@ -27,7 +27,7 @@ def _settings(database_path, *, ai_enabled: bool = True) -> Settings:
         security_secret="test-token-secret-that-is-long",
         code_hmac_secret="test-code-secret-that-is-different",
         ai_enabled=ai_enabled,
-        yandex_ai_model_uri="gpt://test-folder/aliceai-llm",
+        yandex_ai_model_uri="gpt://test-folder/aliceai-llm-flash",
     )
 
 
@@ -259,6 +259,70 @@ def test_client_action_id_replay_returns_same_turn(tmp_path):
         assert len(fake.requests) == 1
 
 
+def test_client_action_id_reuse_with_another_message_is_rejected(tmp_path):
+    application = create_app(_settings(tmp_path / "ai-reused-message-id.db"))
+    fake = FakeAssistantProvider()
+    application.state.ai_provider = fake
+    with TestClient(application) as client:
+        participant, _ = _prepare(client, ai=DEFAULT_AI_CONFIG)
+        task = _start_task(client, participant)
+
+        first = _send(client, participant, task["id"], "Первый вопрос", "same-id")
+        reused = _send(
+            client,
+            participant,
+            task["id"],
+            "Совершенно другой вопрос",
+            "same-id",
+        )
+
+        assert first.status_code == 200
+        assert reused.status_code == 409
+        assert reused.json()["detail"]["code"] == "AI_TURN_ID_REUSED"
+        assert len(fake.requests) == 1
+
+
+def test_client_action_id_reuse_on_another_task_is_rejected(tmp_path):
+    application = create_app(_settings(tmp_path / "ai-reused-task-id.db"))
+    fake = FakeAssistantProvider()
+    application.state.ai_provider = fake
+    with TestClient(application) as client:
+        participant, _ = _prepare(client, ai=DEFAULT_AI_CONFIG)
+        first_task = _start_task(client, participant)
+
+        first = _send(
+            client,
+            participant,
+            first_task["id"],
+            "Одинаковый вопрос",
+            "same-id",
+        )
+        assert first.status_code == 200
+        skipped = client.post(
+            f"/api/v1/participant/tasks/{first_task['id']}/skip",
+            headers=auth(participant),
+        )
+        assert skipped.status_code == 200
+        next_task_response = client.post(
+            "/api/v1/participant/tasks/next",
+            headers=auth(participant),
+        )
+        assert next_task_response.status_code == 200
+        second_task = next_task_response.json()["task"]
+
+        reused = _send(
+            client,
+            participant,
+            second_task["id"],
+            "Одинаковый вопрос",
+            "same-id",
+        )
+
+        assert reused.status_code == 409
+        assert reused.json()["detail"]["code"] == "AI_TURN_ID_REUSED"
+        assert len(fake.requests) == 1
+
+
 def test_second_concurrent_request_is_blocked(tmp_path):
     application = create_app(_settings(tmp_path / "ai-pending.db"))
     application.state.ai_provider = FakeAssistantProvider()
@@ -275,7 +339,7 @@ def test_second_concurrent_request_is_blocked(tmp_path):
                     client_action_id="in-flight",
                     status=AiTurnStatus.PENDING,
                     user_message="висящий запрос",
-                    model_uri="gpt://test-folder/aliceai-llm",
+                    model_uri="gpt://test-folder/aliceai-llm-flash",
                     prompt_version="sirius-assistant-socratic-v1",
                     public_context_hash="0" * 64,
                 )

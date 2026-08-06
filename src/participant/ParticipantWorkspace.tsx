@@ -1,4 +1,5 @@
 import {
+  Fragment,
   type ClipboardEvent,
   type FormEvent,
   type ReactNode,
@@ -1567,51 +1568,53 @@ export function ParticipantWorkspace({
             </div>
           </article>
 
-          {task.foldPunch ? (
-            <FoldPunchScene
-              state={task.foldPunch}
-              canAnswer={task.status === "active" && !isBusy}
-              onSubmit={(cells) => void runCommand(`/answer ${cells}`)}
-            />
-          ) : task.wiring ? (
-            <WiringPanelScene
-              state={task.wiring}
-              canAct={task.status === "active" && !isBusy}
-              onChord={(opId) => void runCommand(`/op ${opId}`)}
-            />
-          ) : task.machinePanel ? (
-            <MachinePanel state={task.machinePanel} />
-          ) : isLeaperBoard && task.leaperBoard ? (
-            <LeaperBoardScene state={task.leaperBoard} />
-          ) : task.tokenCards ? (
-            <TokenShelfScene
-              cards={task.tokenCards}
-              content={task.geometryContent ?? {}}
-            />
-          ) : task.gridCards ? (
-            <GridZendoScene
-              cards={task.gridCards}
-              content={task.geometryContent ?? {}}
-              canProbe={task.status === "active" && !isBusy}
-              onProbe={(pattern) => void runCommand(`/test ${pattern}`)}
-            />
-          ) : task.geometryScene ? (
-            <GeometryAtlasScene
-              scene={task.geometryScene}
-              content={task.geometryContent ?? {}}
-              showGrid={task.kind === "point_zendo"}
-            />
-          ) : isDicePosition ? (
-            <DicePositionScene
-              board={board}
-              die={dice[0]}
-              sideToMove={task.sideToMove}
-            />
-          ) : isDiceChess ? (
-            <DiceScene dice={dice} />
-          ) : isClassicMath ? null : (
-            <Chessboard board={board} />
-          )}
+          <Fragment key={task.id}>
+            {task.foldPunch ? (
+              <FoldPunchScene
+                state={task.foldPunch}
+                canAnswer={task.status === "active" && !isBusy}
+                onSubmit={(cells) => void runCommand(`/answer ${cells}`)}
+              />
+            ) : task.wiring ? (
+              <WiringPanelScene
+                state={task.wiring}
+                canAct={task.status === "active" && !isBusy}
+                onChord={(opId) => void runCommand(`/op ${opId}`)}
+              />
+            ) : task.machinePanel ? (
+              <MachinePanel state={task.machinePanel} />
+            ) : isLeaperBoard && task.leaperBoard ? (
+              <LeaperBoardScene state={task.leaperBoard} />
+            ) : task.tokenCards ? (
+              <TokenShelfScene
+                cards={task.tokenCards}
+                content={task.geometryContent ?? {}}
+              />
+            ) : task.gridCards ? (
+              <GridZendoScene
+                cards={task.gridCards}
+                content={task.geometryContent ?? {}}
+                canProbe={task.status === "active" && !isBusy}
+                onProbe={(pattern) => void runCommand(`/test ${pattern}`)}
+              />
+            ) : task.geometryScene ? (
+              <GeometryAtlasScene
+                scene={task.geometryScene}
+                content={task.geometryContent ?? {}}
+                showGrid={task.kind === "point_zendo"}
+              />
+            ) : isDicePosition ? (
+              <DicePositionScene
+                board={board}
+                die={dice[0]}
+                sideToMove={task.sideToMove}
+              />
+            ) : isDiceChess ? (
+              <DiceScene dice={dice} />
+            ) : isClassicMath ? null : (
+              <Chessboard board={board} />
+            )}
+          </Fragment>
         </div>
       </section>
 

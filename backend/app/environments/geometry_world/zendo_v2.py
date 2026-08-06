@@ -53,6 +53,7 @@ GRAPH_ATOM_HINT_CATEGORIES = {
     "exactly_two_odd_degrees": "count",
     "max_degree_at_least_three": "count",
     "has_isolated_vertex": "connectivity",
+    "has_isolated_point": "connectivity",
     "has_leaf": "connectivity",
     "connected": "connectivity",
     "has_triangle": "connectivity",

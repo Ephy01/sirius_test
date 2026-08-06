@@ -83,6 +83,16 @@ def test_crisis_message_gets_support_without_model_call(tmp_path):
         normal = _send(client, participant, task["id"], "Как искать правило?", "cr-2")
         assert normal.status_code == 200
         assert len(fake.requests) == 1
+        assert fake.requests[0].history == ()
+
+        stored_history = client.get(
+            f"/api/v1/participant/tasks/{task['id']}/ai/turns",
+            headers=auth(participant),
+        ).json()
+        assert [turn["userMessage"] for turn in stored_history["turns"]] == [
+            "Я хочу покончить с собой",
+            "Как искать правило?",
+        ]
 
 
 def test_crisis_replay_is_idempotent(tmp_path):

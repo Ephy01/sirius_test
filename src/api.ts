@@ -113,6 +113,7 @@ export type AddEnrollmentsResponse = {
 export type GenerateCodesInput = {
   rotate?: boolean;
   expiresAt?: string | null;
+  recoverOnly?: boolean;
 };
 
 export type GeneratedAccessCode = {
@@ -129,6 +130,7 @@ export type GeneratedAccessCode = {
 export type GenerateCodesResponse = {
   codes: GeneratedAccessCode[];
   generatedCount: number;
+  skippedCount: number;
 };
 
 export type AccessCodeOverview = {
@@ -2216,14 +2218,18 @@ export class ApiClient {
     options: AuthenticatedRequestOptions,
   ): Promise<GenerateCodesResponse> {
     const body = await this.request(
-      `/contests/${encodeURIComponent(contestId)}/codes`,
+      input.recoverOnly
+        ? `/contests/${encodeURIComponent(contestId)}/codes/recover`
+        : `/contests/${encodeURIComponent(contestId)}/codes`,
       {
         ...options,
         method: "POST",
-        body: {
-          rotate: input.rotate,
-          expires_at: input.expiresAt,
-        },
+        body: input.recoverOnly
+          ? undefined
+          : {
+              rotate: input.rotate,
+              expires_at: input.expiresAt,
+            },
       },
     );
     const items =
@@ -2286,6 +2292,8 @@ export class ApiClient {
       }),
       generatedCount:
         isRecord(body) ? readNumber(body, "generatedCount", "generated_count") ?? items.length : items.length,
+      skippedCount:
+        isRecord(body) ? readNumber(body, "skippedCount", "skipped_count") ?? 0 : 0,
     };
   }
 
