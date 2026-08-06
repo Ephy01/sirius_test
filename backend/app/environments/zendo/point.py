@@ -524,8 +524,8 @@ def generate_point_zendo_task(
             "commands": ["/test <card_id>", "/answer <да/нет ...>"],
         },
         "response_hint": (
-            "Ответьте восемью значениями в порядке целей: "
-            "/answer да нет да нет да нет да нет."
+            "Ответьте восемью значениями в порядке целей "
+            "(1 — подходит, 0 — нет): /answer 1 0 1 0 1 0 1 0."
         ),
         "dsl_version": DSL_VERSION,
     }

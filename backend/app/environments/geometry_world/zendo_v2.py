@@ -164,8 +164,8 @@ def generate_geo_zendo_v2_task(
         mode="probe_then_answer",
         commands=["/test <card_id>", "/answer <да/нет ...>"],
         response_hint=(
-            "Ответьте восемью значениями в порядке целей: "
-            "/answer да нет да нет да нет да нет."
+            "Ответьте восемью значениями в порядке целей "
+            "(1 — подходит, 0 — нет): /answer 1 0 1 0 1 0 1 0."
         ),
     )
     public["dsl_version"] = DEFAULT_DSL_VERSION

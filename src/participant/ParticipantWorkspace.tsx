@@ -579,6 +579,10 @@ export function ParticipantWorkspace({
   const [commandBusy, setCommandBusy] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const aiHistoryTasks = useRef(new Set<string>());
+  const [aiRemaining, setAiRemaining] = useState<{
+    task: number;
+    attempt: number;
+  } | null>(null);
   const [remainingTime, setRemainingTime] = useState(() =>
     formatRemainingTime(deadlineAt),
   );
@@ -689,12 +693,13 @@ export function ParticipantWorkspace({
   }
   if (task.leaperBoard) {
     briefMetaLines.push(
-      `Сейчас ${pointToSquare(task.leaperBoard.current)} · цель ` +
-        `${pointToSquare(task.leaperBoard.target)} · шагов ` +
-        `${task.leaperBoard.stepsTaken} / ${task.leaperBoard.stepsSoftCap}`,
-    );
-    briefMetaLines.push(
-      "белый конь — текущая позиция, чёрный король — цель, пешки — препятствия",
+      `Фигура: (${task.leaperBoard.current.row + 1}, ${
+        task.leaperBoard.current.col + 1
+      })`,
+      `Цель: (${task.leaperBoard.target.row + 1}, ${
+        task.leaperBoard.target.col + 1
+      })`,
+      `Шагов: ${task.leaperBoard.stepsTaken} / ${task.leaperBoard.stepsSoftCap}`,
     );
   }
   if (task.foldPunch) {
@@ -748,6 +753,7 @@ export function ParticipantWorkspace({
     void (async () => {
       try {
         const history = await onLoadAiHistory();
+        setAiRemaining(history.remaining);
         setEntries((current) => {
           const restored: ConsoleEntry[] = [];
           for (const turn of history.turns) {
@@ -1007,7 +1013,7 @@ export function ParticipantWorkspace({
                 Кнопки срабатывают только парами; первая проба обучающая
                 и не тратит лимит.
                 <br />
-                <code>/hint</code> — платная подсказка (скор ×0.7)
+                <code>/hint</code> — платная подсказка: итоговый балл умножается на 0.7
                 <br />
                 <code>/skip</code> — пропустить задачу
               </>
@@ -1028,7 +1034,7 @@ export function ParticipantWorkspace({
                 <code>/answer &lt;ответ&gt;</code> — классифицировать целевые
                 конфигурации
                 <br />
-                <code>/hint</code> — платная подсказка о типе правила (скор ×0.7)
+                <code>/hint</code> — платная подсказка о типе правила: итоговый балл умножается на 0.7
                 <br />
                 <code>/skip</code> — пропустить и открыть следующую задачу
               </>
@@ -1343,6 +1349,7 @@ export function ParticipantWorkspace({
             setAiThinking(true);
             try {
               const turn = await onAiMessage(input, createClientActionId());
+              setAiRemaining(turn.remaining);
               if (turn.assistantMessage) {
                 appendEntry("assistant", turn.assistantMessage);
               } else {
@@ -1502,8 +1509,8 @@ export function ParticipantWorkspace({
                 ) : isZendo ? (
                   <>
                     Ответ отправьте в чате (пример:{" "}
-                    <code>/answer да нет да нет да нет да нет</code> — восемь
-                    значений в порядке целей).
+                    <code>/answer 1 0 1 0 1 0 1 0</code> — восемь значений
+                    в порядке целей, 1 — подходит, 0 — нет).
                   </>
                 ) : task.foldPunch ? (
                   <>
@@ -1534,7 +1541,7 @@ export function ParticipantWorkspace({
                     <>
                       Кнопки срабатывают только парами: выберите две кнопки
                       на панели или отправьте <code>/op b1+b2</code>.{" "}
-                      <code>/hint</code> — платная подсказка (скор ×0.7).
+                      <code>/hint</code> — платная подсказка: итоговый балл умножается на 0.7.
                     </>
                   ) : isMachine ? (
                     <>
@@ -1546,23 +1553,23 @@ export function ParticipantWorkspace({
                       Пробы рисуются: закрасьте клетки в блоке «Свой узор» и
                       нажмите «Проверить узор», или отправьте{" "}
                       <code>/test &lt;25 нулей и единиц&gt;</code>.{" "}
-                      <code>/hint</code> — платная подсказка (скор ×0.7).
+                      <code>/hint</code> — платная подсказка: итоговый балл умножается на 0.7.
                     </>
                   ) : (
                     <>
                       <code>/test &lt;код&gt;</code> — проверить одну из
-                      карточек-проб · <code>/hint</code> — платная подсказка
-                      (скор ×0.7).
+                      карточек-проб · <code>/hint</code> — платная подсказка:
+                      итоговый балл умножается на 0.7.
                     </>
                   )}
                 </p>
               )}
               {transformOptionCards.length > 0 && (
-                <p>Варианты: {transformOptionCards.join(" · ")}</p>
+                <p>Варианты: <DotSeparated items={transformOptionCards} /></p>
               )}
               {briefMetaLines.length > 0 && (
                 <p className="participant-brief__meta">
-                  {briefMetaLines.join(" · ")}
+                  <DotSeparated items={briefMetaLines} />
                 </p>
               )}
             </div>
@@ -1662,6 +1669,31 @@ export function ParticipantWorkspace({
 
         <form className="participant-console__form" onSubmit={submitCommand}>
           <label htmlFor="participantCommand">Команда или сообщение</label>
+          {task.status === "active" && !timeIsUp && (
+            <div className="participant-console__chips" aria-label="Быстрые команды">
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => {
+                  setDraft((current) =>
+                    current.startsWith("/answer")
+                      ? current
+                      : `/answer ${current}`.trimEnd() + " ",
+                  );
+                  inputRef.current?.focus();
+                }}
+              >
+                /answer — ответить
+              </button>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => void runCommand("/skip")}
+              >
+                /skip — пропустить
+              </button>
+            </div>
+          )}
           <div>
             <span aria-hidden="true">&gt;</span>
             <input
@@ -1669,12 +1701,11 @@ export function ParticipantWorkspace({
               id="participantCommand"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              title={task.responseHint ?? undefined}
               placeholder={
                 timeIsUp
                   ? "Время попытки завершено"
-                  : isClassicMath
-                    ? "/answer <развёрнутое решение>"
-                    : task.responseHint ?? "/answer ваш ответ"
+                  : "Команда (/help) или вопрос ассистенту"
               }
               autoComplete="off"
               spellCheck={false}
@@ -1703,7 +1734,9 @@ export function ParticipantWorkspace({
               ? "Время завершено · новые команды не принимаются"
               : busy || commandBusy
                 ? "Выполняем команду…"
-                : "Enter — отправить · /help — команды"}
+                : aiRemaining
+                  ? `Enter — отправить · /help — команды · ассистент: ${aiRemaining.task} по задаче, ${aiRemaining.attempt} за попытку`
+                  : "Enter — отправить · /help — команды"}
           </p>
         </form>
       </aside>
@@ -1728,10 +1761,52 @@ function geometryColor(value?: string): string {
   return GEOMETRY_COLORS[value] ?? value;
 }
 
+function DotSeparated({ items }: { items: string[] }) {
+  return (
+    <>
+      {items.map((item, index) => (
+        <Fragment key={index}>
+          {index > 0 && (
+            <span className="sep-dot" aria-hidden="true">
+              ·
+            </span>
+          )}
+          {item}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function cardIn(content: Record<string, unknown>, key: string, group: string) {
+  return (Array.isArray(content[key]) ? (content[key] as unknown[]) : []).some(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      "card_id" in item &&
+      (item as { card_id?: unknown }).card_id === group,
+  );
+}
+
+function geometryGroupRole(
+  group: string,
+  content: Record<string, unknown>,
+): string {
+  if (group === "source" || group === "image") return group;
+  if (cardIn(content, "examples", group)) return "example";
+  if (cardIn(content, "targets", group)) return "target";
+  // Вскрытая проба ведёт себя как открытая конструкция-пример.
+  if (cardIn(content, "probe_observations", group)) return "example";
+  if (cardIn(content, "probe_cards", group)) return "probe";
+  return "plain";
+}
+
 function geometryGroupLabel(
   group: string,
   content: Record<string, unknown>,
 ): string {
+  if (group === "source") return "Исходная фигура";
+  if (group === "image") return "Образ";
   const examples = Array.isArray(content.examples) ? content.examples : [];
   const example = examples.find(
     (item) =>
@@ -1834,7 +1909,11 @@ function GeometryAtlasScene({
           const points = scene.points.filter((point) => point.group === group);
           const edges = scene.edges.filter((edge) => edge.group === group);
           return (
-            <section className="geometry-card" key={group}>
+            <section
+              className="geometry-card"
+              data-role={geometryGroupRole(group, content)}
+              key={group}
+            >
               <header>{geometryGroupLabel(group, content)}</header>
               <svg
                 viewBox={`${scene.bounds.minX - viewPadding} ${
@@ -1940,7 +2019,11 @@ function TokenShelfScene({
     <figure className="token-shelf" aria-label="Полки с фишками">
       <div className="token-shelf__cards">
         {Object.entries(cards).map(([cardId, tokens]) => (
-          <section className="token-card" key={cardId}>
+          <section
+            className="token-card"
+            data-role={geometryGroupRole(cardId, content)}
+            key={cardId}
+          >
             <header>{geometryGroupLabel(cardId, content)}</header>
             <ol
               className="token-card__shelf"
@@ -2012,7 +2095,11 @@ function GridZendoScene({
     <figure className="grid-zendo" aria-label="Узоры на сетке">
       <div className="grid-zendo__cards">
         {Object.entries(cards).map(([cardId, rows]) => (
-          <section className="grid-card" key={cardId}>
+          <section
+            className="grid-card"
+            data-role={geometryGroupRole(cardId, content)}
+            key={cardId}
+          >
             <header>{geometryGroupLabel(cardId, content)}</header>
             <GridPatternPreview rows={rows} />
           </section>
@@ -2338,7 +2425,7 @@ function DiceScene({
                   key={`${die.id}-${faceIndex}`}
                 >
                   <span aria-hidden="true">{DICE_GLYPHS[face]}</span>
-                  <small>{face}</small>
+                  <small>{DICE_FACE_NAMES[face]}</small>
                 </li>
               ))}
             </ol>
@@ -2376,7 +2463,7 @@ function DicePositionScene({
                   ? BLACK_DICE_GLYPHS[face]
                   : DICE_GLYPHS[face]}
               </span>
-              <small>{face}</small>
+              <small>{DICE_FACE_NAMES[face]}</small>
             </li>
           ))}
         </ol>
@@ -2447,17 +2534,74 @@ function MachinePanel({ state }: { state: MachinePanelPublicState }) {
   );
 }
 
-function pointToSquare(point: { row: number; col: number }): string {
-  return `${FILES[point.col] ?? "?"}${point.row + 1}`;
-}
-
 function LeaperBoardScene({ state }: { state: LeaperBoardPublicState }) {
+  const blocked = new Set(
+    state.blocked.map((cell) => `${cell.row}:${cell.col}`),
+  );
+  const currentKey = `${state.current.row}:${state.current.col}`;
+  const targetKey = `${state.target.row}:${state.target.col}`;
   return (
     <figure className="leaper-scene" aria-label="Доска прыгуна">
-      <Chessboard
-        board={state.board as ChessBoard}
-        goalSquare={pointToSquare(state.target)}
-      />
+      <div
+        className="leaper-board"
+        role="grid"
+        aria-label="Доска прыгуна: нумерация с 1, строка 1 сверху"
+        style={{ gridTemplateColumns: `auto repeat(${state.cols}, 1fr)` }}
+      >
+        <span className="leaper-board__corner" aria-hidden="true" />
+        {Array.from({ length: state.cols }, (_, col) => (
+          <span
+            className="leaper-board__axis"
+            aria-hidden="true"
+            key={`col-${col}`}
+          >
+            {col + 1}
+          </span>
+        ))}
+        {Array.from({ length: state.rows }, (_, row) => (
+          <Fragment key={`row-${row}`}>
+            <span className="leaper-board__axis" aria-hidden="true">
+              {row + 1}
+            </span>
+            {Array.from({ length: state.cols }, (_, col) => {
+              const key = `${row}:${col}`;
+              const isBlocked = blocked.has(key);
+              const isCurrent = key === currentKey;
+              const isTarget = key === targetKey;
+              return (
+                <div
+                  className={[
+                    "leaper-board__cell",
+                    isBlocked ? "is-blocked" : "",
+                    isCurrent ? "is-current" : "",
+                    isTarget ? "is-target" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  role="gridcell"
+                  aria-label={`Строка ${row + 1}, столбец ${col + 1}: ${
+                    isBlocked
+                      ? "заблокировано"
+                      : isCurrent
+                        ? "фигура"
+                        : isTarget
+                          ? "цель"
+                          : "пусто"
+                  }`}
+                  key={key}
+                >
+                  {isCurrent ? "♞" : isTarget ? "✦" : ""}
+                </div>
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+      <p className="leaper-scene__legend">
+        Координаты — (строка, столбец), нумерация с 1, строка 1 — верхняя.
+        Фигура: ({state.current.row + 1}, {state.current.col + 1}), цель ✦: (
+        {state.target.row + 1}, {state.target.col + 1}).
+      </p>
       <ol className="leaper-operations" aria-label="Разрешённые прыжки">
         {state.ops.map((operation) => (
           <li key={operation.id}>

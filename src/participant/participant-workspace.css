@@ -3133,3 +3133,128 @@
     min-width: 500px;
   }
 }
+
+/* --- Роли карточек: конструкции, цели и пробы отличаются фоном --- */
+/* Вскрытая проба получает роль example и перекрашивается как конструкция. */
+.geometry-card[data-role="example"],
+.token-card[data-role="example"],
+.grid-card[data-role="example"] {
+  background: #edf7f2;
+  border-color: #cbe5d8;
+}
+
+.geometry-card[data-role="probe"],
+.token-card[data-role="probe"],
+.grid-card[data-role="probe"] {
+  background: #f6effa;
+  border-color: #e2d2ec;
+}
+
+.geometry-card[data-role="target"],
+.token-card[data-role="target"],
+.grid-card[data-role="target"] {
+  background: #fdf6e9;
+  border-color: #eddfc2;
+}
+
+/* --- Опущенные точки-разделители в служебных строках --- */
+.sep-dot {
+  display: inline-block;
+  margin: 0 7px;
+  transform: translateY(0.22em);
+  color: inherit;
+}
+
+/* --- Быстрые команды над полем ввода --- */
+.participant-console__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Перебивает базовый стиль кнопки формы (квадратная кнопка отправки). */
+.participant-console__form .participant-console__chips button {
+  flex: none;
+  width: auto;
+  height: auto;
+  display: inline-block;
+  padding: 5px 11px;
+  border: 1px solid rgba(75, 190, 207, 0.55);
+  border-radius: 999px;
+  background: var(--cyan-soft, #e8f7f9);
+  color: #00606f;
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.participant-console__chips button:hover:not(:disabled) {
+  border-color: #006b80;
+}
+
+.participant-console__chips button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* --- Доска прыгуна: матричная разметка с нумерацией от 1 --- */
+.leaper-board {
+  display: grid;
+  gap: 3px;
+  width: min(100%, 430px);
+}
+
+.leaper-board__corner {
+  display: block;
+}
+
+.leaper-board__axis {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  color: #5f686b;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leaper-board__cell {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid #d9dfe0;
+  border-radius: 6px;
+  background: #fdfdfa;
+  font-size: 22px;
+}
+
+.leaper-board__cell.is-blocked {
+  border-color: #b7a99a;
+  background: repeating-linear-gradient(
+    45deg,
+    #ece5dc,
+    #ece5dc 5px,
+    #e0d6c9 5px,
+    #e0d6c9 10px
+  );
+}
+
+.leaper-board__cell.is-current {
+  border-color: #006b80;
+  background: var(--cyan-soft, #e8f7f9);
+}
+
+.leaper-board__cell.is-target {
+  border-color: #d7a62b;
+  background: #fdf6e9;
+  color: #a87b0f;
+}
+
+.leaper-scene__legend {
+  margin: 10px 0 0;
+  color: #5f686b;
+  font-size: 12px;
+  line-height: 1.55;
+}

@@ -529,7 +529,7 @@ def transition_zendo_probe(
         accepted=True,
         reason="accepted",
         message=(
-            f"Карточка {normalized}: "
+            f"Конструкция {normalized}: "
             f"{'подходит' if outcome else 'не подходит'}."
         ),
         normalized_card_id=normalized,

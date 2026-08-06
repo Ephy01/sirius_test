@@ -691,6 +691,19 @@ def _point_state(point: tuple[int, int]) -> State:
     return {"row": point[0], "col": point[1]}
 
 
+def _leap_label(row_delta: int, col_delta: int) -> str:
+    """Словесная подпись прыжка: строка 1 — верхняя, поэтому −строка = вверх."""
+
+    parts = []
+    if row_delta:
+        direction = "вверх" if row_delta < 0 else "вниз"
+        parts.append(f"на {abs(row_delta)} {direction}")
+    if col_delta:
+        direction = "влево" if col_delta < 0 else "вправо"
+        parts.append(f"на {abs(col_delta)} {direction}")
+    return "Прыжок " + " и ".join(parts) if parts else "Прыжок на месте"
+
+
 def _public_chess_board(
     *,
     rows: int,
@@ -809,7 +822,7 @@ def generate_leaper_board_task(
     ops = [
         {
             "id": f"op{index + 1}",
-            "label": f"Прыжок ({row_delta:+d}, {col_delta:+d})",
+            "label": _leap_label(row_delta, col_delta),
             "spec": {
                 "kind": "leap",
                 "row_delta": row_delta,

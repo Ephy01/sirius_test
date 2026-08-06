@@ -225,8 +225,32 @@ _MACHINE_KEYS = (
 )
 
 
+def _shift_point(value: Any) -> Any:
+    """Перевод координаты {row, col} из внутренней 0-базной в экранную 1-базную."""
+
+    if isinstance(value, dict) and "row" in value and "col" in value:
+        shifted = dict(value)
+        shifted["row"] = value["row"] + 1
+        shifted["col"] = value["col"] + 1
+        return shifted
+    return value
+
+
 def _build_machine_context(public: dict[str, Any]) -> dict[str, Any]:
-    return {key: public.get(key) for key in _MACHINE_KEYS if key in public}
+    context = {key: public.get(key) for key in _MACHINE_KEYS if key in public}
+    if public.get("sub_kind") == "leaper_board":
+        # На доске участника строки и столбцы подписаны с 1 (строка 1 — верхняя);
+        # контекст приводится к той же системе, чтобы ассистент не путал участника.
+        for key in ("start", "current", "target"):
+            if key in context:
+                context[key] = _shift_point(context[key])
+        if isinstance(context.get("blocked"), list):
+            context["blocked"] = [_shift_point(cell) for cell in context["blocked"]]
+        context["coordinate_note"] = (
+            "Координаты в формате (строка, столбец), нумерация с 1, "
+            "строка 1 — верхняя."
+        )
+    return context
 
 
 def _build_fold_punch_context(public: dict[str, Any]) -> dict[str, Any]:

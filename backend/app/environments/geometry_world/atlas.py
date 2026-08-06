@@ -668,7 +668,7 @@ def transition_geo_zendo_probe(
             accepted=True,
             reason="accepted",
             message=(
-                f"Карточка {normalized_card_id}: "
+                f"Конструкция {normalized_card_id}: "
                 f"{'подходит' if truth else 'не подходит'}."
             ),
         )
@@ -814,7 +814,7 @@ def generate_geo_transform_task(
         prompt=(
             "Слева показана исходная фигура, справа — её образ. "
             "Координатная плоскость и подписи вершин сохраняются. "
-            "Выберите карточку преобразования."
+            "Выберите операцию преобразования."
         ),
         scene=_scene(
             graphs=[

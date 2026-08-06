@@ -1462,3 +1462,40 @@ svg {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --- Общие правила на экране готовности контеста --- */
+.participant-rules {
+  width: min(620px, 100%);
+  margin: 0 0 24px;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  text-align: left;
+}
+
+.participant-rules h2 {
+  margin: 0 0 10px;
+  color: var(--vintage-grape);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.participant-rules ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.participant-rules code {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--cyan-soft);
+  color: #00606f;
+  font-family: var(--mono);
+  font-size: 11px;
+}
