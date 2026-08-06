@@ -1751,7 +1751,7 @@ const GEOMETRY_COLORS: Record<string, string> = {
   plum: "#c792df",
   violet: "#765184",
   coral: "#e5857b",
-  gold: "#d7a62b",
+  gold: "#a678c9",
   green: "#4f9d79",
   gray: "#958b98",
 };

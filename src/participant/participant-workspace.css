@@ -1250,13 +1250,13 @@
 }
 
 .chess-square--goal {
-  box-shadow: inset 0 0 0 3px #d59b35;
+  box-shadow: inset 0 0 0 3px #b48ad2;
 }
 
 .chess-square__goal {
   position: absolute;
   z-index: 0;
-  color: #b97614;
+  color: #8a5fae;
   font-size: clamp(18px, 2.4vw, 36px);
   line-height: 1;
   opacity: 0.82;
@@ -2094,13 +2094,13 @@
 }
 
 .chess-square--goal {
-  box-shadow: inset 0 0 0 3px #d59b35;
+  box-shadow: inset 0 0 0 3px #b48ad2;
 }
 
 .chess-square__goal {
   position: absolute;
   z-index: 0;
-  color: #b97614;
+  color: #8a5fae;
   font-size: clamp(18px, 2.4vw, 36px);
   line-height: 1;
   opacity: 0.82;
@@ -3146,15 +3146,15 @@
 .geometry-card[data-role="probe"],
 .token-card[data-role="probe"],
 .grid-card[data-role="probe"] {
-  background: #f6effa;
-  border-color: #e2d2ec;
+  background: #f6f4f8;
+  border-color: #ddd5e4;
 }
 
 .geometry-card[data-role="target"],
 .token-card[data-role="target"],
 .grid-card[data-role="target"] {
-  background: #fdf6e9;
-  border-color: #eddfc2;
+  background: #f3ecfb;
+  border-color: #dcc9f0;
 }
 
 /* --- Опущенные точки-разделители в служебных строках --- */
@@ -3247,9 +3247,9 @@
 }
 
 .leaper-board__cell.is-target {
-  border-color: #d7a62b;
-  background: #fdf6e9;
-  color: #a87b0f;
+  border-color: #c792df;
+  background: #f3ecfb;
+  color: #8a5fae;
 }
 
 .leaper-scene__legend {
