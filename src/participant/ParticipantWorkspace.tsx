@@ -1603,13 +1603,23 @@ export function ParticipantWorkspace({
                 onChord={(opId) => void runCommand(`/op ${opId}`)}
               />
             ) : task.machinePanel ? (
-              <MachinePanel state={task.machinePanel} />
+              <MachinePanel
+                state={task.machinePanel}
+                canAct={task.status === "active" && !isBusy}
+                onOp={(opId) => void runCommand(`/op ${opId}`)}
+              />
             ) : isLeaperBoard && task.leaperBoard ? (
-              <LeaperBoardScene state={task.leaperBoard} />
+              <LeaperBoardScene
+                state={task.leaperBoard}
+                canAct={task.status === "active" && !isBusy}
+                onOp={(opId) => void runCommand(`/op ${opId}`)}
+              />
             ) : task.tokenCards ? (
               <TokenShelfScene
                 cards={task.tokenCards}
                 content={task.geometryContent ?? {}}
+                canProbe={task.status === "active" && !isBusy}
+                onProbe={(cardId) => void runCommand(`/test ${cardId}`)}
               />
             ) : task.gridCards ? (
               <GridZendoScene
@@ -1623,6 +1633,8 @@ export function ParticipantWorkspace({
                 scene={task.geometryScene}
                 content={task.geometryContent ?? {}}
                 showGrid={task.kind === "point_zendo"}
+                canProbe={isZendo && task.status === "active" && !isBusy}
+                onProbe={(cardId) => void runCommand(`/test ${cardId}`)}
               />
             ) : isDicePosition ? (
               <DicePositionScene
@@ -1699,6 +1711,22 @@ export function ParticipantWorkspace({
               >
                 /answer — ответить
               </button>
+              {isZendo && (
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => {
+                    setDraft((current) =>
+                      current.startsWith("/test")
+                        ? current
+                        : `/test ${current}`.trimEnd() + " ",
+                    );
+                    inputRef.current?.focus();
+                  }}
+                >
+                  /test — проверить
+                </button>
+              )}
               <button
                 type="button"
                 disabled={isBusy}
@@ -1802,6 +1830,30 @@ function cardIn(content: Record<string, unknown>, key: string, group: string) {
   );
 }
 
+function geometryGroupOutcome(
+  group: string,
+  content: Record<string, unknown>,
+): "positive" | "negative" | null {
+  for (const key of ["examples", "probe_observations"]) {
+    const found = (
+      Array.isArray(content[key]) ? (content[key] as unknown[]) : []
+    ).find(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "card_id" in item &&
+        (item as { card_id?: unknown }).card_id === group,
+    );
+    if (found && typeof found === "object" && "classification" in found) {
+      return (found as { classification?: unknown }).classification ===
+        "positive"
+        ? "positive"
+        : "negative";
+    }
+  }
+  return null;
+}
+
 function geometryGroupRole(
   group: string,
   content: Record<string, unknown>,
@@ -1876,10 +1928,14 @@ function GeometryAtlasScene({
   scene,
   content,
   showGrid = false,
+  canProbe = false,
+  onProbe,
 }: {
   scene: GeometryScene;
   content: Record<string, unknown>;
   showGrid?: boolean;
+  canProbe?: boolean;
+  onProbe?: (cardId: string) => void;
 }) {
   const groups = Array.from(
     new Set([
@@ -1927,13 +1983,35 @@ function GeometryAtlasScene({
         {groups.map((group) => {
           const points = scene.points.filter((point) => point.group === group);
           const edges = scene.edges.filter((edge) => edge.group === group);
+          const role = geometryGroupRole(group, content);
+          const outcome = geometryGroupOutcome(group, content);
+          const probeable = role === "probe" && canProbe && Boolean(onProbe);
           return (
             <section
-              className="geometry-card"
-              data-role={geometryGroupRole(group, content)}
+              className={`geometry-card${
+                probeable ? " geometry-card--probeable" : ""
+              }`}
+              data-role={role}
+              data-outcome={outcome ?? undefined}
+              onClick={probeable ? () => onProbe?.(group) : undefined}
+              role={probeable ? "button" : undefined}
+              tabIndex={probeable ? 0 : undefined}
+              onKeyDown={
+                probeable
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onProbe?.(group);
+                      }
+                    }
+                  : undefined
+              }
               key={group}
             >
-              <header>{geometryGroupLabel(group, content)}</header>
+              <header>
+                {geometryGroupLabel(group, content)}
+                {probeable && <span aria-hidden="true"> · нажми, чтобы проверить</span>}
+              </header>
               <svg
                 viewBox={`${scene.bounds.minX - viewPadding} ${
                   scene.bounds.minY - viewPadding
@@ -2030,20 +2108,45 @@ const TOKEN_COLOR_STYLES: Record<TokenCard["color"], { fill: string; label: stri
 function TokenShelfScene({
   cards,
   content,
+  canProbe = false,
+  onProbe,
 }: {
   cards: Record<string, TokenCard[]>;
   content: Record<string, unknown>;
+  canProbe?: boolean;
+  onProbe?: (cardId: string) => void;
 }) {
   return (
     <figure className="token-shelf" aria-label="Полки с фишками">
       <div className="token-shelf__cards">
-        {Object.entries(cards).map(([cardId, tokens]) => (
+        {Object.entries(cards).map(([cardId, tokens]) => {
+          const role = geometryGroupRole(cardId, content);
+          const outcome = geometryGroupOutcome(cardId, content);
+          const probeable = role === "probe" && canProbe && Boolean(onProbe);
+          return (
           <section
-            className="token-card"
-            data-role={geometryGroupRole(cardId, content)}
+            className={`token-card${probeable ? " token-card--probeable" : ""}`}
+            data-role={role}
+            data-outcome={outcome ?? undefined}
+            onClick={probeable ? () => onProbe?.(cardId) : undefined}
+            role={probeable ? "button" : undefined}
+            tabIndex={probeable ? 0 : undefined}
+            onKeyDown={
+              probeable
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onProbe?.(cardId);
+                    }
+                  }
+                : undefined
+            }
             key={cardId}
           >
-            <header>{geometryGroupLabel(cardId, content)}</header>
+            <header>
+              {geometryGroupLabel(cardId, content)}
+              {probeable && <span aria-hidden="true"> · нажми, чтобы проверить</span>}
+            </header>
             <ol
               className="token-card__shelf"
               aria-label={`Карточка ${cardId}`}
@@ -2062,7 +2165,8 @@ function TokenShelfScene({
               ))}
             </ol>
           </section>
-        ))}
+          );
+        })}
       </div>
     </figure>
   );
@@ -2117,6 +2221,7 @@ function GridZendoScene({
           <section
             className="grid-card"
             data-role={geometryGroupRole(cardId, content)}
+            data-outcome={geometryGroupOutcome(cardId, content) ?? undefined}
             key={cardId}
           >
             <header>{geometryGroupLabel(cardId, content)}</header>
@@ -2531,7 +2636,15 @@ function MachineStateDisplay({
   );
 }
 
-function MachinePanel({ state }: { state: MachinePanelPublicState }) {
+function MachinePanel({
+  state,
+  canAct = false,
+  onOp,
+}: {
+  state: MachinePanelPublicState;
+  canAct?: boolean;
+  onOp?: (opId: string) => void;
+}) {
   return (
     <figure className="machine-panel" aria-label="Пульт машины">
       <div className="machine-panel__states">
@@ -2543,8 +2656,14 @@ function MachinePanel({ state }: { state: MachinePanelPublicState }) {
       <ol className="machine-operations" aria-label="Доступные операции">
         {state.ops.map((operation) => (
           <li key={operation.id}>
-            <code>{operation.id}</code>
-            <span>{operation.label}</span>
+            <button
+              type="button"
+              disabled={!canAct || !onOp}
+              onClick={() => onOp?.(operation.id)}
+            >
+              <code>{operation.id}</code>
+              <span>{operation.label}</span>
+            </button>
           </li>
         ))}
       </ol>
@@ -2553,7 +2672,15 @@ function MachinePanel({ state }: { state: MachinePanelPublicState }) {
   );
 }
 
-function LeaperBoardScene({ state }: { state: LeaperBoardPublicState }) {
+function LeaperBoardScene({
+  state,
+  canAct = false,
+  onOp,
+}: {
+  state: LeaperBoardPublicState;
+  canAct?: boolean;
+  onOp?: (opId: string) => void;
+}) {
   const blocked = new Set(
     state.blocked.map((cell) => `${cell.row}:${cell.col}`),
   );
@@ -2624,8 +2751,14 @@ function LeaperBoardScene({ state }: { state: LeaperBoardPublicState }) {
       <ol className="leaper-operations" aria-label="Разрешённые прыжки">
         {state.ops.map((operation) => (
           <li key={operation.id}>
-            <code>{operation.id}</code>
-            <span>{operation.label}</span>
+            <button
+              type="button"
+              disabled={!canAct || !onOp}
+              onClick={() => onOp?.(operation.id)}
+            >
+              <code>{operation.id}</code>
+              <span>{operation.label}</span>
+            </button>
           </li>
         ))}
       </ol>

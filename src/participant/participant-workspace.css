@@ -3355,3 +3355,65 @@
   color: #776b7a;
   font-weight: 700;
 }
+
+/* --- Исход классификации: зелёный «подходит», мягко-красный «не подходит» --- */
+.geometry-card[data-outcome="positive"],
+.token-card[data-outcome="positive"],
+.grid-card[data-outcome="positive"] {
+  background: #e7f5ec;
+  border-color: #9fd4b4;
+}
+
+.geometry-card[data-outcome="negative"],
+.token-card[data-outcome="negative"],
+.grid-card[data-outcome="negative"] {
+  background: #fbeeee;
+  border-color: #e4b8b8;
+}
+
+/* --- Кликабельные карточки-пробы --- */
+.geometry-card--probeable,
+.token-card--probeable {
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.geometry-card--probeable:hover,
+.token-card--probeable:hover {
+  border-color: #006b80;
+  box-shadow: 0 0 0 3px rgba(75, 190, 207, 0.18);
+}
+
+.geometry-card--probeable header span,
+.token-card--probeable header span {
+  color: #00707f;
+  font-weight: 600;
+}
+
+/* --- Операции машин/прыгуна — кнопки --- */
+.machine-operations li > button,
+.leaper-operations li > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid #d5dcdd;
+  border-radius: 9px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.machine-operations li > button:hover:not(:disabled),
+.leaper-operations li > button:hover:not(:disabled) {
+  border-color: #006b80;
+  background: var(--cyan-soft, #e8f7f9);
+}
+
+.machine-operations li > button:disabled,
+.leaper-operations li > button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
