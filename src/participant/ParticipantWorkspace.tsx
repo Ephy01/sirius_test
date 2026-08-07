@@ -1640,7 +1640,7 @@ export function ParticipantWorkspace({
       </section>
 
       <aside className="participant-console" aria-label="Чат и команды">
-        <header className="participant-console__header">
+        <header className="participant-console__header" style={{ justifyContent: "flex-end", gap: "8px" }}>
           <strong>До завершения:</strong>
           <time dateTime={deadlineAt ?? undefined}>{remainingTime}</time>
         </header>

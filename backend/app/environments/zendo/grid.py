@@ -1,11 +1,5 @@
 """grid_zendo: hidden rules over filled-cell patterns on a 5×5 grid.
 
-One universe covers both "клетчатые фигуры" and "скрытая симметрия":
-atoms include invariance under the non-trivial D4 elements, connectivity,
-component parity, cell-count parity, per-row/column parity and domino
-tileability (exact matching; areas are at most 13 cells, so the solver
-is trivial). Probes are free-form — the participant draws a pattern —
-so ΔH telemetry is computed live against the distilled rule space.
 """
 
 from __future__ import annotations
@@ -505,11 +499,14 @@ def generate_grid_zendo_task(
         "family": FAMILY_KEY,
         "variant": "classify_hidden_grid_rule",
         "prompt": (
-            "Загадано некоторое свойство для узоров на сетке 5×5. Для "
-            "некоторых узоров это свойство выполняется, для некоторых — нет. "
-            "Твоя задача — раскрыть это свойство и классифицировать восемь "
-            "целевых узоров по порядку. Доступно 5 подсказок — собственные "
-            "узоры можно рисовать и проверять."
+            '''
+На листочках нарисованы узоры по некоторым правилам. Твоя задача - восстановить эти правила и классифицировать узоры. Для тестирования гипотез можно нарисовать свой узор.
+'''
+            # "На листочках нарисованы узоры по некоторым правилам. Для "
+            # "некоторых узоров это свойство выполняется, для некоторых — нет. "
+            # "Твоя задача — раскрыть это свойство и классифицировать восемь "
+            # "целевых узоров по порядку. Доступно 5 подсказок — собственные "
+            # "узоры можно рисовать и проверять."
         ),
         "cards": {
             card_id: serialize_pattern(pattern)
