@@ -114,6 +114,11 @@ export type ParticipantTask = {
   worldPhase?: string;
 };
 
+export type TaskProgressEntry = {
+  ordinal: number;
+  status: "active" | "answered" | "skipped";
+};
+
 export type TaskTransitionResult = {
   ordinal: number;
   advanced: boolean;
@@ -153,6 +158,7 @@ export type ParticipantWorkspaceProps = {
   contestTitle: string;
   participantName?: string;
   totalTasks?: number;
+  taskProgress?: readonly TaskProgressEntry[];
   busy?: boolean;
   error?: string;
   onAnswer: (answer: string) => Promise<TaskTransitionResult>;
@@ -553,9 +559,7 @@ export function ParticipantWorkspace({
   task,
   attemptId,
   deadlineAt,
-  contestTitle,
-  participantName,
-  totalTasks,
+  taskProgress,
   busy = false,
   error = "",
   onAnswer,
@@ -623,16 +627,6 @@ export function ParticipantWorkspace({
   const isClassicMath =
     task.kind === "classic_math_free_response" &&
     task.family === "classic_math";
-  const worldPhaseLabel =
-    task.worldPhase === "calibration"
-      ? "знакомство со средой"
-      : task.worldPhase === "chapter"
-        ? "связная глава"
-        : task.worldPhase === "remediation"
-          ? "закрепление"
-          : task.worldPhase === "rotation"
-            ? "адаптивный маршрут"
-            : "";
   const statementPrompt = isDiceChess
     ? task.prompt.replace(
         /\s*Найдите вероятность описанного события\.\s*$/u,
@@ -655,15 +649,17 @@ export function ParticipantWorkspace({
     typeof zendoContent.probes_remaining === "number"
       ? (zendoContent.probes_remaining as number)
       : undefined;
-  const transformOptionCards = Array.isArray(zendoContent.answer_cards)
+  const transformOptions = Array.isArray(zendoContent.answer_cards)
     ? (zendoContent.answer_cards as unknown[]).flatMap((option) =>
         typeof option === "object" && option !== null && "id" in option
           ? [
-              `${String((option as { id: unknown }).id)}${
-                "label" in option
-                  ? ` — ${String((option as { label?: unknown }).label)}`
-                  : ""
-              }`,
+              {
+                id: String((option as { id: unknown }).id),
+                label:
+                  "label" in option
+                    ? String((option as { label?: unknown }).label)
+                    : String((option as { id: unknown }).id),
+              },
             ]
           : [],
       )
@@ -674,11 +670,8 @@ export function ParticipantWorkspace({
   }
   if (task.wiring) {
     briefMetaLines.push(
-      `Комбинаций осталось: ${task.wiring.chordsRemaining} / ${task.wiring.chordBudget}`,
+      `Доступно проб: ${task.wiring.chordsRemaining} / ${task.wiring.chordBudget}`,
     );
-    if (task.wiring.observations.length === 0) {
-      briefMetaLines.push("первая проба обучающая и не тратит лимит");
-    }
     if (task.wiring.examChords && task.wiring.examChords.length > 0) {
       briefMetaLines.push(
         "экзаменационные комбинации (недоступны для проб): " +
@@ -1429,16 +1422,33 @@ export function ParticipantWorkspace({
         });
       }}
     >
-      <section className="participant-task" aria-labelledby="participantTaskTitle">
+      <section className="participant-task" aria-label={`Задача ${task.ordinal}`}>
         <header className="participant-task__header">
-          <p>
-            {contestTitle}
-            {worldPhaseLabel && <small> · {worldPhaseLabel}</small>}
-          </p>
-          <span>
-            {task.ordinal}
-            {totalTasks ? ` / ${totalTasks}` : ""}
-          </span>
+          <p>Задача {task.ordinal}</p>
+          {taskProgress && taskProgress.length > 0 && (
+            <ol className="task-progress" aria-label="Статусы задач попытки">
+              {taskProgress.length > 15 && (
+                <li className="task-progress__more" aria-hidden="true">
+                  …
+                </li>
+              )}
+              {taskProgress.slice(-15).map((item) => (
+                <li
+                  className={`task-progress__dot task-progress__dot--${item.status}`}
+                  aria-label={`Задача ${item.ordinal}: ${
+                    item.status === "answered"
+                      ? "дан ответ"
+                      : item.status === "skipped"
+                        ? "пропущена"
+                        : "текущая"
+                  }`}
+                  key={item.ordinal}
+                >
+                  {item.ordinal}
+                </li>
+              ))}
+            </ol>
+          )}
         </header>
 
         <div
@@ -1452,9 +1462,6 @@ export function ParticipantWorkspace({
               isClassicMath ? " participant-brief--classic" : ""
             }`}
           >
-            <h1 id="participantTaskTitle">
-              Задача {task.ordinal}
-            </h1>
             <div className="participant-brief__statement">
               {isClassicMath && task.classicMath?.title && (
                 <h2>{task.classicMath.title}</h2>
@@ -1489,18 +1496,15 @@ export function ParticipantWorkspace({
               )}
             </div>
             <div className="participant-brief__answer">
+              {!(isWiring && task.wiring?.variant === "reach_target") && (
               <p>
                 {isWiring ? (
-                  task.wiring?.variant === "predict_chords" ? (
-                    <>
-                      Ответ отправьте в чате (пример:{" "}
-                      <code>/answer 1101 0000 1000</code> — три битовые
-                      строки по лампам экзаменационных комбинаций, 1 —
-                      лампа переключится).
-                    </>
-                  ) : (
-                    <>Панель завершится сама, когда лампы совпадут с целью.</>
-                  )
+                  <>
+                    Ответ отправьте в чате (пример:{" "}
+                    <code>/answer 1101 0000 1000</code> — три битовые
+                    строки по лампам экзаменационных комбинаций, 1 —
+                    лампа переключится).
+                  </>
                 ) : isMachine ? (
                   <>
                     Ответ отправьте в чате: <code>done</code> — когда решение
@@ -1535,15 +1539,10 @@ export function ParticipantWorkspace({
                   </>
                 )}
               </p>
-              {(isWiring || isMachine || isZendo) && (
+              )}
+              {(isMachine || isZendo) && (
                 <p>
-                  {isWiring ? (
-                    <>
-                      Кнопки срабатывают только парами: выберите две кнопки
-                      на панели или отправьте <code>/op b1+b2</code>.{" "}
-                      <code>/hint</code> — платная подсказка: итоговый балл умножается на 0.7.
-                    </>
-                  ) : isMachine ? (
+                  {isMachine ? (
                     <>
                       <code>/op &lt;id&gt;</code> — применить операцию ·{" "}
                       <code>/undo</code> — отменить последний шаг.
@@ -1564,8 +1563,23 @@ export function ParticipantWorkspace({
                   )}
                 </p>
               )}
-              {transformOptionCards.length > 0 && (
-                <p>Варианты: <DotSeparated items={transformOptionCards} /></p>
+              {transformOptions.length > 0 && (
+                <div
+                  className="transform-options"
+                  role="group"
+                  aria-label="Варианты преобразования"
+                >
+                  {transformOptions.map((option) => (
+                    <button
+                      type="button"
+                      disabled={task.status !== "active" || isBusy}
+                      onClick={() => void runCommand(`/answer ${option.id}`)}
+                      key={option.id}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               )}
               {briefMetaLines.length > 0 && (
                 <p className="participant-brief__meta">
@@ -1627,7 +1641,7 @@ export function ParticipantWorkspace({
 
       <aside className="participant-console" aria-label="Чат и команды">
         <header className="participant-console__header">
-          <strong>{participantName ?? "Участник"}</strong>
+          <strong>До завершения:</strong>
           <time dateTime={deadlineAt ?? undefined}>{remainingTime}</time>
         </header>
 
@@ -1902,8 +1916,13 @@ function GeometryAtlasScene({
     },
     (_, index) => Math.ceil(scene.bounds.minY) + index,
   );
+  const isTransformPair =
+    groups.length === 2 && groups.includes("source") && groups.includes("image");
   return (
-    <figure className="geometry-atlas" aria-label="Геометрические конфигурации">
+    <figure
+      className={`geometry-atlas${isTransformPair ? " geometry-atlas--pair" : ""}`}
+      aria-label="Геометрические конфигурации"
+    >
       <div className="geometry-atlas__cards">
         {groups.map((group) => {
           const points = scene.points.filter((point) => point.group === group);

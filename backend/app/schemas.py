@@ -329,6 +329,15 @@ class TaskResponse(ApiModel):
     completed_at: datetime | None
 
 
+class TaskProgressItem(ApiModel):
+    ordinal: int
+    status: TaskStatus
+
+
+class TaskProgressResponse(ApiModel):
+    items: list[TaskProgressItem]
+
+
 class CurrentTaskResponse(ApiModel):
     task: TaskResponse | None
 

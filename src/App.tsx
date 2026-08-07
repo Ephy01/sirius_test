@@ -4,6 +4,7 @@ import {
   api,
   type ContestSummary as ApiContestSummary,
   type ParticipantTask as ApiParticipantTask,
+  type TaskProgressEntry,
   type TaskInteractionResponse as ApiTaskInteractionResponse,
 } from "./api";
 import {
@@ -774,6 +775,7 @@ function ParticipantContestScreen({
   onLogout: () => void;
 }) {
   const [task, setTask] = useState<ApiParticipantTask | null>(null);
+  const [taskProgress, setTaskProgress] = useState<TaskProgressEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -803,6 +805,16 @@ function ParticipantContestScreen({
 
     return () => controller.abort();
   }, [session.attempt?.id, session.token]);
+
+  useEffect(() => {
+    if (!task) return;
+    const controller = new AbortController();
+    api
+      .getTaskProgress({ token: session.token, signal: controller.signal })
+      .then(setTaskProgress)
+      .catch(() => {});
+    return () => controller.abort();
+  }, [task?.id, task?.status, session.token]);
 
   async function answerTask(answer: string): Promise<TaskTransitionResult> {
     if (!task || task.status !== "active") {
@@ -1163,6 +1175,7 @@ function ParticipantContestScreen({
           task={workspaceTask}
           attemptId={session.attempt?.id}
           deadlineAt={session.attempt?.deadlineAt}
+          taskProgress={taskProgress}
           contestTitle={session.contest?.title ?? "Контест"}
           participantName={session.participant?.displayName}
           busy={busy}

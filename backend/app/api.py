@@ -124,6 +124,8 @@ from .schemas import (
     ParticipantContextResponse,
     TaskActionResponse,
     TaskAnswerRequest,
+    TaskProgressItem,
+    TaskProgressResponse,
     TaskInteractionRequest,
     TaskInteractionResponse,
 )
@@ -2510,6 +2512,30 @@ def current_task(
         contest=enrollment.contest,
     )
     return CurrentTaskResponse(task=task)
+
+
+@router.get(
+    "/participant/tasks/progress",
+    response_model=TaskProgressResponse,
+)
+def task_progress(
+    enrollment: ParticipantEnrollmentDependency,
+    session: SessionDependency,
+) -> TaskProgressResponse:
+    """Statuses of every task of the active attempt, in ordinal order."""
+
+    attempt = _require_active_attempt(session, enrollment)
+    rows = session.scalars(
+        select(TaskInstance)
+        .where(TaskInstance.attempt_id == attempt.id)
+        .order_by(TaskInstance.ordinal)
+    )
+    return TaskProgressResponse(
+        items=[
+            TaskProgressItem(ordinal=row.ordinal, status=row.status)
+            for row in rows
+        ]
+    )
 
 
 @router.post("/participant/tasks/next", response_model=NextTaskResponse)

@@ -178,6 +178,11 @@ export type AttemptGrantResponse = {
   created: boolean;
 };
 
+export type TaskProgressEntry = {
+  ordinal: number;
+  status: "active" | "answered" | "skipped";
+};
+
 export type ParticipantContext = {
   contest: ContestSummary;
   participant: ParticipantSummary;
@@ -2346,6 +2351,31 @@ export class ApiClient {
             ? undefined
             : parseAttempt(body.activeAttempt ?? body.active_attempt),
     };
+  }
+
+  async getTaskProgress(
+    options: AuthenticatedRequestOptions,
+  ): Promise<TaskProgressEntry[]> {
+    const body = await this.request("/participant/tasks/progress", options);
+    if (!isRecord(body) || !Array.isArray(body.items)) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректный прогресс задач.",
+        details: body,
+      });
+    }
+    return body.items.flatMap((item): TaskProgressEntry[] => {
+      if (!isRecord(item)) return [];
+      const ordinal = item.ordinal;
+      const status = item.status;
+      if (
+        typeof ordinal !== "number" ||
+        (status !== "active" && status !== "answered" && status !== "skipped")
+      ) {
+        return [];
+      }
+      return [{ ordinal, status }];
+    });
   }
 
   async recordParticipantTelemetry(

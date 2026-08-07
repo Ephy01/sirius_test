@@ -1157,8 +1157,7 @@
 .participant-brief {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(92px, 0.22fr) minmax(0, 1fr);
-  column-gap: clamp(20px, 2.6vw, 38px);
+  grid-template-columns: minmax(0, 1fr);
   row-gap: 12px;
   align-self: start;
   padding: 0 0 clamp(20px, 2.2vw, 28px);
@@ -2001,8 +2000,7 @@
 .participant-brief {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(92px, 0.22fr) minmax(0, 1fr);
-  column-gap: clamp(20px, 2.6vw, 38px);
+  grid-template-columns: minmax(0, 1fr);
   row-gap: 12px;
   align-self: start;
   padding: 0 0 clamp(20px, 2.2vw, 28px);
@@ -3257,4 +3255,103 @@
   color: #5f686b;
   font-size: 12px;
   line-height: 1.55;
+}
+
+/* --- Шапка задачи: «Задача N» + панель статусов --- */
+.participant-task__header > p {
+  margin: 0;
+  color: var(--workspace-grape, #48304d);
+  font-size: clamp(21px, 2vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.task-progress {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 55%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-progress__dot {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.task-progress__dot--answered {
+  background: #d5efe3;
+  border-color: #7cc4a4;
+  color: #1e6c4b;
+}
+
+.task-progress__dot--skipped {
+  background: #eeeaf0;
+  border-color: #cfc4d4;
+  color: #776b7a;
+}
+
+.task-progress__dot--active {
+  background: #f3ecfb;
+  border-color: #a678c9;
+  color: #6b3f8e;
+}
+
+/* --- Интерактивные варианты преобразования --- */
+.transform-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 4px 0 2px;
+}
+
+.transform-options button {
+  padding: 8px 14px;
+  border: 1px solid #d5dcdd;
+  border-radius: 10px;
+  background: #fff;
+  color: #2f3334;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transform-options button:hover:not(:disabled) {
+  border-color: #a678c9;
+  background: #f3ecfb;
+}
+
+.transform-options button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* --- Пара source/image: карточки крупнее --- */
+.geometry-atlas--pair .geometry-atlas__cards {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+.geometry-atlas--pair .geometry-card svg {
+  height: 320px;
+}
+
+.task-progress__more {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: #776b7a;
+  font-weight: 700;
 }
