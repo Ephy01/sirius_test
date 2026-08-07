@@ -1,9 +1,12 @@
-"""Byte-for-byte reproducibility lock for the geo_zendo v2 generator.
+"""Byte-for-byte reproducibility lock for the current geo_zendo generator.
 
-The fixture was captured before the Universe-protocol refactoring of the
-zendo core. Any change to ``core/rule_dsl``, ``core/rule_space`` or the
-engine itself must keep these one hundred cases identical, because stored
-attempts replay tasks by ``(seed, difficulty, generator_version)``.
+Any change to ``core/rule_dsl``, ``core/rule_space`` or the engine itself
+must keep these one hundred cases identical, because stored attempts
+replay tasks by ``(seed, difficulty, generator_version)``.
+
+Фикстура пересобирается только вместе с осознанным бампом версии
+генератора. Так было дважды: v2 зафиксировал поведение до рефакторинга
+на протокол вселенной, v3 — квоту исходов проб (``PROBE_OUTCOME_QUOTA``).
 """
 
 from __future__ import annotations

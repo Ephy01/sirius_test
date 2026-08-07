@@ -19,7 +19,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.environments.core.zendo_engine import get_universe_space
+from app.environments.core.zendo_engine import (
+    PROBE_OUTCOME_QUOTA,
+    get_universe_space,
+)
 from app.environments.zendo.grid import (
     GridUniverse,
     generate_grid_zendo_task,
@@ -183,8 +186,8 @@ def test_zendo_family_warm_generation_perf(family, universe, generate):
 
 
 API_FAMILY_CASES = [
-    pytest.param("token_zendo", "token_zendo", "token-zendo-v1", id="token"),
-    pytest.param("point_zendo", "point_zendo", "point-zendo-v1", id="point"),
+    pytest.param("token_zendo", "token_zendo", "token-zendo-v2", id="token"),
+    pytest.param("point_zendo", "point_zendo", "point-zendo-v2", id="point"),
 ]
 
 
@@ -500,3 +503,38 @@ def test_grid_zendo_api_drawn_probe_flow(tmp_path):
             assert evaluation["correct"] is True
             assert evaluation["family"] == "grid_zendo"
             assert evaluation["generator_version"] == "grid-zendo-v1"
+
+
+PROBE_BALANCE_CASES = [
+    pytest.param(generate_token_zendo_task, id="token"),
+    pytest.param(generate_point_zendo_task, id="point"),
+]
+
+
+@pytest.mark.parametrize("generate", PROBE_BALANCE_CASES)
+def test_probe_cards_offer_both_outcomes(generate):
+    """Набор проб не должен быть одного знака.
+
+    Ранжирование по ожидаемому выигрышу не смотрит на истинность
+    загаданного правила, поэтому у редких правил весь топ оказывался
+    отрицательным: участник не видел ни одного положительного примера
+    сверх стартовых. Квота гарантирует минимум с каждой стороны.
+    """
+
+    for seed in range(30):
+        for difficulty in (1, 2, 3):
+            _public, private = generate(seed=seed, difficulty=difficulty)
+            rule_index = int(private["rule_index"])
+            outcomes = [
+                bool((int(mask) >> rule_index) & 1)
+                for mask in private["probe_truth_masks"].values()
+            ]
+            positives = sum(outcomes)
+            assert positives >= PROBE_OUTCOME_QUOTA, (
+                f"seed={seed} difficulty={difficulty}: "
+                f"положительных проб {positives}"
+            )
+            assert len(outcomes) - positives >= PROBE_OUTCOME_QUOTA, (
+                f"seed={seed} difficulty={difficulty}: "
+                f"отрицательных проб {len(outcomes) - positives}"
+            )

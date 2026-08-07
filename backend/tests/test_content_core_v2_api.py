@@ -406,7 +406,7 @@ def test_mixed_contest_uses_zendo_v2_and_logs_probe_information(tmp_path):
             "/api/v1/participant/tasks/current",
             headers=auth(participant),
         ).json()["task"]
-        assert task["generator_version"] == "geometry-zendo-v2"
+        assert task["generator_version"] == "geometry-zendo-v3"
         assert task["public_state"]["dsl_version"] == "graph-dsl-v1"
         assert len(task["public_state"]["content"]["targets"]) == 8
         assert nested_keys(task["public_state"]).isdisjoint(
@@ -474,5 +474,5 @@ def test_mixed_contest_uses_zendo_v2_and_logs_probe_information(tmp_path):
             assert stored.evaluation_state["family"] == "geo_zendo"
             assert (
                 stored.evaluation_state["generator_version"]
-                == "geometry-zendo-v2"
+                == "geometry-zendo-v3"
             )

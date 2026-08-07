@@ -24,7 +24,7 @@ from ..core.zendo_engine import (
 from .atlas import GEO_ZENDO_FAMILY, _public_state, _scene
 from .universe import graph_key, graph_mutations, serialize_graph
 
-GENERATOR_VERSION = "geometry-zendo-v2"
+GENERATOR_VERSION = "geometry-zendo-v3"
 
 GRAPH_ATOM_DESCRIPTIONS = {
     "vertex_count_even": "чётное число вершин",

@@ -25,7 +25,7 @@ from ..core.zendo_engine import (
 )
 
 FAMILY_KEY = "point_zendo"
-GENERATOR_VERSION = "point-zendo-v1"
+GENERATOR_VERSION = "point-zendo-v2"
 PUBLIC_KIND = "point_zendo"
 UNIVERSE_VERSION = "point-universe-v1"
 DSL_VERSION = "point-dsl-v1"

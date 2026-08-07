@@ -49,6 +49,10 @@ NEAR_MISS_TOGGLED_COUNT = 4
 NEAR_MISS_UNCHANGED_COUNT = 4
 VERSION_SPACE_BOUNDS = (8, 64)
 SELECTION_ATTEMPTS = 160
+# Сколько проб каждого исхода гарантируется в наборе карточек. Ранжирование
+# по ожидаемому выигрышу само по себе не смотрит на истинность загаданного
+# правила, поэтому у редких правил весь топ-12 оказывался одного знака.
+PROBE_OUTCOME_QUOTA = 4
 
 
 class ZendoUniverse(Protocol):
@@ -300,6 +304,7 @@ def select_material(
     mutations: Callable[[Any], tuple[Any, ...]],
     object_key: Callable[[Any], Hashable],
     probe_card_count: int = PROBE_CARD_COUNT,
+    probe_outcome_quota: int = PROBE_OUTCOME_QUOTA,
     version_space_bounds: tuple[int, int] = VERSION_SPACE_BOUNDS,
     selection_attempts: int = SELECTION_ATTEMPTS,
 ) -> ZendoMaterial:
@@ -384,7 +389,40 @@ def select_material(
                     object_key(item[0]),
                 ),
             )
-            selected_probes = ranked[:probe_card_count]
+            positive_ranked = [
+                item
+                for item in ranked
+                if _target_truth(object_mask=item[1], rule_index=rule_index)
+            ]
+            negative_ranked = [
+                item
+                for item in ranked
+                if not _target_truth(object_mask=item[1], rule_index=rule_index)
+            ]
+            quota = min(
+                probe_outcome_quota,
+                len(positive_ranked),
+                len(negative_ranked),
+            )
+            chosen_keys = {
+                object_key(obj)
+                for obj, _mask in [
+                    *positive_ranked[:quota],
+                    *negative_ranked[:quota],
+                ]
+            }
+            for obj, _mask in ranked:
+                if len(chosen_keys) >= probe_card_count:
+                    break
+                chosen_keys.add(object_key(obj))
+            selected_probes = [
+                item for item in ranked if object_key(item[0]) in chosen_keys
+            ][:probe_card_count]
+            # Порядок карточек перемешивается: по рангу выигрыша квота исходов
+            # ложится в хвост, и первые пробы участника оказывались одного
+            # знака. Перемешивание заодно не даёт позиции карточки подсказывать
+            # её исход.
+            rng.shuffle(selected_probes)
             probes = [obj for obj, _mask in selected_probes]
             probe_masks = [mask for _obj, mask in selected_probes]
             if len(probes) != probe_card_count:

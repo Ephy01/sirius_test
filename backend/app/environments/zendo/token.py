@@ -24,7 +24,7 @@ from ..core.zendo_engine import (
 )
 
 FAMILY_KEY = "token_zendo"
-GENERATOR_VERSION = "token-zendo-v1"
+GENERATOR_VERSION = "token-zendo-v2"
 PUBLIC_KIND = "token_zendo"
 UNIVERSE_VERSION = "token-universe-v1"
 DSL_VERSION = "token-dsl-v1"
