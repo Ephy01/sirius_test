@@ -2452,6 +2452,27 @@
   gap: 7px;
 }
 
+.machine-panel__states--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.machine-panel__reset {
+  margin-top: 12px;
+  padding: 10px 15px;
+  border: 1px solid #b9c4c6;
+  background: #fff;
+  color: #33484d;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.machine-panel__reset:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .machine-state {
   min-width: 0;
   min-height: 94px;
@@ -2546,6 +2567,198 @@
   font-weight: 700;
 }
 
+.coverage-scene {
+  width: 100%;
+  margin: 0;
+}
+
+.coverage-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 560px) minmax(180px, 260px);
+  justify-content: center;
+  align-items: start;
+  gap: 22px;
+}
+
+.coverage-board {
+  display: grid;
+  width: min(100%, 560px);
+  aspect-ratio: 1;
+  padding: 8px 8px 8px 0;
+  border: 3px solid #3f4143;
+  background: #fff;
+}
+
+.coverage-board__axis {
+  display: grid;
+  place-items: center;
+  color: #667174;
+  font-family: var(--mono, monospace);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.coverage-board__cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #f4f7f7;
+  color: #48304d;
+}
+
+.coverage-board__cell.is-dark {
+  background: #86c9d2;
+}
+
+.coverage-board__cell:not(:disabled) {
+  cursor: pointer;
+}
+
+.coverage-board__cell:not(:disabled):hover {
+  box-shadow: inset 0 0 0 3px #7c478f;
+}
+
+.coverage-board__cell.is-selected {
+  box-shadow: inset 0 0 0 4px #7c478f;
+}
+
+.coverage-board__target {
+  position: absolute;
+  inset: 4px auto auto 5px;
+  color: #963f7f;
+  font-size: clamp(12px, 1.5vw, 20px);
+  line-height: 1;
+}
+
+.coverage-board__cell.is-covered .coverage-board__target {
+  color: #006b80;
+}
+
+.coverage-board__piece {
+  font-family: "Arial Unicode MS", "Noto Sans Symbols 2", "Segoe UI Symbol", serif;
+  font-size: clamp(27px, 4vw, 52px);
+  line-height: 1;
+  filter: drop-shadow(0 1px 0 #fff);
+}
+
+.coverage-board__cell small {
+  position: absolute;
+  bottom: 3px;
+  left: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.coverage-board__cell b {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  min-width: 17px;
+  min-height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #48304d;
+  color: #fff;
+  font-family: var(--mono, monospace);
+  font-size: 8px;
+}
+
+.coverage-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid #d6dede;
+  background: #f8faf9;
+}
+
+.coverage-summary > div {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #d8e2e3;
+  background: #fff;
+}
+
+.coverage-summary > div span {
+  color: #727879;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.coverage-summary > div strong {
+  color: #48304d;
+  font-family: var(--mono, monospace);
+  font-size: 20px;
+}
+
+.coverage-summary p,
+.coverage-summary ul,
+.coverage-summary button {
+  grid-column: 1 / -1;
+}
+
+.coverage-summary p {
+  margin: 5px 0;
+  color: #596366;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.coverage-summary ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coverage-summary li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4f595b;
+  font-size: 9px;
+}
+
+.coverage-summary li span {
+  width: 22px;
+  color: #48304d;
+  font-size: 20px;
+  text-align: center;
+}
+
+.coverage-summary button {
+  min-height: 39px;
+  padding: 9px 12px;
+  border: 1px solid #7c478f;
+  background: #fff;
+  color: #653575;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.coverage-summary__submit {
+  background: #7c478f !important;
+  color: #fff !important;
+}
+
+.coverage-summary button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .machine-operations,
 .leaper-operations {
   display: grid;
@@ -2635,6 +2848,10 @@
   }
 
   .machine-operations {
+    grid-template-columns: 1fr;
+  }
+
+  .coverage-layout {
     grid-template-columns: 1fr;
   }
 }

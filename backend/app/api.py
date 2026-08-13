@@ -16,7 +16,9 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from .ai import (
     AiRemaining,
+    ProviderError,
     attempt_ai_config,
+    generate_telemetry_markdown,
     remaining_turns,
     run_ai_turn,
 )
@@ -29,6 +31,7 @@ from .dependencies import (
     api_error,
 )
 from .environments import (
+    CHESS_COVERAGE_FAMILY,
     CLASSIC_MATH_FAMILY,
     DICE_CHESS_FAMILY,
     FOLD_PUNCH_FAMILY,
@@ -147,6 +150,8 @@ _EVENT_SEQUENCE_RESERVATION_LOCK = threading.Lock()
 _EVENT_SEQUENCE_RESERVATIONS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 FAMILY_ALIASES = {
+    "chess_coverage": CHESS_COVERAGE_FAMILY,
+    "chess-coverage": CHESS_COVERAGE_FAMILY,
     "dice_chess": DICE_CHESS_FAMILY,
     "dice-chess": DICE_CHESS_FAMILY,
     "dice&chess": DICE_CHESS_FAMILY,
@@ -172,7 +177,7 @@ FAMILY_ALIASES = {
     "classic-math": CLASSIC_MATH_FAMILY,
 }
 WORLD_FAMILIES = {
-    "chess_world": frozenset({DICE_CHESS_FAMILY}),
+    "chess_world": frozenset({CHESS_COVERAGE_FAMILY, DICE_CHESS_FAMILY}),
     "geometry_world": frozenset(
         {
             GEO_ZENDO_FAMILY,
@@ -193,9 +198,9 @@ WORLD_FAMILIES["mixed"] = frozenset(
     }
 )
 WORLD_DEFAULT_FAMILY = {
-    "chess_world": DICE_CHESS_FAMILY,
+    "chess_world": CHESS_COVERAGE_FAMILY,
     "geometry_world": GEO_ZENDO_FAMILY,
-    "mixed": DICE_CHESS_FAMILY,
+    "mixed": CHESS_COVERAGE_FAMILY,
 }
 WORLD_DIRECTOR_VERSION = {
     "chess_world": CHESS_DIRECTOR_VERSION,
@@ -203,12 +208,13 @@ WORLD_DIRECTOR_VERSION = {
     "mixed": SHARED_DIRECTOR_VERSION,
 }
 FAMILY_INTERACTION_ACTIONS = {
+    CHESS_COVERAGE_FAMILY: frozenset({"apply_op", "reset"}),
     GEO_ZENDO_FAMILY: frozenset({"probe", "hint"}),
     TOKEN_ZENDO_FAMILY: frozenset({"probe", "hint"}),
     POINT_ZENDO_FAMILY: frozenset({"probe", "hint"}),
     GRID_ZENDO_FAMILY: frozenset({"probe", "hint"}),
     HIDDEN_WIRING_FAMILY: frozenset({"apply_op", "hint"}),
-    MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo"}),
+    MACHINE_REACH_FAMILY: frozenset({"apply_op", "undo", "reset"}),
 }
 ZENDO_PROBE_ACTIONS = {
     GEO_ZENDO_FAMILY: "probe",
@@ -587,7 +593,9 @@ def _task_family_settings_from_config(
     if isinstance(families, list):
         raw_families = families
     else:
-        raw_families = [WORLD_DEFAULT_FAMILY.get(environment_key, DICE_CHESS_FAMILY)]
+        raw_families = [
+            WORLD_DEFAULT_FAMILY.get(environment_key, CHESS_COVERAGE_FAMILY)
+        ]
 
     parsed: dict[str, FamilyTaskSettings] = {}
     for raw_family in raw_families:
@@ -1950,6 +1958,112 @@ def download_enrollment_telemetry(
     )
 
 
+@router.get(
+    "/contests/{contest_id}/enrollments/{enrollment_id}/telemetry/summary",
+    response_class=Response,
+)
+def download_enrollment_telemetry_summary(
+    contest_id: str,
+    enrollment_id: str,
+    session: SessionDependency,
+    _organizer: OrganizerDependency,
+    settings: SettingsDependency,
+    ai_provider: AiProviderDependency,
+) -> Response:
+    if ai_provider is None or not settings.ai_enabled:
+        raise api_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "AI_NOT_CONFIGURED",
+            "AI-анализ журналов не настроен на сервере.",
+        )
+    contest = _get_contest_or_404(session, contest_id)
+    enrollment = _get_enrollment_for_contest_or_404(
+        session,
+        contest_id=contest_id,
+        enrollment_id=enrollment_id,
+    )
+    attempts = list(
+        session.scalars(
+            select(Attempt)
+            .where(Attempt.enrollment_id == enrollment.id)
+            .order_by(Attempt.number, Attempt.id)
+        ).all()
+    )
+    now = utc_now()
+    status_changed = False
+    for attempt in attempts:
+        status_changed = (
+            _expire_attempt_if_needed(session, attempt, now) or status_changed
+        )
+    if status_changed:
+        session.commit()
+
+    attempts = list(
+        session.scalars(
+            select(Attempt)
+            .options(
+                selectinload(Attempt.tasks),
+                selectinload(Attempt.events),
+            )
+            .where(Attempt.enrollment_id == enrollment.id)
+            .order_by(Attempt.number, Attempt.id)
+        ).all()
+    )
+    telemetry = format_enrollment_telemetry(
+        contest=contest,
+        enrollment=enrollment,
+        attempts=attempts,
+    )
+    participant_label = (
+        enrollment.participant.display_name.strip()
+        or enrollment.participant.external_ref.strip()
+        or enrollment.id
+    )
+    try:
+        content = generate_telemetry_markdown(
+            settings=settings,
+            provider=ai_provider,
+            telemetry=telemetry,
+            contest_title=contest.title,
+            participant_label=participant_label,
+        )
+    except ProviderError as error:
+        http_status = (
+            status.HTTP_504_GATEWAY_TIMEOUT
+            if error.code == "AI_PROVIDER_TIMEOUT"
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        raise api_error(
+            http_status,
+            error.code,
+            "Не удалось подготовить AI-саммари. Повторите попытку позже.",
+        ) from error
+
+    safe_external_ref = "".join(
+        character
+        for character in enrollment.participant.external_ref.strip()[:32]
+        if character not in {"/", "\\"} and ord(character) >= 32
+    ).strip()
+    filename = f"sirius-summary-{contest.id}-{enrollment.id}.md"
+    preferred_filename = (
+        f"sirius-summary-{safe_external_ref}-{enrollment.id}.md"
+        if safe_external_ref
+        else filename
+    )
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"; '
+                f"filename*=UTF-8''{quote(preferred_filename, safe='')}"
+            ),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.post(
     "/contests/{contest_id}/codes/recover",
     response_model=CodeGenerationResponse,
@@ -3003,6 +3117,15 @@ def _debug_task_details(task: TaskInstance) -> list[str]:
             )
         )
         return details
+    if family == CHESS_COVERAGE_FAMILY:
+        return [
+            "Оптимальная стоимость: " + str(private.get("optimal_weight")),
+            "Оптимальная расстановка: "
+            + ", ".join(
+                str(candidate_id)
+                for candidate_id in (private.get("optimal_solutions") or [[]])[0]
+            ),
+        ]
     if family in {DICE_CHESS_FAMILY, GEO_PROBABILITY_FAMILY}:
         probability = private.get("probability") or {}
         favorable = private.get("favorable_faces") or private.get(
@@ -3086,6 +3209,12 @@ def _debug_reference_answer(task: TaskInstance) -> tuple[str, list[str]]:
             for row, column in private.get("expected_holes", [])
         )
         return answer, []
+    if family == CHESS_COVERAGE_FAMILY:
+        solution = (private.get("optimal_solutions") or [[]])[0]
+        return (
+            "Выберите фигуры минимальной стоимости и отправьте done:",
+            [f"/op {candidate_id}" for candidate_id in solution] + ["done"],
+        )
     if family in {DICE_CHESS_FAMILY, GEO_PROBABILITY_FAMILY}:
         probability = private.get("probability") or {}
         return (
@@ -3287,7 +3416,7 @@ def answer_task(
             "Ответ на эту задачу уже зафиксирован.",
         )
     _require_task_input_available(task)
-    if task.family == MACHINE_REACH_FAMILY:
+    if task.family in {MACHINE_REACH_FAMILY, CHESS_COVERAGE_FAMILY}:
         next_private = dict(
             task.private_state
             if isinstance(task.private_state, dict)

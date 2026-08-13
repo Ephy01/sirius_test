@@ -841,6 +841,18 @@ svg {
   min-width: 220px;
 }
 
+.participant-waiting__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.participant-instruction {
+  min-width: 150px;
+}
+
 .participant-error {
   min-height: 20px;
   margin: 14px 0 0;

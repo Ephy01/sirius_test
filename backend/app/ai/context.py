@@ -275,6 +275,22 @@ def _build_dice_chess_context(public: dict[str, Any]) -> dict[str, Any]:
     return {key: public.get(key) for key in _DICE_CHESS_KEYS if key in public}
 
 
+def _build_chess_coverage_context(public: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "boardSize": public.get("board_size"),
+        "targets": public.get("targets"),
+        "candidates": public.get("candidates"),
+        "selectedIds": public.get("selected_ids"),
+        "coveredTargets": public.get("covered_targets"),
+        "totalWeight": public.get("total_weight"),
+        "allCovered": public.get("all_covered"),
+        "coordinateNote": (
+            "Координаты в данных нулевые; на доске участника строки и столбцы "
+            "подписаны с 1."
+        ),
+    }
+
+
 def _build_geo_transform_context(public: dict[str, Any]) -> dict[str, Any]:
     content = public.get("content") if isinstance(public.get("content"), dict) else {}
     cards = _graph_cards(public)
@@ -313,6 +329,7 @@ def _build_generic_context(public: dict[str, Any]) -> dict[str, Any]:
 
 
 CONTEXT_BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "chess_coverage": _build_chess_coverage_context,
     "geo_zendo": _build_scene_zendo_context,
     "point_zendo": _build_scene_zendo_context,
     "token_zendo": _build_token_zendo_context,

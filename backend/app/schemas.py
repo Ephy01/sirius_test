@@ -365,7 +365,7 @@ class TaskActionResponse(ApiModel):
 
 class TaskInteractionRequest(ApiModel):
     client_action_id: str = Field(min_length=1, max_length=128)
-    action_type: Literal["probe", "apply_op", "undo", "hint"]
+    action_type: Literal["probe", "apply_op", "undo", "reset", "hint"]
     probe: str | None = Field(default=None, min_length=1, max_length=80)
     op_id: str | None = Field(default=None, min_length=1, max_length=80)
 

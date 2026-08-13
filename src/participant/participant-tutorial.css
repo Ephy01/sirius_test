@@ -1,0 +1,154 @@
+.participant-tutorial {
+  position: relative;
+}
+.guided-tour__shade {
+  position: fixed;
+  z-index: 900;
+  background: rgba(13, 20, 31, 0.63);
+}
+
+.guided-tour__focus {
+  position: fixed;
+  z-index: 901;
+  border: 3px solid #51d3e1;
+  border-radius: 12px;
+  box-shadow: 0 0 0 5px rgba(81, 211, 225, 0.2);
+  pointer-events: none;
+}
+
+.guided-tour__card {
+  position: fixed;
+  z-index: 910;
+  box-sizing: border-box;
+  padding: 18px;
+  border: 1px solid rgba(81, 211, 225, 0.6);
+  border-radius: 14px;
+  background: #fff;
+  color: #48304d;
+  box-shadow: 0 22px 70px rgba(13, 20, 31, 0.28);
+}
+
+.guided-tour__progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #697275;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.guided-tour__progress button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: #765184;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.guided-tour__card h2 {
+  margin: 13px 0 8px;
+  font-size: 20px;
+}
+
+.guided-tour__card p {
+  margin: 0;
+  color: #596366;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.guided-tour__card .guided-tour__action {
+  margin-top: 12px;
+  color: #006b80;
+  font-weight: 700;
+}
+
+.guided-tour__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.guided-tour__buttons button,
+.tutorial-complete button {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid #7c478f;
+  border-radius: 9px;
+  background: #7c478f;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.guided-tour__buttons button:first-child {
+  background: #fff;
+  color: #653575;
+}
+
+.guided-tour__buttons button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.tutorial-complete {
+  position: fixed;
+  z-index: 920;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(13, 20, 31, 0.67);
+}
+
+.tutorial-complete section {
+  width: min(430px, 100%);
+  padding: 30px;
+  border-radius: 18px;
+  background: #fff;
+  color: #48304d;
+  text-align: center;
+  box-shadow: 0 25px 80px rgba(13, 20, 31, 0.3);
+}
+
+.tutorial-complete section > span {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #dff7f8;
+  color: #006b80;
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.tutorial-complete h2 {
+  margin: 0 0 10px;
+}
+
+.tutorial-complete p {
+  margin: 0 0 20px;
+  color: #596366;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 820px) {
+  .guided-tour__card {
+    right: 14px !important;
+    bottom: 14px !important;
+    left: 14px !important;
+    top: auto !important;
+    width: auto !important;
+  }
+}

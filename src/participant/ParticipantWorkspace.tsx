@@ -12,6 +12,7 @@ import { ApiError } from "../api";
 import type {
   AiTurn as AiTurnResult,
   AiTurnHistory as AiTurnHistoryResult,
+  ChessCoveragePublicState,
   ClassicMathPublicState,
   FoldPunchPublicState,
   HiddenWiringPublicState,
@@ -109,6 +110,7 @@ export type ParticipantTask = {
   wiring?: HiddenWiringPublicState;
   foldPunch?: FoldPunchPublicState;
   leaperBoard?: LeaperBoardPublicState;
+  chessCoverage?: ChessCoveragePublicState;
   classicMath?: ClassicMathPublicState;
   responseHint?: string;
   worldPhase?: string;
@@ -161,6 +163,7 @@ export type ParticipantWorkspaceProps = {
   taskProgress?: readonly TaskProgressEntry[];
   busy?: boolean;
   error?: string;
+  tutorialMode?: boolean;
   onAnswer: (answer: string) => Promise<TaskTransitionResult>;
   onSkip: () => Promise<TaskTransitionResult>;
   onNext: () => Promise<TaskTransitionResult>;
@@ -179,6 +182,7 @@ export type ParticipantWorkspaceProps = {
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
   onUndo?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
+  onReset?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
   onAiMessage?: (
     message: string,
     clientActionId: string,
@@ -434,6 +438,26 @@ function persistTelemetryQueue(
 }
 
 function initialEntries(task: ParticipantTask): ConsoleEntry[] {
+  if (task.kind === "chess_coverage") {
+    return [
+      {
+        id: 1,
+        author: "system",
+        content: (
+          <>
+            Открыта шахматная расстановка{" "}
+            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
+          </>
+        ),
+      },
+      {
+        id: 2,
+        author: "system",
+        content:
+          "Выбирайте фигуры на доске. Покройте все цели с минимальной суммарной стоимостью.",
+      },
+    ];
+  }
   if (
     task.kind === "machine_panel" ||
     (task.kind === "chess" && task.family === "machine_reach")
@@ -562,6 +586,7 @@ export function ParticipantWorkspace({
   taskProgress,
   busy = false,
   error = "",
+  tutorialMode = false,
   onAnswer,
   onSkip,
   onNext,
@@ -570,6 +595,7 @@ export function ParticipantWorkspace({
   onGetAnswer,
   onApplyOperation,
   onUndo,
+  onReset,
   onAiMessage,
   onLoadAiHistory,
   onTelemetry,
@@ -623,6 +649,8 @@ export function ParticipantWorkspace({
     task.kind === "machine_panel" ||
     (task.kind === "chess" && task.family === "machine_reach");
   const isWiring = task.kind === "hidden_wiring";
+  const isChessCoverage =
+    task.kind === "chess_coverage" && Boolean(task.chessCoverage);
   const isLeaperBoard = task.kind === "chess" && Boolean(task.leaperBoard);
   const isClassicMath =
     task.kind === "classic_math_free_response" &&
@@ -649,6 +677,13 @@ export function ParticipantWorkspace({
     typeof zendoContent.probes_remaining === "number"
       ? (zendoContent.probes_remaining as number)
       : undefined;
+  const zendoTargetCount = Array.isArray(zendoContent.targets)
+    ? zendoContent.targets.length
+    : 0;
+  const zendoAnswerExample = `/answer ${Array.from(
+    { length: Math.max(1, zendoTargetCount) },
+    (_, index) => (index % 2 === 0 ? "1" : "0"),
+  ).join(" ")}`;
   const transformOptions = Array.isArray(zendoContent.answer_cards)
     ? (zendoContent.answer_cards as unknown[]).flatMap((option) =>
         typeof option === "object" && option !== null && "id" in option
@@ -693,6 +728,12 @@ export function ParticipantWorkspace({
         task.leaperBoard.target.col + 1
       })`,
       `Шагов: ${task.leaperBoard.stepsTaken} / ${task.leaperBoard.stepsSoftCap}`,
+    );
+  }
+  if (task.chessCoverage) {
+    briefMetaLines.push(
+      `Выбрано фигур: ${task.chessCoverage.selectedIds.length}`,
+      `Текущая стоимость: ${task.chessCoverage.totalWeight}`,
     );
   }
   if (task.foldPunch) {
@@ -954,6 +995,21 @@ export function ParticipantWorkspace({
     );
   }
 
+  async function submitReset() {
+    if (!onReset) {
+      appendEntry("system", "Возврат в начало сейчас недоступен.");
+      return;
+    }
+    const transition = await onReset(createClientActionId());
+    appendEntry(
+      "system",
+      transition.message ??
+        (transition.accepted
+          ? "Состояние возвращено в начало."
+          : "Состояние уже начальное."),
+    );
+  }
+
   async function submitFinalAnswer(answer: string) {
     const transition = await onAnswer(answer);
     appendEntry(
@@ -1010,11 +1066,21 @@ export function ParticipantWorkspace({
                 <br />
                 <code>/skip</code> — пропустить задачу
               </>
+            ) : isChessCoverage ? (
+              <>
+                <code>/op C1</code> — добавить или убрать фигуру
+                <br />
+                <code>/reset</code> — очистить расстановку
+                <br />
+                <code>done</code> — зафиксировать выбранную расстановку
+              </>
             ) : isMachine ? (
               <>
                 <code>/op &lt;id&gt;</code> — применить указанную операцию
                 <br />
                 <code>/undo</code> — отменить последнюю операцию
+                <br />
+                <code>/reset</code> — вернуть машину в начало
                 <br />
                 <code>done</code> — зафиксировать достигнутую цель
                 <br />
@@ -1163,7 +1229,7 @@ export function ParticipantWorkspace({
           break;
 
         case "/op":
-          if (!isMachine && !isWiring) {
+          if (!isMachine && !isWiring && !isChessCoverage) {
             appendEntry(
               "system",
               "Команда /op доступна только в задачах с машиной или панелью.",
@@ -1187,6 +1253,31 @@ export function ParticipantWorkspace({
             break;
           }
           await submitMachineOperation(payload);
+          break;
+
+        case "/reset":
+          if (!isMachine && !isChessCoverage) {
+            appendEntry(
+              "system",
+              "Команда /reset доступна только в задачах с изменяемым состоянием.",
+            );
+            break;
+          }
+          if (task.status !== "active") {
+            appendEntry(
+              "system",
+              "Текущая задача уже закрыта. Используйте /next.",
+            );
+            break;
+          }
+          if (parts.length > 0) {
+            appendEntry(
+              "system",
+              "Команда /reset не принимает дополнительных данных.",
+            );
+            break;
+          }
+          await submitReset();
           break;
 
         case "/undo":
@@ -1228,7 +1319,7 @@ export function ParticipantWorkspace({
               <>
                 После команды нужен текст ответа. Например:{" "}
                 <code>
-                  {isMachine
+                  {isMachine || isChessCoverage
                     ? "/answer done"
                     : isDiceChess
                       ? "/answer 5/12"
@@ -1317,7 +1408,7 @@ export function ParticipantWorkspace({
           }
 
           if (
-            isMachine &&
+            (isMachine || isChessCoverage) &&
             /^(?:done|impossible|готово?|невозможно|недостижимо)$/iu.test(input)
           ) {
             if (task.status !== "active") {
@@ -1456,11 +1547,13 @@ export function ParticipantWorkspace({
             isClassicMath ? " participant-task__stage--text-only" : ""
           }`}
           ref={stageRef}
+          data-tour="task-stage"
         >
           <article
             className={`participant-brief${
               isClassicMath ? " participant-brief--classic" : ""
             }`}
+            data-tour="task-statement"
           >
             <div className="participant-brief__statement">
               {isClassicMath && task.classicMath?.title && (
@@ -1505,6 +1598,11 @@ export function ParticipantWorkspace({
                     строки по лампам экзаменационных комбинаций, 1 —
                     лампа переключится).
                   </>
+                ) : isChessCoverage ? (
+                  <>
+                    Выберите фигуры на доске и зафиксируйте расстановку кнопкой
+                    под доской или командой <code>/answer done</code>.
+                  </>
                 ) : isMachine ? (
                   <>
                     Ответ отправьте в чате: <code>done</code> — когда решение
@@ -1513,8 +1611,9 @@ export function ParticipantWorkspace({
                 ) : isZendo ? (
                   <>
                     Ответ отправьте в чате (пример:{" "}
-                    <code>/answer 1 0 1 0 1 0 1 0</code> — восемь значений
-                    в порядке целей, 1 — подходит, 0 — нет).
+                    <code>{zendoAnswerExample}</code> — по одному значению для
+                    каждой из {zendoTargetCount || "показанных"} целей в их
+                    порядке, 1 — подходит, 0 — нет).
                   </>
                 ) : task.foldPunch ? (
                   <>
@@ -1540,9 +1639,14 @@ export function ParticipantWorkspace({
                 )}
               </p>
               )}
-              {(isMachine || isZendo) && (
+              {(isMachine || isZendo || isChessCoverage) && (
                 <p>
-                  {isMachine ? (
+                  {isChessCoverage ? (
+                    <>
+                      <code>/op C1</code> — добавить или убрать фигуру ·{" "}
+                      <code>/reset</code> — очистить расстановку.
+                    </>
+                  ) : isMachine ? (
                     <>
                       <code>/op &lt;id&gt;</code> — применить операцию ·{" "}
                       <code>/undo</code> — отменить последний шаг.
@@ -1607,6 +1711,17 @@ export function ParticipantWorkspace({
                 state={task.machinePanel}
                 canAct={task.status === "active" && !isBusy}
                 onOp={(opId) => void runCommand(`/op ${opId}`)}
+                onReset={() => void runCommand("/reset")}
+              />
+            ) : task.chessCoverage ? (
+              <ChessCoverageScene
+                state={task.chessCoverage}
+                canAct={task.status === "active" && !isBusy}
+                onToggle={(candidateId) =>
+                  void runCommand(`/op ${candidateId}`)
+                }
+                onReset={() => void runCommand("/reset")}
+                onSubmit={() => void runCommand("/answer done")}
               />
             ) : isLeaperBoard && task.leaperBoard ? (
               <LeaperBoardScene
@@ -1653,8 +1768,14 @@ export function ParticipantWorkspace({
 
       <aside className="participant-console" aria-label="Чат и команды">
         <header className="participant-console__header" style={{ justifyContent: "flex-end", gap: "8px" }}>
-          <strong>До завершения:</strong>
-          <time dateTime={deadlineAt ?? undefined}>{remainingTime}</time>
+          {tutorialMode ? (
+            <strong>Демонстрационный режим</strong>
+          ) : (
+            <>
+              <strong>До завершения:</strong>
+              <time dateTime={deadlineAt ?? undefined}>{remainingTime}</time>
+            </>
+          )}
         </header>
 
         <div
@@ -1663,6 +1784,7 @@ export function ParticipantWorkspace({
           aria-live="polite"
           aria-relevant="additions"
           ref={consoleLogRef}
+          data-tour="chat-log"
         >
           {entries.map((entry) => (
             <article
@@ -1693,13 +1815,18 @@ export function ParticipantWorkspace({
           )}
         </div>
 
-        <form className="participant-console__form" onSubmit={submitCommand}>
+        <form
+          className="participant-console__form"
+          onSubmit={submitCommand}
+          data-tour="chat-form"
+        >
           <label htmlFor="participantCommand">Команда или сообщение</label>
           {task.status === "active" && !timeIsUp && (
             <div className="participant-console__chips" aria-label="Быстрые команды">
               <button
                 type="button"
                 disabled={isBusy}
+                aria-label="Ввести команду /answer"
                 onClick={() => {
                   setDraft((current) =>
                     current.startsWith("/answer")
@@ -1709,12 +1836,13 @@ export function ParticipantWorkspace({
                   inputRef.current?.focus();
                 }}
               >
-                /answer — ответить
+                Ответ
               </button>
               {isZendo && (
                 <button
                   type="button"
                   disabled={isBusy}
+                  aria-label="Ввести команду /test"
                   onClick={() => {
                     setDraft((current) =>
                       current.startsWith("/test")
@@ -1724,16 +1852,19 @@ export function ParticipantWorkspace({
                     inputRef.current?.focus();
                   }}
                 >
-                  /test — проверить
+                  Проверить
                 </button>
               )}
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => void runCommand("/skip")}
-              >
-                /skip — пропустить
-              </button>
+              {!tutorialMode && (
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  aria-label="Выполнить команду /skip"
+                  onClick={() => void runCommand("/skip")}
+                >
+                  Пропустить
+                </button>
+              )}
             </div>
           )}
           <div>
@@ -1978,6 +2109,7 @@ function GeometryAtlasScene({
     <figure
       className={`geometry-atlas${isTransformPair ? " geometry-atlas--pair" : ""}`}
       aria-label="Геометрические конфигурации"
+      data-tour="graph-cards"
     >
       <div className="geometry-atlas__cards">
         {groups.map((group) => {
@@ -1993,6 +2125,13 @@ function GeometryAtlasScene({
               }`}
               data-role={role}
               data-outcome={outcome ?? undefined}
+              data-tour={
+                role === "probe"
+                  ? "probe-card"
+                  : role === "target"
+                    ? "targets"
+                    : undefined
+              }
               onClick={probeable ? () => onProbe?.(group) : undefined}
               role={probeable ? "button" : undefined}
               tabIndex={probeable ? 0 : undefined}
@@ -2596,6 +2735,170 @@ function DicePositionScene({
   );
 }
 
+const COVERAGE_GLYPHS: Record<ChessCoveragePublicState["candidates"][number]["piece"], string> = {
+  K: "♔",
+  Q: "♕",
+  R: "♖",
+  B: "♗",
+  N: "♘",
+};
+
+function ChessCoverageScene({
+  state,
+  canAct = false,
+  onToggle,
+  onReset,
+  onSubmit,
+}: {
+  state: ChessCoveragePublicState;
+  canAct?: boolean;
+  onToggle?: (candidateId: string) => void;
+  onReset?: () => void;
+  onSubmit?: () => void;
+}) {
+  const targets = new Set(
+    state.targets.map((point) => `${point.row}:${point.col}`),
+  );
+  const covered = new Set(
+    state.coveredTargets.map((point) => `${point.row}:${point.col}`),
+  );
+  const candidates = new Map(
+    state.candidates.map((candidate) => [
+      `${candidate.row}:${candidate.col}`,
+      candidate,
+    ]),
+  );
+  const selected = new Set(state.selectedIds);
+  const usedPieces = Array.from(
+    new Set(state.candidates.map((candidate) => candidate.piece)),
+  );
+
+  return (
+    <figure className="coverage-scene" aria-label="Шахматное покрытие">
+      <div className="coverage-layout">
+        <div
+          className="coverage-board"
+          role="grid"
+          aria-label={`Доска ${state.boardSize} на ${state.boardSize}`}
+          style={{
+            gridTemplateColumns: `auto repeat(${state.boardSize}, 1fr)`,
+          }}
+        >
+          <span className="coverage-board__axis" aria-hidden="true" />
+          {Array.from({ length: state.boardSize }, (_, col) => (
+            <span
+              className="coverage-board__axis"
+              aria-hidden="true"
+              key={`col-${col}`}
+            >
+              {String.fromCharCode(65 + col)}
+            </span>
+          ))}
+          {Array.from({ length: state.boardSize }, (_, row) => (
+            <Fragment key={`coverage-row-${row}`}>
+              <span className="coverage-board__axis" aria-hidden="true">
+                {row + 1}
+              </span>
+              {Array.from({ length: state.boardSize }, (_, col) => {
+                const cellKey = `${row}:${col}`;
+                const candidate = candidates.get(cellKey);
+                const isTarget = targets.has(cellKey);
+                const isCovered = covered.has(cellKey);
+                const isSelected = candidate
+                  ? selected.has(candidate.id)
+                  : false;
+                return (
+                  <button
+                    type="button"
+                    className={[
+                      "coverage-board__cell",
+                      (row + col) % 2 ? "is-dark" : "",
+                      isTarget ? "is-target" : "",
+                      isCovered ? "is-covered" : "",
+                      isSelected ? "is-selected" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    disabled={!candidate || !canAct || !onToggle}
+                    aria-pressed={candidate ? isSelected : undefined}
+                    aria-label={
+                      candidate
+                        ? `${candidate.id}, ${candidate.pieceLabel}, стоимость ${candidate.weight}, клетка ${row + 1}${String.fromCharCode(65 + col)}`
+                        : `Клетка ${row + 1}${String.fromCharCode(65 + col)}${isTarget ? ", цель" : ""}`
+                    }
+                    onClick={() => candidate && onToggle?.(candidate.id)}
+                    key={cellKey}
+                  >
+                    {isTarget && (
+                      <span className="coverage-board__target" aria-hidden="true">
+                        {isCovered ? "●" : "○"}
+                      </span>
+                    )}
+                    {candidate && (
+                      <>
+                        <span className="coverage-board__piece" aria-hidden="true">
+                          {COVERAGE_GLYPHS[candidate.piece]}
+                        </span>
+                        <small>{candidate.id}</small>
+                        <b>{candidate.weight}</b>
+                      </>
+                    )}
+                  </button>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+
+        <aside className="coverage-summary">
+          <div>
+            <span>Покрыто</span>
+            <strong>
+              {state.coveredTargets.length} / {state.targets.length}
+            </strong>
+          </div>
+          <div>
+            <span>Стоимость</span>
+            <strong>{state.totalWeight}</strong>
+          </div>
+          <p>
+            ○ — цель, ● — уже покрытая цель. Число у фигуры — её стоимость.
+          </p>
+          <ul aria-label="Доступные типы фигур">
+            {usedPieces.map((piece) => {
+              const candidate = state.candidates.find(
+                (item) => item.piece === piece,
+              );
+              return (
+                <li key={piece}>
+                  <span aria-hidden="true">{COVERAGE_GLYPHS[piece]}</span>
+                  {candidate?.pieceLabel ?? piece}
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            className="coverage-summary__reset"
+            disabled={!canAct || state.selectedIds.length === 0 || !onReset}
+            onClick={onReset}
+          >
+            Вернуть в начало
+          </button>
+          <button
+            type="button"
+            className="coverage-summary__submit"
+            disabled={!canAct || !state.allCovered || !onSubmit}
+            onClick={onSubmit}
+          >
+            Зафиксировать расстановку
+          </button>
+        </aside>
+      </div>
+    </figure>
+  );
+}
+
 function MachineStateDisplay({
   label,
   state,
@@ -2640,15 +2943,24 @@ function MachinePanel({
   state,
   canAct = false,
   onOp,
+  onReset,
 }: {
   state: MachinePanelPublicState;
   canAct?: boolean;
   onOp?: (opId: string) => void;
+  onReset?: () => void;
 }) {
+  const isLampPanel = state.subKind === "lamps_gf2";
   return (
     <figure className="machine-panel" aria-label="Пульт машины">
-      <div className="machine-panel__states">
-        <MachineStateDisplay label="Старт" state={state.start} />
+      <div
+        className={`machine-panel__states${
+          isLampPanel ? " machine-panel__states--two" : ""
+        }`}
+      >
+        {!isLampPanel && (
+          <MachineStateDisplay label="Старт" state={state.start} />
+        )}
         <MachineStateDisplay label="Сейчас" state={state.current} current />
         <MachineStateDisplay label="Цель" state={state.target} />
       </div>
@@ -2667,6 +2979,17 @@ function MachinePanel({
           </li>
         ))}
       </ol>
+
+      {isLampPanel && (
+        <button
+          type="button"
+          className="machine-panel__reset"
+          disabled={!canAct || !onReset}
+          onClick={onReset}
+        >
+          Вернуть в начало
+        </button>
+      )}
 
     </figure>
   );

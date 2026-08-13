@@ -123,6 +123,7 @@ def _initial_private(
         "interaction": {
             "apply_count": 0,
             "undo_count": 0,
+            "reset_count": 0,
             "revisited_count": 0,
             "visited_state_keys": [_state_key(start)],
             "first_action_latency_ms": None,
@@ -972,9 +973,7 @@ def _refresh_dynamic_public(
     private_state: dict[str, Any],
 ) -> None:
     public_state["current"] = deepcopy(private_state["current"])
-    public_state["steps_taken"] = int(
-        private_state["interaction"]["apply_count"]
-    )
+    public_state["steps_taken"] = len(private_state["history"])
     if private_state["sub_kind"] == LEAPER_BOARD:
         current = private_state["current"]
         target = private_state["target"]
@@ -1007,13 +1006,15 @@ def transition_machine_action(
     """
 
     normalized_type = action_type.strip().casefold()
-    if normalized_type not in {"apply_op", "undo"}:
-        raise ValueError("Machine action_type must be 'apply_op' or 'undo'")
+    if normalized_type not in {"apply_op", "undo", "reset"}:
+        raise ValueError("Machine action_type must be apply_op, undo, or reset")
     normalized_op = (op_id or "").strip()
     if normalized_type == "apply_op" and not normalized_op:
         raise ValueError("apply_op requires op_id")
     normalized_input = (
-        f"apply_op:{normalized_op}" if normalized_type == "apply_op" else "undo"
+        f"apply_op:{normalized_op}"
+        if normalized_type == "apply_op"
+        else normalized_type
     )
     action_id = client_action_id.strip()
     if not action_id:
@@ -1079,7 +1080,7 @@ def transition_machine_action(
                     )
                 else:
                     interaction["visited_state_keys"].append(result_key)
-    else:
+    elif normalized_type == "undo":
         if not next_private["history"]:
             reason = "nothing_to_undo"
             message = "Отменять нечего. Состояние не изменилось."
@@ -1089,6 +1090,17 @@ def transition_machine_action(
             message = "Последняя операция отменена."
             next_private["current"] = next_private["history"].pop()
             interaction["undo_count"] = int(interaction["undo_count"]) + 1
+    else:
+        if next_private["current"] == next_private["start"]:
+            reason = "already_at_start"
+            message = "Машина уже находится в начальном состоянии."
+        else:
+            accepted = True
+            reason = "reset"
+            message = "Машина возвращена в начальное состояние."
+            next_private["current"] = deepcopy(next_private["start"])
+            next_private["history"] = []
+            interaction["reset_count"] = int(interaction["reset_count"]) + 1
 
     processed[action_id] = {
         "normalized_input": normalized_input,
@@ -1121,6 +1133,7 @@ def telemetry_aggregates(private_state: dict[str, Any]) -> dict[str, Any]:
     return {
         "first_action_latency_ms": interaction.get("first_action_latency_ms"),
         "undo_count": int(interaction.get("undo_count") or 0),
+        "reset_count": int(interaction.get("reset_count") or 0),
         "revisited_states": (
             int(interaction.get("revisited_count") or 0) / apply_count
             if apply_count

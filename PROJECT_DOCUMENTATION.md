@@ -424,6 +424,7 @@ Swagger, ReDoc и OpenAPI доступны только вне production:
 | `POST /contests/{contest_id}/enrollments` | Добавление до 1000 участников одним запросом |
 | `GET /contests/{contest_id}/enrollments` | Участники, последний код, последняя попытка и pending grant |
 | `GET /contests/{contest_id}/enrollments/{enrollment_id}/telemetry` | Скачать UTF-8 telemetry log |
+| `GET /contests/{contest_id}/enrollments/{enrollment_id}/telemetry/summary` | Сформировать Alice AI-саммари и скачать Markdown |
 | `POST /contests/{contest_id}/codes` | Массовый выпуск кодов |
 | `POST /contests/{contest_id}/enrollments/{enrollment_id}/codes/rotate` | Отозвать старый и выпустить новый код |
 | `POST /contests/{contest_id}/enrollments/{enrollment_id}/attempts/grant` | Разрешить одну следующую попытку |
@@ -440,7 +441,7 @@ Swagger, ReDoc и OpenAPI доступны только вне production:
 | `POST /participant/attempts/start` | Создать или вернуть активную попытку |
 | `GET /participant/tasks/current` | Вернуть активную задачу; при отсутствии может создать новую |
 | `POST /participant/tasks/next` | Создать или вернуть следующую задачу после закрытия текущей |
-| `POST /participant/tasks/{task_id}/interactions` | `probe`, `hint`, `apply_op`, `undo` |
+| `POST /participant/tasks/{task_id}/interactions` | `probe`, `hint`, `apply_op`, `undo`, `reset` |
 | `GET /participant/tasks/{task_id}/debug-answer` | Эталон при включённом debug-режиме |
 | `POST /participant/tasks/{task_id}/ai/turns` | Новый запрос ИИ |
 | `GET /participant/tasks/{task_id}/ai/turns` | История завершённых AI-turns |
@@ -720,7 +721,7 @@ Evaluator получает ответ и `private_state`, а затем возв
 
 | Семейство | Версия новых задач | Тип | Что проверяется |
 |---|---|---|---|
-| `dice_chess` | `dice-chess-world-v3` | ответ | вероятность, перебор, чтение шахматной позиции |
+| `chess_coverage` | `chess-coverage-v1` | интерактив | оптимизация покрытия и сравнение взвешенных решений |
 | `geo_zendo` | `geometry-zendo-v2` в mixed | интерактив | индукция скрытого правила на графах |
 | `token_zendo` | `token-zendo-v1` | интерактив | закономерности чисел, цветов и порядка |
 | `point_zendo` | `point-zendo-v1` | интерактив | геометрические свойства конфигураций точек |
@@ -734,7 +735,18 @@ Evaluator получает ответ и `private_state`, а затем возв
 
 Новые mixed-контесты содержат десять ротационных семейств. `classic_math` существует отдельно от ротации и может появиться ровно один раз на позиции 1–100.
 
-### 12.3. Dice & Chess
+### 12.3. Шахматное покрытие и совместимость
+
+В новых контестах шахматное семейство использует доску 5×5–7×7. На ней
+показаны кандидаты-фигуры с индивидуальными положительными весами и целевые
+клетки. Участник выбирает подмножество фигур так, чтобы все цели оказались под
+боем, и минимизирует суммарный вес. Линии боя в этой абстракции не
+перекрываются другими фигурами. Сервер перебирает все подмножества кандидатов,
+поэтому оптимум проверяется точно; генератор принимает только экземпляры с
+единственным оптимальным решением. Выбор фигур и сброс расстановки сохраняются
+как идемпотентные интеракции.
+
+Dice & Chess сохранён для ранее созданных контестов.
 
 Сложности 1–2:
 
@@ -1165,6 +1177,16 @@ Frontend дополнительно отправляет:
 Рекурсивно редактируются seed, cohort seed, `private_state`, коды, токены, hashes и secrets. Имя, внешний ID, ответы и AI-диалог не анонимизируются.
 
 Ответ имеет `Cache-Control: private, no-store` и `X-Content-Type-Options: nosniff`.
+
+### 16.6. AI-саммари
+
+Рядом с сырым журналом организатор может запросить `.md`-саммари. Сервер
+сначала строит тот же редактированный текстовый экспорт, затем передаёт его
+настроенной Alice AI LLM Flash. Отчёт отделяет наблюдаемые факты от осторожных
+интерпретаций, кратко описывает ход работы, обращения к ИИ, сильные стороны и
+эпизоды для ручного просмотра. Модель не получает закрытые ответы задач и не
+должна выдавать решение о зачислении, рейтинг или психологический диагноз.
+Отчёт генерируется по запросу и не сохраняется в базе.
 
 ## 17. Конфигурация
 
@@ -1715,6 +1737,7 @@ Evaluator должен:
 | `backend/app/ai/prompt.py` | System prompts и режимы |
 | `backend/app/ai/context.py` | Whitelist task context |
 | `backend/app/ai/service.py` | Quotas, persistence, concurrency и provider call |
+| `backend/app/ai/report.py` | Markdown-саммари редактированного журнала |
 | `backend/app/ai/tripwire.py` | Crisis phrase detection |
 | `backend/app/environments/registry.py` | Content dispatch и task seed |
 | `backend/app/environments/director.py` | Shared adaptive director-v2 |
@@ -1725,6 +1748,7 @@ Evaluator должен:
 | `backend/app/environments/geometry_world/zendo_v2.py` | Graph Zendo v2 adapter |
 | `backend/app/environments/geometry_world/atlas.py` | Transform, probability и legacy Zendo |
 | `backend/app/environments/machines/machine_reach.py` | Четыре finite-state machine tasks и solvers |
+| `backend/app/environments/chess_world/chess_coverage.py` | Взвешенное шахматное покрытие и точный solver |
 | `backend/app/environments/wiring.py` | Hidden Wiring над GF(2) |
 | `backend/app/environments/spatial/fold_punch.py` | Folding/unfolding generator |
 | `backend/app/environments/chess_world/dice_chess_world.py` | Актуальная Dice & Chess trajectory |

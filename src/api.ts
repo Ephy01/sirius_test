@@ -268,6 +268,30 @@ export type DiceChessInventoryPublicState = {
   worldContext?: WorldContext;
 };
 
+export type ChessCoverageCandidate = {
+  id: string;
+  piece: "K" | "Q" | "R" | "B" | "N";
+  pieceLabel: string;
+  row: number;
+  col: number;
+  weight: number;
+};
+
+export type ChessCoveragePublicState = {
+  kind: "chess_coverage";
+  family: "chess_coverage";
+  prompt: string;
+  boardSize: number;
+  targets: BoardPoint[];
+  candidates: ChessCoverageCandidate[];
+  selectedIds: string[];
+  coveredTargets: BoardPoint[];
+  totalWeight: number;
+  allCovered: boolean;
+  responseHint: string;
+  worldContext?: WorldContext;
+};
+
 export type GeometryPoint = {
   id: string;
   group: string;
@@ -479,6 +503,7 @@ export type ClassicMathPublicState = {
 };
 
 export type TaskPublicState =
+  | ChessCoveragePublicState
   | DiceChessPublicState
   | DiceChessInventoryPublicState
   | DiceChessPositionPublicState
@@ -535,6 +560,10 @@ export type TaskInteractionInput =
     }
   | {
       actionType: "undo";
+      clientActionId: string;
+    }
+  | {
+      actionType: "reset";
       clientActionId: string;
     };
 
@@ -1086,7 +1115,89 @@ function parseParticipantTask(value: unknown): ParticipantTask {
   );
   let publicState: TaskPublicState;
 
-  if (kind === "dice_chess_probability") {
+  if (kind === "chess_coverage") {
+    const boardSize = readNumber(
+      publicStateValue,
+      "boardSize",
+      "board_size",
+    );
+    const targetValues = publicStateValue.targets;
+    const candidateValues = publicStateValue.candidates;
+    const selectedValues =
+      publicStateValue.selectedIds ?? publicStateValue.selected_ids;
+    const coveredValues =
+      publicStateValue.coveredTargets ?? publicStateValue.covered_targets;
+    const targets = Array.isArray(targetValues)
+      ? targetValues.map(parseBoardPoint)
+      : [];
+    const coveredTargets = Array.isArray(coveredValues)
+      ? coveredValues.map(parseBoardPoint)
+      : [];
+    const candidates = Array.isArray(candidateValues)
+      ? candidateValues.flatMap((item): ChessCoverageCandidate[] => {
+          if (!isRecord(item)) return [];
+          const id = readString(item, "id");
+          const piece = readString(item, "piece");
+          const row = readNumber(item, "row");
+          const col = readNumber(item, "col");
+          const weight = readNumber(item, "weight");
+          if (
+            !id ||
+            !piece ||
+            !["K", "Q", "R", "B", "N"].includes(piece) ||
+            row === undefined ||
+            col === undefined ||
+            weight === undefined
+          ) {
+            return [];
+          }
+          return [{
+            id,
+            piece: piece as ChessCoverageCandidate["piece"],
+            pieceLabel:
+              readString(item, "pieceLabel", "piece_label") ?? piece,
+            row,
+            col,
+            weight,
+          }];
+        })
+      : [];
+    if (
+      boardSize === undefined ||
+      !Number.isInteger(boardSize) ||
+      boardSize < 3 ||
+      boardSize > 8 ||
+      targets.length === 0 ||
+      targets.some((point) => point === null) ||
+      coveredTargets.some((point) => point === null) ||
+      candidates.length === 0 ||
+      !Array.isArray(selectedValues) ||
+      !selectedValues.every((item) => typeof item === "string")
+    ) {
+      throw new ApiError(502, {
+        code: "invalid_api_response",
+        message: "Сервер вернул некорректную шахматную расстановку.",
+        details: value,
+      });
+    }
+    publicState = {
+      kind,
+      family: "chess_coverage",
+      prompt,
+      boardSize,
+      targets: targets as BoardPoint[],
+      candidates,
+      selectedIds: selectedValues as string[],
+      coveredTargets: coveredTargets as BoardPoint[],
+      totalWeight:
+        readNumber(publicStateValue, "totalWeight", "total_weight") ?? 0,
+      allCovered:
+        publicStateValue.allCovered === true ||
+        publicStateValue.all_covered === true,
+      responseHint,
+      worldContext,
+    };
+  } else if (kind === "dice_chess_probability") {
     const diceValue = publicStateValue.dice;
     if (!Array.isArray(diceValue) || diceValue.length < 2 || diceValue.length > 4) {
       throw new ApiError(502, {
@@ -2146,6 +2257,18 @@ export class ApiClient {
     return this.requestFile(
       `/contests/${encodeURIComponent(contestId)}/enrollments/${encodeURIComponent(enrollmentId)}/telemetry`,
       `telemetry-${enrollmentId}.txt`,
+      options,
+    );
+  }
+
+  async downloadEnrollmentTelemetrySummary(
+    contestId: string,
+    enrollmentId: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<DownloadedFile> {
+    return this.requestFile(
+      `/contests/${encodeURIComponent(contestId)}/enrollments/${encodeURIComponent(enrollmentId)}/telemetry/summary`,
+      `summary-${enrollmentId}.md`,
       options,
     );
   }

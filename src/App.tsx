@@ -31,6 +31,7 @@ import {
 } from "./organizer/ContestBuilder";
 import { ContestAccessPanel } from "./organizer/ContestAccessPanel";
 import {
+  ParticipantTutorial,
   ParticipantWorkspace,
   type ParticipantTask as WorkspaceParticipantTask,
   type ParticipantTelemetryEvent,
@@ -643,6 +644,7 @@ function ParticipantWaitingScreen({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showTutorial, setShowTutorial] = useState(false);
   const attempt = session.attempt;
   const worldName =
     session.contest?.environmentKey === "mixed"
@@ -657,6 +659,19 @@ function ParticipantWaitingScreen({
         session={session}
         onLogout={onLogout}
       />
+    );
+  }
+
+  if (showTutorial) {
+    return (
+      <div className="participant-page">
+        <AppHeader
+          role="Участник"
+          onLogout={onLogout}
+          meta={<span className="workspace-label">Инструктаж</span>}
+        />
+        <ParticipantTutorial onClose={() => setShowTutorial(false)} />
+      </div>
     );
   }
 
@@ -750,15 +765,25 @@ function ParticipantWaitingScreen({
           </ul>
         </section>
 
-        <button
-          className="primary-action participant-start"
-          type="button"
-          disabled={busy}
-          onClick={startAttempt}
-        >
-          <span>{busy ? "Запускаем…" : "Начать попытку"}</span>
-          <ArrowIcon />
-        </button>
+        <div className="participant-waiting__actions">
+          <button
+            className="secondary-action participant-instruction"
+            type="button"
+            disabled={busy}
+            onClick={() => setShowTutorial(true)}
+          >
+            Инструктаж
+          </button>
+          <button
+            className="primary-action participant-start"
+            type="button"
+            disabled={busy}
+            onClick={startAttempt}
+          >
+            <span>{busy ? "Запускаем…" : "Начать попытку"}</span>
+            <ArrowIcon />
+          </button>
+        </div>
         <p className="participant-error" role="alert">
           {error}
         </p>
@@ -1013,6 +1038,32 @@ function ParticipantContestScreen({
     });
   }
 
+  async function resetTask(
+    clientActionId: string,
+  ): Promise<TaskMoveTransitionResult> {
+    if (!task || task.status !== "active") {
+      throw new Error("Текущая задача уже закрыта.");
+    }
+    return runTaskAction(async () => {
+      const response = await api.interactWithTask(
+        task.id,
+        {
+          actionType: "reset",
+          clientActionId,
+        },
+        { token: session.token },
+      );
+      setTask(response.task);
+      return {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: response.completed,
+        message: response.message,
+      };
+    });
+  }
+
   async function skipTask(): Promise<TaskTransitionResult> {
     if (!task || task.status !== "active") {
       throw new Error("Текущая задача уже закрыта.");
@@ -1153,6 +1204,10 @@ function ParticipantContestScreen({
           task.publicState.kind === "chess"
             ? task.publicState
             : undefined,
+        chessCoverage:
+          task.publicState.kind === "chess_coverage"
+            ? task.publicState
+            : undefined,
         classicMath:
           task.publicState.kind === "classic_math_free_response"
             ? task.publicState
@@ -1188,6 +1243,7 @@ function ParticipantContestScreen({
           onGetAnswer={getAnswerTask}
           onApplyOperation={applyOperationTask}
           onUndo={undoMachineTask}
+          onReset={resetTask}
           onAiMessage={sendAiMessage}
           onLoadAiHistory={loadAiHistory}
           onTelemetry={recordTelemetry}

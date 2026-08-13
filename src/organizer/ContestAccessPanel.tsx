@@ -8,7 +8,11 @@ import {
 } from "../api";
 import "./contest-access-panel.css";
 
-type ActionKind = "rotate" | "grant" | "download-log";
+type ActionKind =
+  | "rotate"
+  | "grant"
+  | "download-log"
+  | "download-summary";
 
 type BusyAction = {
   enrollmentId: string;
@@ -289,6 +293,27 @@ export function ContestAccessPanel({
     }
   }
 
+  async function downloadTelemetrySummary(row: ContestEnrollmentAccess) {
+    setBusyAction({ enrollmentId: row.id, kind: "download-summary" });
+    setError("");
+    setNotice("");
+    try {
+      const file = await api.downloadEnrollmentTelemetrySummary(
+        contest.id,
+        row.id,
+        { token },
+      );
+      saveDownloadedFile(file);
+      setNotice(`AI-саммари «${row.participant.displayName}» скачано.`);
+    } catch (caught) {
+      setError(
+        actionError(caught, "Не удалось подготовить AI-саммари участника."),
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function copyCode(enrollmentId: string) {
     const code = freshCodes[enrollmentId];
     if (!code) return;
@@ -393,6 +418,9 @@ export function ContestAccessPanel({
                   const downloadBusy =
                     busyAction?.enrollmentId === row.id &&
                     busyAction.kind === "download-log";
+                  const summaryBusy =
+                    busyAction?.enrollmentId === row.id &&
+                    busyAction.kind === "download-summary";
                   const hasActiveAttempt =
                     row.latestAttempt?.status === "active";
                   const canGrant =
@@ -495,7 +523,17 @@ export function ContestAccessPanel({
                             disabled={busyAction !== null}
                             aria-label={`Скачать лог действий участника ${row.participant.displayName}`}
                           >
-                            {downloadBusy ? "Скачиваем…" : "Скачать лог"}
+                            {downloadBusy ? "Скачиваем…" : "Сырой лог"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void downloadTelemetrySummary(row)
+                            }
+                            disabled={busyAction !== null}
+                            aria-label={`Скачать AI-саммари участника ${row.participant.displayName}`}
+                          >
+                            {summaryBusy ? "Анализируем…" : "AI-саммари (.md)"}
                           </button>
                         </div>
                       </td>

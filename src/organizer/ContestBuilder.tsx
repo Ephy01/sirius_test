@@ -10,6 +10,7 @@ export type TaskFamilyKey =
   | "hidden_wiring"
   | "machine_reach"
   | "fold_punch"
+  | "chess_coverage"
   | "dice_chess"
   | "geo_transform"
   | "geo_probability";
@@ -132,6 +133,11 @@ const FAMILY_LABELS: Record<
     description:
       "Лист складывают и пробивают дырки; отметьте, где они окажутся после разворота.",
   },
+  chess_coverage: {
+    title: "Шахматное покрытие",
+    description:
+      "Расстановка фигур с весами: покрыть отмеченные клетки с минимальной стоимостью.",
+  },
   dice_chess: {
     title: "Dice & Chess",
     description:
@@ -229,10 +235,10 @@ const CONTENT_FAMILIES: TaskFamilyConfig[] = [
     maxDifficulty: 5,
   },
   {
-    key: "dice_chess",
+    key: "chess_coverage",
     skin: "chess",
     enabled: true,
-    weight: 6,
+    weight: 8,
     initialDifficulty: 1,
     maxDifficulty: 5,
   },

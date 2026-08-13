@@ -13,6 +13,10 @@ from .provider import (
     ProviderRequest,
     ProviderResult,
 )
+from .report import (
+    REPORT_PROMPT_VERSION,
+    generate_telemetry_markdown,
+)
 from .service import (
     AiConfig,
     AiRemaining,
@@ -46,10 +50,12 @@ __all__ = [
     "ProviderMessage",
     "ProviderRequest",
     "ProviderResult",
+    "REPORT_PROMPT_VERSION",
     "YandexAssistantProvider",
     "attempt_ai_config",
     "build_system_prompt",
     "build_task_context",
+    "generate_telemetry_markdown",
     "parse_ai_config",
     "prompt_version",
     "provider_from_settings",

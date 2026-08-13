@@ -32,6 +32,13 @@ from .chess_world.dice_chess_position import (
     evaluate_dice_chess_position_answer,
     generate_dice_chess_position_task,
 )
+from .chess_world.chess_coverage import (
+    FAMILY_KEY as CHESS_COVERAGE_FAMILY,
+    GENERATOR_VERSION as CHESS_COVERAGE_GENERATOR_VERSION,
+    evaluate_chess_coverage_answer,
+    generate_chess_coverage_task,
+    transition_chess_coverage_action,
+)
 from .geometry_world import (
     GENERATOR_VERSION as GEOMETRY_GENERATOR_VERSION,
     GEO_PROBABILITY_FAMILY,
@@ -97,6 +104,7 @@ from .zendo import (
 
 IMPLEMENTED_FAMILIES = frozenset(
     {
+        CHESS_COVERAGE_FAMILY,
         DICE_CHESS_FAMILY,
         MACHINE_REACH_FAMILY,
         TOKEN_ZENDO_FAMILY,
@@ -110,6 +118,7 @@ IMPLEMENTED_FAMILIES = frozenset(
 )
 INTERACTIVE_FAMILIES = frozenset(
     {
+        CHESS_COVERAGE_FAMILY,
         GEO_ZENDO_FAMILY,
         MACHINE_REACH_FAMILY,
         TOKEN_ZENDO_FAMILY,
@@ -119,6 +128,7 @@ INTERACTIVE_FAMILIES = frozenset(
     }
 )
 GENERATOR_VERSIONS = {
+    CHESS_COVERAGE_FAMILY: CHESS_COVERAGE_GENERATOR_VERSION,
     DICE_CHESS_FAMILY: DICE_CHESS_GENERATOR_VERSION,
     MACHINE_REACH_FAMILY: MACHINE_REACH_GENERATOR_VERSION,
     TOKEN_ZENDO_FAMILY: TOKEN_ZENDO_GENERATOR_VERSION,
@@ -188,6 +198,15 @@ def generate_task(
     difficulty: int,
     context: dict[str, Any] | None = None,
 ) -> GeneratedTask:
+    if (
+        family == CHESS_COVERAGE_FAMILY
+        and generator_version == CHESS_COVERAGE_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_chess_coverage_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(public_state=public_state, private_state=private_state)
     if family == DICE_CHESS_FAMILY and generator_version == DICE_CHESS_GENERATOR_VERSION:
         public_state, private_state = generate_dice_chess_world_task(
             seed=seed,
@@ -365,6 +384,14 @@ def evaluate_task(
     answer: str,
     private_state: dict[str, Any],
 ) -> dict[str, Any]:
+    if (
+        family == CHESS_COVERAGE_FAMILY
+        and generator_version == CHESS_COVERAGE_GENERATOR_VERSION
+    ):
+        return evaluate_chess_coverage_answer(
+            answer=answer,
+            private_state=private_state,
+        )
     if family == DICE_CHESS_FAMILY and generator_version == DICE_CHESS_GENERATOR_VERSION:
         return evaluate_dice_chess_world_answer(
             answer=answer,
@@ -475,6 +502,40 @@ def interact_task(
     public_state: dict[str, Any],
     private_state: dict[str, Any],
 ) -> InteractionTransition:
+    if (
+        family == CHESS_COVERAGE_FAMILY
+        and generator_version == CHESS_COVERAGE_GENERATOR_VERSION
+        and action_type in {"apply_op", "reset"}
+    ):
+        op_id = action_payload.get("op_id")
+        client_action_id = action_payload.get("client_action_id")
+        if not isinstance(client_action_id, str):
+            raise ValueError("Chess coverage action requires client_action_id")
+        if op_id is not None and not isinstance(op_id, str):
+            raise ValueError("Chess coverage op_id must be a string")
+        latency = action_payload.get("first_action_latency_ms")
+        transition = transition_chess_coverage_action(
+            action_type=action_type,
+            public_state=public_state,
+            private_state=private_state,
+            client_action_id=client_action_id,
+            op_id=op_id,
+            first_action_latency_ms=(
+                latency
+                if isinstance(latency, int) and not isinstance(latency, bool)
+                else None
+            ),
+        )
+        return InteractionTransition(
+            public_state=transition.public_state,
+            private_state=transition.private_state,
+            accepted=transition.accepted,
+            completed=transition.completed,
+            reason=transition.reason,
+            message=transition.message,
+            normalized_input=transition.normalized_input,
+            evaluation_state=transition.evaluation_state,
+        )
     if action_type == "hint":
         hint_transition = _hint_transition(
             family=family,
@@ -629,7 +690,7 @@ def interact_task(
     if (
         family == MACHINE_REACH_FAMILY
         and generator_version == MACHINE_REACH_GENERATOR_VERSION
-        and action_type in {"apply_op", "undo"}
+        and action_type in {"apply_op", "undo", "reset"}
     ):
         op_id = action_payload.get("op_id")
         client_action_id = action_payload.get("client_action_id")
