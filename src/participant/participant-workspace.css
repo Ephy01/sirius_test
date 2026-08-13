@@ -411,6 +411,17 @@
   pointer-events: none;
 }
 
+.geometry-atlas--points .geometry-card circle {
+  stroke: none;
+}
+
+.geometry-atlas--points .geometry-card__point-label {
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 0.1;
+  stroke-linejoin: round;
+}
+
 .geometry-atlas figcaption {
   display: flex;
   align-items: center;

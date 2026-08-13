@@ -668,7 +668,7 @@ def transition_geo_zendo_probe(
             accepted=True,
             reason="accepted",
             message=(
-                f"Конструкция {normalized_card_id}: "
+                f"Граф {normalized_card_id}: "
                 f"{'подходит' if truth else 'не подходит'}."
             ),
         )

@@ -655,12 +655,18 @@ export function ParticipantWorkspace({
   const isClassicMath =
     task.kind === "classic_math_free_response" &&
     task.family === "classic_math";
-  const statementPrompt = isDiceChess
+  const rawStatementPrompt = isDiceChess
     ? task.prompt.replace(
         /\s*Найдите вероятность описанного события\.\s*$/u,
         "",
       )
     : task.prompt;
+  const statementPrompt = task.family === "geo_zendo"
+    ? rawStatementPrompt
+        .replaceAll("Конструкции", "Графы")
+        .replaceAll("конструкции", "графы")
+        .replaceAll("конструкций", "графов")
+    : rawStatementPrompt;
   const statementQuestion =
     isDiceChess && task.eventDescription
       ? `Найдите вероятность того, что ${task.eventDescription
@@ -2081,10 +2087,12 @@ function GeometryAtlasScene({
   const height = Math.max(1, scene.bounds.maxY - scene.bounds.minY);
   const flipY = (value: number) => scene.bounds.maxY + scene.bounds.minY - value;
   const viewPadding = Math.max(width, height) * 0.09;
-  const radius = Math.max(
-    0.48,
-    Math.min(0.72, Math.min(width, height) * 0.075),
-  );
+  const radius = showGrid
+    ? 0.16
+    : Math.max(
+        0.48,
+        Math.min(0.72, Math.min(width, height) * 0.075),
+      );
   const verticalGridLines = Array.from(
     {
       length: Math.max(
@@ -2107,7 +2115,9 @@ function GeometryAtlasScene({
     groups.length === 2 && groups.includes("source") && groups.includes("image");
   return (
     <figure
-      className={`geometry-atlas${isTransformPair ? " geometry-atlas--pair" : ""}`}
+      className={`geometry-atlas${
+        isTransformPair ? " geometry-atlas--pair" : ""
+      }${showGrid ? " geometry-atlas--points" : ""}`}
       aria-label="Геометрические конфигурации"
       data-tour="graph-cards"
     >
@@ -2214,14 +2224,20 @@ function GeometryAtlasScene({
                     />
                     {point.label && (
                       <text
-                        x={point.x}
-                        y={flipY(point.y)}
+                        className={showGrid ? "geometry-card__point-label" : undefined}
+                        x={showGrid ? point.x + 0.28 : point.x}
+                        y={showGrid ? flipY(point.y) - 0.28 : flipY(point.y)}
                         dominantBaseline="central"
-                        textAnchor="middle"
+                        textAnchor={showGrid ? "start" : "middle"}
                         style={{
-                          fill:
-                            point.color === "cyan" ? "#004278" : "#ffffff",
-                          fontSize: `${Math.max(radius * 1.05, 0.46)}px`,
+                          fill: showGrid
+                            ? "#48304d"
+                            : point.color === "cyan"
+                              ? "#004278"
+                              : "#ffffff",
+                          fontSize: showGrid
+                            ? "0.52px"
+                            : `${Math.max(radius * 1.05, 0.46)}px`,
                         }}
                       >
                         {point.label}

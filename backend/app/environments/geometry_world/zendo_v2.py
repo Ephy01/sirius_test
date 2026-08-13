@@ -242,7 +242,7 @@ def transition_geo_zendo_v2_probe(
         private_state=transition.private_state,
         accepted=transition.accepted,
         reason=transition.reason,
-        message=transition.message,
+        message=transition.message.replace("Конструкция", "Граф", 1),
         normalized_card_id=transition.normalized_card_id,
         telemetry=transition.telemetry,
     )
