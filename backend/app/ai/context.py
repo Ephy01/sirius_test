@@ -276,6 +276,23 @@ def _build_dice_chess_context(public: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_chess_coverage_context(public: dict[str, Any]) -> dict[str, Any]:
+    if public.get("variant") == "custom_jump_placement":
+        return {
+            "boardSize": public.get("board_size"),
+            "targets": public.get("targets"),
+            "pieceTypes": public.get("piece_types"),
+            "placements": public.get("placements"),
+            "pieceCounts": public.get("piece_counts"),
+            "coveredTargets": public.get("covered_targets"),
+            "totalCost": public.get("total_cost"),
+            "maxPlacements": public.get("max_placements"),
+            "allCovered": public.get("all_covered"),
+            "coordinateNote": (
+                "Координаты в данных нулевые; интерфейс подписывает строки "
+                "числами 1–8, а столбцы буквами A–H. Каждая фигура атакует "
+                "только клетки, заданные её массивом offsets."
+            ),
+        }
     return {
         "boardSize": public.get("board_size"),
         "targets": public.get("targets"),

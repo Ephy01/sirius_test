@@ -721,7 +721,7 @@ Evaluator получает ответ и `private_state`, а затем возв
 
 | Семейство | Версия новых задач | Тип | Что проверяется |
 |---|---|---|---|
-| `chess_coverage` | `chess-coverage-v1` | интерактив | оптимизация покрытия и сравнение взвешенных решений |
+| `chess_coverage` | `chess-coverage-v2` | интерактив | размещение фигур с кастомными ходами, нелинейной стоимостью и ограничениями ресурсов |
 | `geo_zendo` | `geometry-zendo-v2` в mixed | интерактив | индукция скрытого правила на графах |
 | `token_zendo` | `token-zendo-v1` | интерактив | закономерности чисел, цветов и порядка |
 | `point_zendo` | `point-zendo-v1` | интерактив | геометрические свойства конфигураций точек |
@@ -1748,7 +1748,7 @@ Evaluator должен:
 | `backend/app/environments/geometry_world/zendo_v2.py` | Graph Zendo v2 adapter |
 | `backend/app/environments/geometry_world/atlas.py` | Transform, probability и legacy Zendo |
 | `backend/app/environments/machines/machine_reach.py` | Четыре finite-state machine tasks и solvers |
-| `backend/app/environments/chess_world/chess_coverage.py` | Взвешенное шахматное покрытие и точный solver |
+| `backend/app/environments/chess_world/chess_coverage.py` | Шахматное покрытие 8×8 с кастомными прыжками, возрастающей стоимостью и точным solver |
 | `backend/app/environments/wiring.py` | Hidden Wiring над GF(2) |
 | `backend/app/environments/spatial/fold_punch.py` | Folding/unfolding generator |
 | `backend/app/environments/chess_world/dice_chess_world.py` | Актуальная Dice & Chess trajectory |

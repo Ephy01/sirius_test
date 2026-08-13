@@ -277,16 +277,40 @@ export type ChessCoverageCandidate = {
   weight: number;
 };
 
+export type ChessCoveragePieceType = {
+  id: "N" | "B" | "R" | "Q";
+  label: string;
+  baseCost: number;
+  repeatSurcharge: number;
+  limit: number;
+  moveLabel: string;
+  offsets: BoardPoint[];
+};
+
+export type ChessCoveragePlacement = {
+  id: string;
+  piece: ChessCoveragePieceType["id"];
+  row: number;
+  col: number;
+  cost: number;
+};
+
 export type ChessCoveragePublicState = {
   kind: "chess_coverage";
   family: "chess_coverage";
+  variant: "candidate_selection" | "custom_jump_placement";
   prompt: string;
   boardSize: number;
   targets: BoardPoint[];
   candidates: ChessCoverageCandidate[];
   selectedIds: string[];
+  pieceTypes: ChessCoveragePieceType[];
+  placements: ChessCoveragePlacement[];
+  pieceCounts: Record<string, number>;
   coveredTargets: BoardPoint[];
   totalWeight: number;
+  totalCost: number;
+  maxPlacements: number;
   allCovered: boolean;
   responseHint: string;
   worldContext?: WorldContext;
@@ -1127,6 +1151,11 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       publicStateValue.selectedIds ?? publicStateValue.selected_ids;
     const coveredValues =
       publicStateValue.coveredTargets ?? publicStateValue.covered_targets;
+    const pieceTypeValues =
+      publicStateValue.pieceTypes ?? publicStateValue.piece_types;
+    const placementValues = publicStateValue.placements;
+    const pieceCountValue =
+      publicStateValue.pieceCounts ?? publicStateValue.piece_counts;
     const targets = Array.isArray(targetValues)
       ? targetValues.map(parseBoardPoint)
       : [];
@@ -1162,6 +1191,83 @@ function parseParticipantTask(value: unknown): ParticipantTask {
           }];
         })
       : [];
+    const pieceTypes = Array.isArray(pieceTypeValues)
+      ? pieceTypeValues.flatMap((item): ChessCoveragePieceType[] => {
+          if (!isRecord(item)) return [];
+          const id = readString(item, "id");
+          const baseCost = readNumber(item, "baseCost", "base_cost");
+          const repeatSurcharge = readNumber(
+            item,
+            "repeatSurcharge",
+            "repeat_surcharge",
+          );
+          const limit = readNumber(item, "limit");
+          const offsetValues = item.offsets;
+          const offsets = Array.isArray(offsetValues)
+            ? offsetValues.map(parseBoardPoint)
+            : [];
+          if (
+            !id ||
+            !["N", "B", "R", "Q"].includes(id) ||
+            baseCost === undefined ||
+            repeatSurcharge === undefined ||
+            limit === undefined ||
+            offsets.length === 0 ||
+            offsets.some((point) => point === null)
+          ) {
+            return [];
+          }
+          return [{
+            id: id as ChessCoveragePieceType["id"],
+            label: readString(item, "label") ?? id,
+            baseCost,
+            repeatSurcharge,
+            limit,
+            moveLabel:
+              readString(item, "moveLabel", "move_label") ?? "особый прыжок",
+            offsets: offsets as BoardPoint[],
+          }];
+        })
+      : [];
+    const placements = Array.isArray(placementValues)
+      ? placementValues.flatMap((item): ChessCoveragePlacement[] => {
+          if (!isRecord(item)) return [];
+          const id = readString(item, "id");
+          const piece = readString(item, "piece");
+          const row = readNumber(item, "row");
+          const col = readNumber(item, "col");
+          const cost = readNumber(item, "cost");
+          if (
+            !id ||
+            !piece ||
+            !["N", "B", "R", "Q"].includes(piece) ||
+            row === undefined ||
+            col === undefined ||
+            cost === undefined
+          ) {
+            return [];
+          }
+          return [{
+            id,
+            piece: piece as ChessCoveragePlacement["piece"],
+            row,
+            col,
+            cost,
+          }];
+        })
+      : [];
+    const pieceCounts = isRecord(pieceCountValue)
+      ? Object.fromEntries(
+          Object.entries(pieceCountValue).flatMap(([key, item]) =>
+            typeof item === "number" && Number.isFinite(item)
+              ? [[key, item] as const]
+              : [],
+          ),
+        )
+      : {};
+    const variant = pieceTypes.length > 0
+      ? "custom_jump_placement"
+      : "candidate_selection";
     if (
       boardSize === undefined ||
       !Number.isInteger(boardSize) ||
@@ -1170,9 +1276,11 @@ function parseParticipantTask(value: unknown): ParticipantTask {
       targets.length === 0 ||
       targets.some((point) => point === null) ||
       coveredTargets.some((point) => point === null) ||
-      candidates.length === 0 ||
-      !Array.isArray(selectedValues) ||
-      !selectedValues.every((item) => typeof item === "string")
+      (variant === "candidate_selection" &&
+        (candidates.length === 0 ||
+          !Array.isArray(selectedValues) ||
+          !selectedValues.every((item) => typeof item === "string"))) ||
+      (variant === "custom_jump_placement" && boardSize !== 8)
     ) {
       throw new ApiError(502, {
         code: "invalid_api_response",
@@ -1183,14 +1291,24 @@ function parseParticipantTask(value: unknown): ParticipantTask {
     publicState = {
       kind,
       family: "chess_coverage",
+      variant,
       prompt,
       boardSize,
       targets: targets as BoardPoint[],
       candidates,
-      selectedIds: selectedValues as string[],
+      selectedIds: Array.isArray(selectedValues)
+        ? selectedValues.filter((item): item is string => typeof item === "string")
+        : [],
+      pieceTypes,
+      placements,
+      pieceCounts,
       coveredTargets: coveredTargets as BoardPoint[],
       totalWeight:
         readNumber(publicStateValue, "totalWeight", "total_weight") ?? 0,
+      totalCost:
+        readNumber(publicStateValue, "totalCost", "total_cost") ?? 0,
+      maxPlacements:
+        readNumber(publicStateValue, "maxPlacements", "max_placements") ?? 0,
       allCovered:
         publicStateValue.allCovered === true ||
         publicStateValue.all_covered === true,

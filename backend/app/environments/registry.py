@@ -35,8 +35,10 @@ from .chess_world.dice_chess_position import (
 from .chess_world.chess_coverage import (
     FAMILY_KEY as CHESS_COVERAGE_FAMILY,
     GENERATOR_VERSION as CHESS_COVERAGE_GENERATOR_VERSION,
+    LEGACY_GENERATOR_VERSION as CHESS_COVERAGE_LEGACY_GENERATOR_VERSION,
     evaluate_chess_coverage_answer,
     generate_chess_coverage_task,
+    generate_legacy_chess_coverage_task,
     transition_chess_coverage_action,
 )
 from .geometry_world import (
@@ -203,6 +205,15 @@ def generate_task(
         and generator_version == CHESS_COVERAGE_GENERATOR_VERSION
     ):
         public_state, private_state = generate_chess_coverage_task(
+            seed=seed,
+            difficulty=difficulty,
+        )
+        return GeneratedTask(public_state=public_state, private_state=private_state)
+    if (
+        family == CHESS_COVERAGE_FAMILY
+        and generator_version == CHESS_COVERAGE_LEGACY_GENERATOR_VERSION
+    ):
+        public_state, private_state = generate_legacy_chess_coverage_task(
             seed=seed,
             difficulty=difficulty,
         )
@@ -386,7 +397,11 @@ def evaluate_task(
 ) -> dict[str, Any]:
     if (
         family == CHESS_COVERAGE_FAMILY
-        and generator_version == CHESS_COVERAGE_GENERATOR_VERSION
+        and generator_version
+        in {
+            CHESS_COVERAGE_GENERATOR_VERSION,
+            CHESS_COVERAGE_LEGACY_GENERATOR_VERSION,
+        }
     ):
         return evaluate_chess_coverage_answer(
             answer=answer,
@@ -504,7 +519,11 @@ def interact_task(
 ) -> InteractionTransition:
     if (
         family == CHESS_COVERAGE_FAMILY
-        and generator_version == CHESS_COVERAGE_GENERATOR_VERSION
+        and generator_version
+        in {
+            CHESS_COVERAGE_GENERATOR_VERSION,
+            CHESS_COVERAGE_LEGACY_GENERATOR_VERSION,
+        }
         and action_type in {"apply_op", "reset"}
     ):
         op_id = action_payload.get("op_id")

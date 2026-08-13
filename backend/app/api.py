@@ -3118,6 +3118,16 @@ def _debug_task_details(task: TaskInstance) -> list[str]:
         )
         return details
     if family == CHESS_COVERAGE_FAMILY:
+        if private.get("variant") == "custom_jump_placement":
+            placements = private.get("optimal_placements") or []
+            return [
+                "Оптимальная стоимость: " + str(private.get("optimal_cost")),
+                "Оптимальная расстановка: "
+                + ", ".join(
+                    f"{item['piece']}@{chr(65 + int(item['col']))}{int(item['row']) + 1}"
+                    for item in placements
+                ),
+            ]
         return [
             "Оптимальная стоимость: " + str(private.get("optimal_weight")),
             "Оптимальная расстановка: "
@@ -3210,6 +3220,15 @@ def _debug_reference_answer(task: TaskInstance) -> tuple[str, list[str]]:
         )
         return answer, []
     if family == CHESS_COVERAGE_FAMILY:
+        if private.get("variant") == "custom_jump_placement":
+            commands = [
+                f"/op place:{item['piece']}:{item['row']}:{item['col']}"
+                for item in (private.get("optimal_placements") or [])
+            ]
+            return (
+                "Расставьте фигуры минимальной стоимости и отправьте done:",
+                commands + ["done"],
+            )
         solution = (private.get("optimal_solutions") or [[]])[0]
         return (
             "Выберите фигуры минимальной стоимости и отправьте done:",

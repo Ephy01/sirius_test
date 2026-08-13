@@ -454,7 +454,7 @@ function initialEntries(task: ParticipantTask): ConsoleEntry[] {
         id: 2,
         author: "system",
         content:
-          "Выбирайте фигуры на доске. Покройте все цели с минимальной суммарной стоимостью.",
+          "Выберите фигуру в палитре и ставьте её на свободные клетки. Покройте все цели с минимальной стоимостью.",
       },
     ];
   }
@@ -737,9 +737,19 @@ export function ParticipantWorkspace({
     );
   }
   if (task.chessCoverage) {
+    const customPlacement =
+      task.chessCoverage.variant === "custom_jump_placement";
     briefMetaLines.push(
-      `Выбрано фигур: ${task.chessCoverage.selectedIds.length}`,
-      `Текущая стоимость: ${task.chessCoverage.totalWeight}`,
+      `Выбрано фигур: ${
+        customPlacement
+          ? task.chessCoverage.placements.length
+          : task.chessCoverage.selectedIds.length
+      }`,
+      `Текущая стоимость: ${
+        customPlacement
+          ? task.chessCoverage.totalCost
+          : task.chessCoverage.totalWeight
+      }`,
     );
   }
   if (task.foldPunch) {
@@ -1074,7 +1084,7 @@ export function ParticipantWorkspace({
               </>
             ) : isChessCoverage ? (
               <>
-                <code>/op C1</code> — добавить или убрать фигуру
+                Выберите фигуру в палитре и нажмите на клетку доски.
                 <br />
                 <code>/reset</code> — очистить расстановку
                 <br />
@@ -1606,8 +1616,9 @@ export function ParticipantWorkspace({
                   </>
                 ) : isChessCoverage ? (
                   <>
-                    Выберите фигуры на доске и зафиксируйте расстановку кнопкой
-                    под доской или командой <code>/answer done</code>.
+                    Выберите тип фигуры в палитре, расставьте фигуры на доске
+                    и зафиксируйте решение кнопкой под доской или командой{" "}
+                    <code>/answer done</code>.
                   </>
                 ) : isMachine ? (
                   <>
@@ -1649,8 +1660,8 @@ export function ParticipantWorkspace({
                 <p>
                   {isChessCoverage ? (
                     <>
-                      <code>/op C1</code> — добавить или убрать фигуру ·{" "}
-                      <code>/reset</code> — очистить расстановку.
+                      Нажатие на установленную фигуру убирает её ·{" "}
+                      <code>/reset</code> — очистить доску.
                     </>
                   ) : isMachine ? (
                     <>
@@ -2751,7 +2762,7 @@ function DicePositionScene({
   );
 }
 
-const COVERAGE_GLYPHS: Record<ChessCoveragePublicState["candidates"][number]["piece"], string> = {
+const COVERAGE_GLYPHS: Record<"K" | "Q" | "R" | "B" | "N", string> = {
   K: "♔",
   Q: "♕",
   R: "♖",
@@ -2760,6 +2771,251 @@ const COVERAGE_GLYPHS: Record<ChessCoveragePublicState["candidates"][number]["pi
 };
 
 function ChessCoverageScene({
+  state,
+  canAct = false,
+  onToggle,
+  onReset,
+  onSubmit,
+}: {
+  state: ChessCoveragePublicState;
+  canAct?: boolean;
+  onToggle?: (candidateId: string) => void;
+  onReset?: () => void;
+  onSubmit?: () => void;
+}) {
+  if (state.variant === "custom_jump_placement") {
+    return (
+      <ChessPlacementScene
+        state={state}
+        canAct={canAct}
+        onAction={onToggle}
+        onReset={onReset}
+        onSubmit={onSubmit}
+      />
+    );
+  }
+  return (
+    <LegacyChessCoverageScene
+      state={state}
+      canAct={canAct}
+      onToggle={onToggle}
+      onReset={onReset}
+      onSubmit={onSubmit}
+    />
+  );
+}
+
+function ChessPlacementScene({
+  state,
+  canAct = false,
+  onAction,
+  onReset,
+  onSubmit,
+}: {
+  state: ChessCoveragePublicState;
+  canAct?: boolean;
+  onAction?: (action: string) => void;
+  onReset?: () => void;
+  onSubmit?: () => void;
+}) {
+  const [activePiece, setActivePiece] = useState(
+    state.pieceTypes[0]?.id ?? "N",
+  );
+  const targets = new Set(
+    state.targets.map((point) => `${point.row}:${point.col}`),
+  );
+  const covered = new Set(
+    state.coveredTargets.map((point) => `${point.row}:${point.col}`),
+  );
+  const placements = new Map(
+    state.placements.map((placement) => [
+      `${placement.row}:${placement.col}`,
+      placement,
+    ]),
+  );
+  const activeDefinition = state.pieceTypes.find(
+    (piece) => piece.id === activePiece,
+  );
+  const placementLimitReached = state.placements.length >= state.maxPlacements;
+
+  return (
+    <figure className="coverage-scene" aria-label="Задача о покрытии клеток">
+      <div className="coverage-placement">
+        <section className="coverage-palette" aria-label="Палитра фигур">
+          {state.pieceTypes.map((piece) => {
+            const count = state.pieceCounts[piece.id] ?? 0;
+            const nextCost = piece.baseCost + piece.repeatSurcharge * count;
+            const exhausted = count >= piece.limit;
+            return (
+              <button
+                type="button"
+                className={[
+                  "coverage-piece-card",
+                  activePiece === piece.id ? "is-active" : "",
+                ].filter(Boolean).join(" ")}
+                aria-pressed={activePiece === piece.id}
+                disabled={!canAct || exhausted || placementLimitReached}
+                onClick={() => setActivePiece(piece.id)}
+                key={piece.id}
+              >
+                <span className="coverage-piece-card__glyph" aria-hidden="true">
+                  {COVERAGE_GLYPHS[piece.id]}
+                </span>
+                <span className="coverage-piece-card__copy">
+                  <strong>{piece.label}</strong>
+                  <small>{piece.moveLabel}</small>
+                </span>
+                <span className="coverage-piece-card__cost">
+                  {exhausted ? "лимит" : `следующая: ${nextCost}`}
+                  <small>{count} / {piece.limit}</small>
+                </span>
+              </button>
+            );
+          })}
+        </section>
+
+        {activeDefinition && (
+          <div className="coverage-move-rule" aria-live="polite">
+            <MovePattern piece={activeDefinition} />
+            <p>
+              <strong>{COVERAGE_GLYPHS[activeDefinition.id]} {activeDefinition.label}</strong>
+              атакует только отмеченные клетки и перепрыгивает всё между ними.
+              Стоимость: {activeDefinition.baseCost}, затем +
+              {activeDefinition.repeatSurcharge} за каждую уже поставленную фигуру
+              этого типа.
+            </p>
+          </div>
+        )}
+
+        <div className="coverage-placement-board" role="grid" aria-label="Доска 8 на 8">
+          {Array.from({ length: 64 }, (_, index) => {
+            const row = Math.floor(index / 8);
+            const col = index % 8;
+            const key = `${row}:${col}`;
+            const placement = placements.get(key);
+            const target = targets.has(key);
+            const isCovered = covered.has(key);
+            const canPlace = Boolean(
+              canAct &&
+              onAction &&
+              activeDefinition &&
+              !target &&
+              !placement &&
+              !placementLimitReached &&
+              (state.pieceCounts[activeDefinition.id] ?? 0) < activeDefinition.limit,
+            );
+            const canRemove = Boolean(canAct && onAction && placement);
+            return (
+              <button
+                type="button"
+                role="gridcell"
+                className={[
+                  "coverage-placement-board__cell",
+                  (row + col) % 2 ? "is-dark" : "",
+                  target ? "is-target" : "",
+                  isCovered ? "is-covered" : "",
+                  placement ? "is-occupied" : "",
+                ].filter(Boolean).join(" ")}
+                disabled={!canPlace && !canRemove}
+                aria-label={
+                  placement
+                    ? `${placement.id}, ${placement.piece}, клетка ${String.fromCharCode(65 + col)}${row + 1}, стоимость ${placement.cost}. Нажмите, чтобы убрать.`
+                    : `Клетка ${String.fromCharCode(65 + col)}${row + 1}${target ? ", цель" : ""}`
+                }
+                onClick={() => {
+                  if (placement) {
+                    onAction?.(`remove:${placement.id}`);
+                  } else if (canPlace && activeDefinition) {
+                    onAction?.(`place:${activeDefinition.id}:${row}:${col}`);
+                  }
+                }}
+                key={key}
+              >
+                {row === 7 && (
+                  <span className="coverage-placement-board__file" aria-hidden="true">
+                    {String.fromCharCode(65 + col)}
+                  </span>
+                )}
+                {col === 0 && (
+                  <span className="coverage-placement-board__rank" aria-hidden="true">
+                    {row + 1}
+                  </span>
+                )}
+                {target && (
+                  <span className="coverage-placement-board__target" aria-hidden="true">
+                    {isCovered ? "●" : "○"}
+                  </span>
+                )}
+                {placement && (
+                  <>
+                    <span className="coverage-placement-board__piece" aria-hidden="true">
+                      {COVERAGE_GLYPHS[placement.piece]}
+                    </span>
+                    <b aria-hidden="true">{placement.cost}</b>
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="coverage-placement-footer">
+          <dl>
+            <div><dt>Покрыто</dt><dd>{state.coveredTargets.length} / {state.targets.length}</dd></div>
+            <div><dt>Стоимость</dt><dd>{state.totalCost}</dd></div>
+            <div><dt>Фигур</dt><dd>{state.placements.length} / {state.maxPlacements}</dd></div>
+          </dl>
+          <div className="coverage-placement-actions">
+            <button
+              type="button"
+              disabled={!canAct || state.placements.length === 0 || !onReset}
+              onClick={onReset}
+            >
+              Вернуть в начало
+            </button>
+            <button
+              type="button"
+              className="is-primary"
+              disabled={!canAct || !state.allCovered || !onSubmit}
+              onClick={onSubmit}
+            >
+              Зафиксировать расстановку
+            </button>
+          </div>
+        </div>
+      </div>
+    </figure>
+  );
+}
+
+function MovePattern({
+  piece,
+}: {
+  piece: ChessCoveragePublicState["pieceTypes"][number];
+}) {
+  const attacked = new Set(
+    piece.offsets.map((offset) => `${offset.row + 3}:${offset.col + 3}`),
+  );
+  return (
+    <span className="coverage-move-pattern" aria-label={`Схема хода: ${piece.moveLabel}`}>
+      {Array.from({ length: 49 }, (_, index) => {
+        const row = Math.floor(index / 7);
+        const col = index % 7;
+        return (
+          <span
+            className={[
+              row === 3 && col === 3 ? "is-origin" : "",
+              attacked.has(`${row}:${col}`) ? "is-attacked" : "",
+            ].filter(Boolean).join(" ")}
+            key={`${row}:${col}`}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+function LegacyChessCoverageScene({
   state,
   canAct = false,
   onToggle,
