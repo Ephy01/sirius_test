@@ -651,6 +651,12 @@ export function ParticipantWorkspace({
   const isWiring = task.kind === "hidden_wiring";
   const isChessCoverage =
     task.kind === "chess_coverage" && Boolean(task.chessCoverage);
+  const chessCoverageHasPlacement = Boolean(
+    task.chessCoverage &&
+      (task.chessCoverage.variant === "custom_jump_placement"
+        ? task.chessCoverage.placements.length > 0
+        : task.chessCoverage.selectedIds.length > 0),
+  );
   const isLeaperBoard = task.kind === "chess" && Boolean(task.leaperBoard);
   const isClassicMath =
     task.kind === "classic_math_free_response" &&
@@ -1870,6 +1876,16 @@ export function ParticipantWorkspace({
                   }}
                 >
                   Проверить
+                </button>
+              )}
+              {isChessCoverage && (
+                <button
+                  type="button"
+                  disabled={isBusy || !chessCoverageHasPlacement}
+                  aria-label="Сбросить шахматную расстановку"
+                  onClick={() => void runCommand("/reset")}
+                >
+                  Сбросить
                 </button>
               )}
               {!tutorialMode && (
