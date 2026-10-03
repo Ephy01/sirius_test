@@ -1707,7 +1707,7 @@ Backend suite покрывает:
 
 ### 23.1. Модуль семейства
 
-Создать модуль в `backend/app/tasks/` с неизменяемыми идентификаторами, генератором, evaluator-ом и записью `FAMILY`:
+Создать модуль в `backend/app/tasks/` с неизменяемыми идентификаторами, генератором, evaluator-ом и записью `FAMILY`. Небольшое семейство помещается в один файл (образец — `fold_punch.py`), крупное оформляется пакетом, где запись `FAMILY` находится в `__init__.py` (образец — `machine_reach/`):
 
 ```python
 from .family import State, TaskFamily
@@ -1869,9 +1869,9 @@ Evaluator должен:
 | `backend/app/tasks/zendo/rule_space.py` | Пространство graph rules |
 | `backend/app/tasks/zendo/engine.py` | Общая генерация, probes, hints и Zendo scoring |
 | `backend/app/tasks/zendo/{graph,token,point,grid}.py` | Четыре семейства Zendo |
-| `backend/app/tasks/machine_reach.py` | Четыре finite-state machine tasks и solvers |
-| `backend/app/tasks/chess_coverage.py` | Шахматное покрытие 8×8 с кастомными прыжками, возрастающей стоимостью и точным solver |
-| `backend/app/tasks/hidden_wiring.py` | Hidden Wiring над GF(2) |
+| `backend/app/tasks/machine_reach/` | Четыре finite-state machine tasks: по модулю на подтип (`lamps`, `numeric`, `permutations`, `leaper`), общие переходы, оценка и проверка сертификатов |
+| `backend/app/tasks/chess_coverage/` | Шахматное покрытие 8×8: доска и стоимость, точный solver, генерация, переходы, оценка |
+| `backend/app/tasks/hidden_wiring/` | Hidden Wiring над GF(2): панель, генерация, переходы, оценка |
 | `backend/app/tasks/fold_punch.py` | Folding/unfolding generator |
 | `backend/app/tasks/geo_transform.py`, `geo_probability.py` | Преобразования D4 и вероятности на графах |
 | `backend/app/tasks/dice_chess/` | Dice & Chess |
