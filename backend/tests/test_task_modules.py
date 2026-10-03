@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,7 +40,8 @@ def test_module_file_adds_a_family_and_unloading_removes_it(tmp_path):
     assert set(FAMILIES) == BUILTIN_KEYS
 
 
-def test_module_folder_can_import_its_own_files(tmp_path):
+def test_module_folder_can_import_its_own_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, 'dont_write_bytecode', False)
     _write(tmp_path, 'shared/helper.py', "TITLE = 'Из соседнего файла'\n")
     _write(
         tmp_path,
@@ -53,6 +55,8 @@ def test_module_folder_can_import_its_own_files(tmp_path):
 
     assert loaded[0].error is None
     assert FAMILIES['shared_one'].card.title == 'Из соседнего файла'
+    assert not list(tmp_path.rglob('__pycache__')), 'cached bytecode would hide a quick edit of the module'
+    assert sys.dont_write_bytecode is False
 
 
 @pytest.mark.parametrize(

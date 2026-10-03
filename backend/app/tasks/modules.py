@@ -12,6 +12,8 @@ import json
 import logging
 import re
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -47,6 +49,21 @@ def _candidates(directory: Path) -> list[tuple[str, Path]]:
     return found
 
 
+@contextmanager
+def _without_bytecode_cache() -> Iterator[None]:
+    """Keeps compiled files out of the authors' folder.
+
+    The cache is checked by the second of the last change and the file size, so an
+    edit of the same length made right after a reload would run the old code.
+    """
+
+    previous, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        yield
+    finally:
+        sys.dont_write_bytecode = previous
+
+
 def _import(name: str, path: Path) -> ModuleType:
     qualified = f'{PACKAGE}.{name}'
     search = [str(path.parent)] if path.name == 'task.py' else None
@@ -54,7 +71,8 @@ def _import(name: str, path: Path) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     sys.modules[qualified] = module
     try:
-        spec.loader.exec_module(module)
+        with _without_bytecode_cache():
+            spec.loader.exec_module(module)
     except BaseException:
         sys.modules.pop(qualified, None)
         raise
