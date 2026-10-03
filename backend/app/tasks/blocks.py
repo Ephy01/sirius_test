@@ -15,6 +15,7 @@ State = dict[str, Any]
 KIND = 'blocks'
 TONES = ('plain', 'accent', 'muted', 'good', 'bad')
 COMMANDS = ('probe', 'hint', 'op', 'undo', 'reset', 'done')
+BARE_ANSWERS = ('done', 'impossible')
 
 
 def text(value: str) -> State:
@@ -31,12 +32,23 @@ def table(columns: Sequence[str], rows: Iterable[Sequence[Any]]) -> State:
     return {'type': 'table', 'columns': header, 'rows': body}
 
 
+def _chat_command(command: str) -> str:
+    """A click sends this text to the chat, so it must be a command and not a message to the assistant."""
+
+    text = str(command).strip()
+    if not text.startswith('/') and text not in BARE_ANSWERS:
+        raise ValueError(
+            f'команда {text!r} должна начинаться с "/" или быть одним из слов {", ".join(BARE_ANSWERS)}'
+        )
+    return text
+
+
 def cell(label: Any = '', *, tone: str = 'plain', command: str | None = None) -> State:
     """One cell of a grid. With ``command`` the cell becomes a button."""
 
     if tone not in TONES:
         raise ValueError(f'оттенок клетки должен быть одним из {", ".join(TONES)}')
-    return {'text': str(label), 'tone': tone, 'command': command}
+    return {'text': str(label), 'tone': tone, 'command': None if command is None else _chat_command(command)}
 
 
 def grid(cells: Iterable[Iterable[State | Any]], *, caption: str | None = None) -> State:
@@ -49,7 +61,9 @@ def grid(cells: Iterable[Iterable[State | Any]], *, caption: str | None = None) 
 
 
 def button(label: str, command: str) -> State:
-    return {'label': str(label), 'command': str(command)}
+    if not str(label).strip():
+        raise ValueError('у кнопки должна быть подпись')
+    return {'label': str(label), 'command': _chat_command(command)}
 
 
 def buttons(items: Iterable[State]) -> State:

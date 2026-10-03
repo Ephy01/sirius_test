@@ -175,3 +175,22 @@ def test_assistant_sees_the_blocks_of_a_module_task_without_click_commands(tmp_p
     }
     assert 'secret' not in context.canonical_json
     assert '/op press' not in context.canonical_json
+
+
+def test_block_builders_reject_what_the_client_would_not_draw():
+    from sirius_gate import blocks
+
+    with pytest.raises(ValueError, match='должна начинаться'):
+        blocks.cell('1', command='press 1')
+    with pytest.raises(ValueError, match='должна начинаться'):
+        blocks.button('Нажать', 'нажми')
+    with pytest.raises(ValueError, match='оттенок'):
+        blocks.cell('1', tone='red')
+    with pytest.raises(ValueError, match='прямоугольником'):
+        blocks.grid([[1, 2], [3]])
+    with pytest.raises(ValueError, match='столько же значений'):
+        blocks.table(['a', 'b'], [[1]])
+    with pytest.raises(ValueError, match='команды задачи'):
+        blocks.scene('q', [], commands=['fly'])
+    assert blocks.button('Готово', 'done') == {'label': 'Готово', 'command': 'done'}
+    assert blocks.cell(command=' /op x ')['command'] == '/op x'

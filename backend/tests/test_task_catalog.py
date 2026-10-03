@@ -49,8 +49,8 @@ def test_catalog_describes_builtin_families_for_the_builder(tmp_path):
     assert {key for key, item in items.items() if not item['listed']} == {'dice_chess', 'classic_math'}
     assert items['classic_math']['scripted_only'] is True
     assert [variant['title'] for variant in items['classic_math']['variants']] == [
-        'Рассадка в баре',
         'Парадокс долей',
+        'Рассадка в баре',
     ]
     assert items['machine_reach']['interactive'] is True
     assert items['geo_probability']['interactive'] is False

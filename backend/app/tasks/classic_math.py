@@ -276,7 +276,7 @@ FAMILY = TaskFamily(
         answer=answer, private_state=private_state
     ),
     aliases=('classic-math',),
-    sub_kinds=tuple(sorted(SUB_KINDS)),
+    sub_kinds=(SHARE_PARADOX, BAR_SEATING),
     scripted_only=True,
     reference_answer=_reference_answer,
     debug_details=lambda private_state: [
