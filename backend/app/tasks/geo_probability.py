@@ -10,7 +10,7 @@ from fractions import Fraction
 from typing import Any
 
 from .answers import probability_debug_details, probability_reference_answer, strip_answer_command
-from .family import State, TaskFamily
+from .family import FamilyCard, State, TaskFamily
 from .graphs import (
     GRAPH_COORDINATES,
     POINT_COLORS,
@@ -224,6 +224,12 @@ def _ai_context(visible_state: State) -> State:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Комбинаторика',
+        description='Подсчёт конфигураций и вероятностей на сетях из точек, рёбер и областей.',
+        weight=2,
+        skin='graph',
+    ),
     generate=lambda seed, difficulty, context: generate_geo_probability_task(
         seed=seed, difficulty=difficulty
     ),

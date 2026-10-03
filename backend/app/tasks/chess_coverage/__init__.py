@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..family import State, TaskFamily, Transition, latency_ms, optional_text, required_text
+from ..family import FamilyCard, State, TaskFamily, Transition, latency_ms, optional_text, required_text
 from .board import CUSTOM_PIECES, FAMILY_KEY, GENERATOR_VERSION, PUBLIC_KIND, READABLE_VERSIONS
 from .evaluation import evaluate_chess_coverage_answer
 from .generation import generate_chess_coverage_task
@@ -78,6 +78,15 @@ def _ai_context(public_state: State) -> State:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Шахматное покрытие',
+        description=(
+            'Расстановка фигур с особыми ходами: покрыть цели при ограниченных ресурсах '
+            'и возрастающей стоимости.'
+        ),
+        weight=8,
+        skin='chess',
+    ),
     readable_versions=READABLE_VERSIONS,
     generate=lambda seed, difficulty, context: generate_chess_coverage_task(seed=seed, difficulty=difficulty),
     evaluate=lambda answer, private_state: evaluate_chess_coverage_answer(

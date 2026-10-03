@@ -15,7 +15,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ..family import State, TaskFamily, Transition, latency_ms, optional_text, required_text
+from ..family import (
+    FamilyCard,
+    State,
+    TaskFamily,
+    Transition,
+    Variant,
+    latency_ms,
+    optional_text,
+    required_text,
+)
 from .common import (
     CHESS_KIND,
     DISTANCE_RANGES,
@@ -191,6 +200,20 @@ def _ai_context(public_state: State) -> State:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Машины и инварианты',
+        description=(
+            'Лампы, числовые операции, перестановки и прыгуны: достигните цели или докажите недостижимость.'
+        ),
+        weight=12,
+        skin='machine_panel',
+        variants={
+            LAMPS_GF2: Variant('Лампы'),
+            NUMERIC_MACHINE: Variant('Числовая машина'),
+            PERM_PUZZLE: Variant('Перестановки'),
+            LEAPER_BOARD: Variant('Прыгун'),
+        },
+    ),
     readable_versions=READABLE_VERSIONS,
     generate=_generate,
     evaluate=lambda answer, private_state: evaluate_machine_answer(

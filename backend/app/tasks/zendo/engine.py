@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Protocol
 
-from ..family import State, TaskFamily, Transition, required_text
+from ..family import FamilyCard, State, TaskFamily, Transition, required_text
 from ..graphs import scene_cards
 from .rule_dsl import (
     MAX_BASE_RATE,
@@ -838,6 +838,7 @@ def zendo_family(
     ai_context: Callable[[State], State],
     aliases: tuple[str, ...] = (),
     probe: Callable[[State, State, State], Transition] | None = None,
+    card: FamilyCard | None = None,
 ) -> TaskFamily:
     """Assemble a Zendo family: shared hint, scoring and debug views."""
 
@@ -871,4 +872,5 @@ def zendo_family(
             private_state, get_universe_space(universe).rules, atom_descriptions
         ),
         ai_context=ai_context,
+        card=card,
     )

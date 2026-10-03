@@ -13,7 +13,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
-from .family import State, TaskFamily
+from .family import FamilyCard, State, TaskFamily, Variant
 
 FAMILY_KEY = 'classic_math'
 GENERATOR_VERSION = 'classic-math-v1'
@@ -255,6 +255,20 @@ def _reference_answer(private_state: State) -> tuple[str, list[str]]:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Классическая задача',
+        description='Развёрнутый ответ на одну из двух классических задач, выдаётся на заданной позиции.',
+        variants={
+            SHARE_PARADOX: Variant(
+                'Парадокс долей',
+                'Развёрнуто объяснить, почему помесячные и суммарные доли могут давать разный порядок.',
+            ),
+            BAR_SEATING: Variant(
+                'Рассадка в баре',
+                'Найти первое место, максимальное число посетителей и доказать оптимальность рассадки.',
+            ),
+        },
+    ),
     generate=lambda seed, difficulty, context: generate_classic_math_task(
         seed=seed, difficulty=difficulty, context=context or None
     ),

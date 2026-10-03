@@ -7,7 +7,7 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Any
 
-from ..family import State, TaskFamily, Transition, required_text
+from ..family import FamilyCard, State, TaskFamily, Transition, required_text
 from ..graphs import public_state as scene_public_state
 from ..graphs import scene
 from .engine import (
@@ -168,6 +168,12 @@ def _debug_details(private_state: State) -> list[str]:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Геометрический Zendo',
+        description='Восстановление скрытого закона по положительным и отрицательным конфигурациям.',
+        weight=14,
+        skin='graph',
+    ),
     generate=lambda seed, difficulty, context: generate_geo_zendo_task(seed=seed, difficulty=difficulty),
     evaluate=lambda answer, private_state: evaluate_geo_zendo_answer(
         answer=answer, private_state=private_state

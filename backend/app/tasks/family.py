@@ -30,6 +30,24 @@ class Transition:
 
 
 @dataclass(frozen=True)
+class Variant:
+    title: str
+    description: str = ''
+
+
+@dataclass(frozen=True)
+class FamilyCard:
+    """How an organizer sees the family in the contest builder."""
+
+    title: str
+    description: str = ''
+    weight: int = 10
+    skin: str | None = None
+    listed: bool = True
+    variants: dict[str, Variant] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class TaskFamily:
     key: str
     version: str
@@ -45,6 +63,7 @@ class TaskFamily:
     reference_answer: Callable[[State], tuple[str, list[str]]] | None = None
     debug_details: Callable[[State], list[str]] | None = None
     ai_context: Callable[[State], State] | None = None
+    card: FamilyCard | None = None
 
 
 def required_text(payload: State, key: str, message: str) -> str:

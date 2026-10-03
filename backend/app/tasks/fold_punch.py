@@ -22,7 +22,7 @@ import random
 import re
 from typing import Any
 
-from .family import State, TaskFamily
+from .family import FamilyCard, State, TaskFamily
 
 FAMILY_KEY = 'fold_punch'
 GENERATOR_VERSION = 'fold-punch-v1'
@@ -296,6 +296,12 @@ def _debug_details(private_state: State) -> list[str]:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Дырокол',
+        description='Лист складывают и пробивают дырки; отметьте, где они окажутся после разворота.',
+        weight=8,
+        skin='sheet',
+    ),
     generate=lambda seed, difficulty, context: generate_fold_punch_task(seed=seed, difficulty=difficulty),
     evaluate=lambda answer, private_state: evaluate_fold_punch_answer(
         answer=answer, private_state=private_state

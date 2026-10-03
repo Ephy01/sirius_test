@@ -13,7 +13,7 @@ import random
 from collections.abc import Hashable
 from typing import Any
 
-from ..family import State
+from ..family import FamilyCard, State
 from .engine import (
     ANSWER_RESPONSE_HINT,
     card_probes,
@@ -274,6 +274,12 @@ def _ai_context(public_state: State) -> State:
 FAMILY = zendo_family(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Zendo: фишки',
+        description='Скрытое правило про последовательности числовых фишек трёх цветов.',
+        weight=12,
+        skin='tokens',
+    ),
     generate=generate_token_zendo_task,
     universe=_UNIVERSE,
     atom_descriptions=ATOM_DESCRIPTIONS,

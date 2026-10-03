@@ -7,7 +7,7 @@ levels about legal moves in a position reached by random play.
 from __future__ import annotations
 
 from ..answers import probability_debug_details, probability_reference_answer
-from ..family import State, TaskFamily
+from ..family import FamilyCard, State, TaskFamily
 from .inventory import generate_dice_chess_inventory_task
 from .position import generate_dice_chess_position_task
 from .probability import evaluate_dice_chess_answer
@@ -31,6 +31,11 @@ def generate_dice_chess_task(*, seed: int, difficulty: int) -> tuple[State, Stat
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Dice & Chess',
+        description='Вероятностные события на доске и решения, зависящие от кубика фигур.',
+        listed=False,
+    ),
     generate=lambda seed, difficulty, context: generate_dice_chess_task(seed=seed, difficulty=difficulty),
     evaluate=lambda answer, private_state: evaluate_dice_chess_answer(
         answer=answer, private_state=private_state

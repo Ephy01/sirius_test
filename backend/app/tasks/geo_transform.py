@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .answers import strip_answer_command
-from .family import State, TaskFamily
+from .family import FamilyCard, State, TaskFamily
 from .graphs import CARD_COORDINATES, MiniGraph, normalize_edges, public_state, scene, scene_cards
 
 FAMILY_KEY = 'geo_transform'
@@ -180,6 +180,12 @@ def _ai_context(visible_state: State) -> State:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Инварианты',
+        description='Преобразования фигур и графов: найти то, что сохраняется, или распознать действие.',
+        weight=2,
+        skin='graph',
+    ),
     generate=lambda seed, difficulty, context: generate_geo_transform_task(seed=seed, difficulty=difficulty),
     evaluate=lambda answer, private_state: evaluate_geo_transform_answer(
         answer=answer, private_state=private_state

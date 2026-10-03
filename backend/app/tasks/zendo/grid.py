@@ -8,7 +8,7 @@ from collections.abc import Hashable
 from copy import deepcopy
 from typing import Any
 
-from ..family import State, Transition, required_text
+from ..family import FamilyCard, State, Transition, required_text
 from .engine import (
     ANSWER_RESPONSE_HINT,
     card_visibility,
@@ -538,6 +538,12 @@ def _ai_context(public_state: State) -> State:
 FAMILY = zendo_family(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Zendo: узоры',
+        description='Скрытое правило про узоры 5×5: симметрии, связность, чётности; пробы рисуются.',
+        weight=12,
+        skin='grid',
+    ),
     generate=generate_grid_zendo_task,
     universe=_UNIVERSE,
     atom_descriptions=ATOM_DESCRIPTIONS,

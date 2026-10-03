@@ -19,7 +19,7 @@ budget counts from the second chord onwards.
 
 from __future__ import annotations
 
-from ..family import State, TaskFamily, Transition, required_text
+from ..family import FamilyCard, State, TaskFamily, Transition, required_text
 from ..zendo.engine import transition_zendo_hint
 from .evaluation import evaluate_hidden_wiring_answer
 from .generation import WIRING_HINT_CATEGORIES, generate_hidden_wiring_task, validate_hidden_wiring_instance
@@ -138,6 +138,12 @@ def _ai_context(public_state: State) -> State:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Скрытая проводка',
+        description='Панель с лампами: кнопки срабатывают только парами, проводку нужно восстановить.',
+        weight=14,
+        skin='panel',
+    ),
     generate=lambda seed, difficulty, context: generate_hidden_wiring_task(seed=seed, difficulty=difficulty),
     evaluate=lambda answer, private_state: evaluate_hidden_wiring_answer(
         answer=answer, private_state=private_state

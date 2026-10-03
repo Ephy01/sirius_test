@@ -14,6 +14,7 @@ import random
 from collections.abc import Hashable
 from typing import Any
 
+from ..family import FamilyCard
 from .engine import (
     ANSWER_RESPONSE_HINT,
     card_probes,
@@ -439,6 +440,12 @@ def sampler_build_log() -> dict[str, Any]:
 FAMILY = zendo_family(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    card=FamilyCard(
+        title='Zendo: точки',
+        description='Скрытое правило про наборы точек на решётке: прямые, симметрия, окружности.',
+        weight=12,
+        skin='points',
+    ),
     generate=generate_point_zendo_task,
     universe=_UNIVERSE,
     atom_descriptions=ATOM_DESCRIPTIONS,
