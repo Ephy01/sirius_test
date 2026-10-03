@@ -1,15 +1,9 @@
 import { useEffect, useState } from "react";
-import type {
-  AiTurn,
-  GeometryEdge,
-  GeometryPoint,
-  GeometryPublicState,
-  ParticipantTask,
-} from "../api";
-import {
-  ParticipantWorkspace,
-  type TaskMoveTransitionResult,
-} from "./ParticipantWorkspace";
+import type { AiTurn, ParticipantTask } from "../api";
+import type { GeometryPublicState } from "../tasks/geometryAtlas";
+import type { GeometryEdge, GeometryPoint } from "../tasks/shared/geometry";
+import type { TaskMoveTransitionResult } from "./commands";
+import { ParticipantWorkspace } from "./ParticipantWorkspace";
 import "./participant-tutorial.css";
 
 type TourAction = "probe" | "ai" | "answer";

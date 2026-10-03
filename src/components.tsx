@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+export const ENVIRONMENT_LABEL = "Смешанный контент";
+
 export function Brand() {
   return (
     <div className="brand">
