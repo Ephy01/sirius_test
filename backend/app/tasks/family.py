@@ -3,6 +3,9 @@
 A family module builds one ``TaskFamily`` record named ``FAMILY`` and the
 registry picks it up. Everything the service needs to know about a task type
 lives in that record, so adding a family does not touch the API layer.
+
+New tasks are always generated with ``version``. ``readable_versions`` lists
+earlier versions whose stored tasks ``evaluate`` and ``actions`` still handle.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ class TaskFamily:
     evaluate: Callable[[str, State], State]
     actions: dict[str, Callable[[State, State, State], Transition]] = field(default_factory=dict)
     probe_action: str | None = None
+    readable_versions: tuple[str, ...] = ()
     aliases: tuple[str, ...] = ()
     sub_kinds: tuple[str, ...] = ()
     scripted_only: bool = False

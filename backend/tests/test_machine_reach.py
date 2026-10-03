@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pytest
 
+from app.tasks import derive_task_seed, evaluate_task, generate_task
 from app.tasks.machine_reach import (
     CHESS_KIND,
     FAMILY_KEY,
@@ -95,6 +96,44 @@ def test_one_thousand_seeds_have_balanced_reachability(sub_kind: str):
         assert validate_machine_instance(public_state=public, private_state=private)
     assert 450 <= reachable_count <= 550
     assert certificate_kinds
+
+
+@pytest.mark.parametrize(
+    'configured', [None, [LAMPS_GF2, LEAPER_BOARD], [LAMPS_GF2, NUMERIC_MACHINE, PERM_PUZZLE], [PERM_PUZZLE]]
+)
+def test_registry_route_mixes_reachable_and_unreachable_tasks(configured: list[str] | None):
+    """The share must not depend on how the sub-kind is picked from the seed."""
+
+    context = {'sub_kinds': configured} if configured else None
+    totals = dict.fromkeys(configured or SUB_KINDS, 0)
+    reachable = dict.fromkeys(totals, 0)
+    for ordinal in range(1, 601):
+        seed = derive_task_seed(20_261_003, ordinal, FAMILY_KEY, GENERATOR_VERSION)
+        task = generate_task(
+            family=FAMILY_KEY,
+            generator_version=GENERATOR_VERSION,
+            seed=seed,
+            difficulty=1 + ordinal % 5,
+            context=context,
+        )
+        sub_kind = task.private_state['sub_kind']
+        totals[sub_kind] += 1
+        reachable[sub_kind] += int(task.private_state['reachable'])
+    for sub_kind, total in totals.items():
+        assert total >= 100
+        assert 0.35 <= reachable[sub_kind] / total <= 0.65, (sub_kind, reachable[sub_kind], total)
+
+
+def test_tasks_of_the_previous_version_stay_answerable_but_are_not_generated():
+    public, private = generate_machine_reach_task(seed=5, difficulty=2, sub_kind=NUMERIC_MACHINE)
+    stored = {**private, 'generator_version': 'machine-reach-v1'}
+    answer = 'done' if stored['reachable'] else 'impossible'
+    evaluation = evaluate_task(
+        family=FAMILY_KEY, generator_version='machine-reach-v1', answer=answer, private_state=stored
+    )
+    assert 'correct' in evaluation
+    with pytest.raises(ValueError, match='generated only as'):
+        generate_task(family=FAMILY_KEY, generator_version='machine-reach-v1', seed=5, difficulty=2)
 
 
 @pytest.mark.parametrize('sub_kind', SUB_KINDS)

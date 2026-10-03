@@ -19,7 +19,9 @@ from typing import Any
 from .family import State, TaskFamily, Transition, latency_ms, optional_text, required_text
 
 FAMILY_KEY = 'machine_reach'
-GENERATOR_VERSION = 'machine-reach-v1'
+GENERATOR_VERSION = 'machine-reach-v2'
+READABLE_VERSIONS = ('machine-reach-v1',)
+REACHABLE_SHARE = 0.5
 MACHINE_PANEL_KIND = 'machine_panel'
 CHESS_KIND = 'chess'
 
@@ -50,8 +52,9 @@ def _rng(seed: int, namespace: str) -> random.Random:
 
 
 def _is_reachable_seed(seed: int, sub_kind: str) -> bool:
-    offset = SUB_KINDS.index(sub_kind)
-    return (seed + offset) % 2 == 0
+    """Whether the target is reachable, decided independently of how the sub-kind was chosen."""
+
+    return _rng(seed, f'reachable:{sub_kind}').random() < REACHABLE_SHARE
 
 
 def _state_key(state: State) -> str:
@@ -1241,6 +1244,7 @@ def _ai_context(public_state: State) -> State:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    readable_versions=READABLE_VERSIONS,
     generate=_generate,
     evaluate=lambda answer, private_state: evaluate_machine_answer(
         answer=answer, private_state=private_state

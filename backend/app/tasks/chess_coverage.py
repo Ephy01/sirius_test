@@ -10,7 +10,8 @@ from typing import Any
 from .family import State, TaskFamily, Transition, latency_ms, optional_text, required_text
 
 FAMILY_KEY = 'chess_coverage'
-GENERATOR_VERSION = 'chess-coverage-v2'
+GENERATOR_VERSION = 'chess-coverage-v3'
+READABLE_VERSIONS = ('chess-coverage-v2',)
 PUBLIC_KIND = 'chess_coverage'
 
 _DONE = frozenset({'done', 'готово', 'готов', 'решено'})
@@ -50,6 +51,7 @@ CUSTOM_PIECES: tuple[dict[str, Any], ...] = (
             (-3, -1),
             (-3, 1),
             (-2, -2),
+            (-2, 2),
             (-1, -3),
             (-1, 3),
             (1, -3),
@@ -584,6 +586,7 @@ def _ai_context(public_state: State) -> State:
 FAMILY = TaskFamily(
     key=FAMILY_KEY,
     version=GENERATOR_VERSION,
+    readable_versions=READABLE_VERSIONS,
     generate=lambda seed, difficulty, context: generate_chess_coverage_task(seed=seed, difficulty=difficulty),
     evaluate=lambda answer, private_state: evaluate_chess_coverage_answer(
         answer=answer, private_state=private_state

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
+from app.tasks import evaluate_task, generate_task
 from app.tasks.chess_coverage import (
+    CUSTOM_PIECES,
+    FAMILY_KEY,
     evaluate_chess_coverage_answer,
     generate_chess_coverage_task,
     transition_chess_coverage_action,
@@ -21,6 +26,24 @@ def test_generator_is_deterministic_and_has_an_exact_cost_optimum():
             assert len(public['piece_types']) == 4
             assert 2 <= len(private['optimal_placements']) <= public['max_placements']
             assert private['optimal_cost'] > 0
+
+
+def test_every_piece_jumps_symmetrically():
+    for piece in CUSTOM_PIECES:
+        offsets = set(piece['offsets'])
+        assert len(offsets) == len(piece['offsets'])
+        for row, col in offsets:
+            assert {(-row, col), (row, -col), (col, row)} <= offsets, (piece['id'], row, col)
+
+
+def test_tasks_of_the_previous_version_stay_answerable_but_are_not_generated():
+    _public, private = generate_chess_coverage_task(seed=3, difficulty=2)
+    evaluation = evaluate_task(
+        family=FAMILY_KEY, generator_version='chess-coverage-v2', answer='done', private_state=private
+    )
+    assert evaluation['correct'] is False
+    with pytest.raises(ValueError, match='generated only as'):
+        generate_task(family=FAMILY_KEY, generator_version='chess-coverage-v2', seed=3, difficulty=2)
 
 
 def test_placement_is_logged_resettable_and_exactly_scored():

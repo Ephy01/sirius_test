@@ -57,7 +57,7 @@ def resolve_family(name: object) -> str | None:
 
 def family_for(key: str, version: str | None = None) -> TaskFamily:
     family = FAMILIES.get(key)
-    if family is None or version not in (None, family.version):
+    if family is None or version not in (None, family.version, *family.readable_versions):
         raise ValueError(f'Unsupported task family: {key!r}, version={version!r}')
     return family
 
@@ -74,7 +74,10 @@ def derive_task_seed(attempt_seed: int, ordinal: int, family: str, generator_ver
 def generate_task(
     *, family: str, generator_version: str, seed: int, difficulty: int, context: State | None = None
 ) -> GeneratedTask:
-    return GeneratedTask(*family_for(family, generator_version).generate(seed, difficulty, context or {}))
+    record = family_for(family, generator_version)
+    if generator_version != record.version:
+        raise ValueError(f'{family!r} tasks are generated only as {record.version!r}')
+    return GeneratedTask(*record.generate(seed, difficulty, context or {}))
 
 
 def evaluate_task(*, family: str, generator_version: str, answer: str, private_state: State) -> State:
