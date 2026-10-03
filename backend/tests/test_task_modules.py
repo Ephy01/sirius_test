@@ -137,3 +137,41 @@ def test_module_family_runs_through_a_contest(tmp_path):
         )
         assert answered.status_code == 200
         assert answered.json()['task']['status'] == 'answered'
+
+
+def test_assistant_sees_the_blocks_of_a_module_task_without_click_commands(tmp_path):
+    from app.ai import build_task_context
+    from app.models import TaskInstance
+    from sirius_gate import blocks
+
+    public = blocks.scene(
+        'Нажмите клетку.',
+        [blocks.grid([[blocks.cell('●', tone='accent', command='/op press:0:0'), blocks.cell()]])],
+        commands=['op'],
+    )
+    task = TaskInstance(
+        id='t',
+        attempt_id='a',
+        ordinal=1,
+        family='unknown_module_family',
+        generator_version='v1',
+        seed=1,
+        difficulty=1,
+        public_state=public,
+        private_state={'secret': 42},
+    )
+
+    context = build_task_context(task, [])
+
+    assert context.payload['visibleState'] == {
+        'blocks': [
+            {
+                'type': 'grid',
+                'caption': None,
+                'cells': [[{'text': '●', 'tone': 'accent'}, {'text': '', 'tone': 'plain'}]],
+            }
+        ],
+        'commands': ['op'],
+    }
+    assert 'secret' not in context.canonical_json
+    assert '/op press' not in context.canonical_json

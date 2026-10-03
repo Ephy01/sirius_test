@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..models import TaskInstance, TaskInteraction
-from ..tasks import FAMILIES
+from ..tasks import FAMILIES, blocks
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,10 @@ def _scalar_fields(public_state: dict[str, Any]) -> dict[str, Any]:
     """Fallback for families without their own context: scalar public fields only."""
 
     return {key: value for key, value in public_state.items() if isinstance(value, (str, int, float, bool))}
+
+
+def _default_view(public_state: dict[str, Any]):
+    return blocks.for_assistant if public_state.get('kind') == blocks.KIND else _scalar_fields
 
 
 def _interaction_history(interactions: list[TaskInteraction]) -> list[dict[str, Any]]:
@@ -44,7 +48,7 @@ def _interaction_history(interactions: list[TaskInteraction]) -> list[dict[str, 
 def build_task_context(task: TaskInstance, interactions: list[TaskInteraction]) -> AiVisibleContext:
     public = task.public_state if isinstance(task.public_state, dict) else {}
     family = FAMILIES.get(task.family)
-    builder = family.ai_context if family is not None and family.ai_context else _scalar_fields
+    builder = family.ai_context if family is not None and family.ai_context else _default_view(public)
     payload = {
         'task': {
             'id': task.id,
