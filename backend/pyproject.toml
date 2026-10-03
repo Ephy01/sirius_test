@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["app", "sirius_gate"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

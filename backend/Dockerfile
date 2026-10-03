@@ -13,6 +13,7 @@ RUN addgroup --system sirius && adduser --system --ingroup sirius sirius
 
 COPY pyproject.toml ./
 COPY app ./app
+COPY sirius_gate ./sirius_gate
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

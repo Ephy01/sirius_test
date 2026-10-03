@@ -8,6 +8,7 @@ from .ai import provider_from_settings
 from .api import router
 from .config import Settings, get_settings
 from .database import Database
+from .tasks.modules import load_task_modules
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -15,6 +16,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     is_production = resolved_settings.environment.casefold() == 'production'
     database = Database(resolved_settings.database_url)
     ai_provider = provider_from_settings(resolved_settings)
+    task_modules = load_task_modules(resolved_settings.task_modules_dir)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -36,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = resolved_settings
     application.state.database = database
     application.state.ai_provider = ai_provider
+    application.state.task_modules = task_modules
     application.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_settings.parsed_cors_origins,

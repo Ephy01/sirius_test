@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     security_secret: str = 'development-token-secret-change-me'
     code_hmac_secret: str = 'development-code-secret-change-me'
     access_token_ttl_minutes: int = Field(default=720, ge=5, le=10_080)
+    task_modules_dir: str | None = None
     ai_enabled: bool = False
     yandex_ai_api_key: str | None = None
     yandex_ai_folder_id: str | None = None

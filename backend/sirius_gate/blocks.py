@@ -1,0 +1,87 @@
+"""Scene of a task assembled from ready-made blocks.
+
+The web client draws a ``blocks`` scene by itself, so a module that uses it needs
+no client code. A clickable element carries the chat command it sends, for
+example ``/op press:2:3`` or ``/answer 7``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from typing import Any
+
+State = dict[str, Any]
+
+KIND = 'blocks'
+TONES = ('plain', 'accent', 'muted', 'good', 'bad')
+COMMANDS = ('probe', 'hint', 'op', 'undo', 'reset', 'done')
+
+
+def text(value: str) -> State:
+    """A paragraph. Line breaks in ``value`` are kept."""
+
+    return {'type': 'text', 'text': str(value)}
+
+
+def table(columns: Sequence[str], rows: Iterable[Sequence[Any]]) -> State:
+    header = [str(column) for column in columns]
+    body = [[str(value) for value in row] for row in rows]
+    if any(len(row) != len(header) for row in body):
+        raise ValueError('в каждой строке таблицы должно быть столько же значений, сколько столбцов')
+    return {'type': 'table', 'columns': header, 'rows': body}
+
+
+def cell(label: Any = '', *, tone: str = 'plain', command: str | None = None) -> State:
+    """One cell of a grid. With ``command`` the cell becomes a button."""
+
+    if tone not in TONES:
+        raise ValueError(f'оттенок клетки должен быть одним из {", ".join(TONES)}')
+    return {'text': str(label), 'tone': tone, 'command': command}
+
+
+def grid(cells: Iterable[Iterable[State | Any]], *, caption: str | None = None) -> State:
+    """A rectangular field. A value that is not a ``cell(...)`` becomes a plain cell."""
+
+    rows = [[item if isinstance(item, dict) else cell(item) for item in row] for row in cells]
+    if not rows or any(len(row) != len(rows[0]) for row in rows):
+        raise ValueError('поле должно быть непустым прямоугольником')
+    return {'type': 'grid', 'caption': caption, 'cells': rows}
+
+
+def button(label: str, command: str) -> State:
+    return {'label': str(label), 'command': str(command)}
+
+
+def buttons(items: Iterable[State]) -> State:
+    return {'type': 'buttons', 'items': list(items)}
+
+
+def facts(*items: str) -> State:
+    """Short status lines such as counters and limits."""
+
+    return {'type': 'facts', 'items': [str(item) for item in items]}
+
+
+def scene(
+    prompt: str,
+    content: Iterable[State],
+    *,
+    commands: Iterable[str] = (),
+    help_lines: Iterable[str] = (),
+    response_hint: str | None = None,
+) -> State:
+    """Public state of a task: the statement, the blocks and the chat commands it accepts."""
+
+    allowed = list(commands)
+    if any(command not in COMMANDS for command in allowed):
+        raise ValueError(f'команды задачи выбираются из {", ".join(COMMANDS)}')
+    state: State = {
+        'kind': KIND,
+        'prompt': str(prompt),
+        'blocks': list(content),
+        'commands': allowed,
+        'help': [str(line) for line in help_lines],
+    }
+    if response_hint is not None:
+        state['response_hint'] = str(response_hint)
+    return state

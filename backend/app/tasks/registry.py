@@ -44,9 +44,39 @@ FAMILY_MODULES = (
     geo_probability,
 )
 FAMILIES: dict[str, TaskFamily] = {module.FAMILY.key: module.FAMILY for module in FAMILY_MODULES}
-ALIASES = {
-    alias.casefold(): family.key for family in FAMILIES.values() for alias in (family.key, *family.aliases)
-}
+BUILTIN_KEYS = frozenset(FAMILIES)
+ALIASES: dict[str, str] = {}
+MODULE_OF: dict[str, str] = {}
+
+
+def _index_aliases() -> None:
+    ALIASES.clear()
+    ALIASES.update(
+        (alias.casefold(), family.key)
+        for family in FAMILIES.values()
+        for alias in (family.key, *family.aliases)
+    )
+
+
+_index_aliases()
+
+
+def register_module_family(family: TaskFamily, module: str) -> None:
+    """Add a family that came from a task module; built-in keys cannot be replaced."""
+
+    if family.key in FAMILIES:
+        owner = MODULE_OF.get(family.key, 'the platform')
+        raise ValueError(f'family key {family.key!r} is already taken by {owner}')
+    FAMILIES[family.key] = family
+    MODULE_OF[family.key] = module
+    _index_aliases()
+
+
+def unregister_module_families() -> None:
+    for key in MODULE_OF:
+        FAMILIES.pop(key, None)
+    MODULE_OF.clear()
+    _index_aliases()
 
 
 def resolve_family(name: object) -> str | None:
