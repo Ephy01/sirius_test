@@ -30,6 +30,18 @@ def test_catalog_describes_builtin_families_for_the_builder(tmp_path):
 
     items = {item['key']: item for item in catalog['items']}
     assert catalog['problems'] == []
+    assert [item['key'] for item in catalog['items'] if item['listed']] == [
+        'geo_zendo',
+        'token_zendo',
+        'point_zendo',
+        'grid_zendo',
+        'hidden_wiring',
+        'machine_reach',
+        'fold_punch',
+        'chess_coverage',
+        'geo_transform',
+        'geo_probability',
+    ]
     assert len(items) == 12
     assert all(item['source'] == 'builtin' and item['module'] is None for item in items.values())
     assert all(item['title'] != item['key'] and item['description'] for item in items.values())

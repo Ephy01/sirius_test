@@ -29,19 +29,20 @@ class GeneratedTask(NamedTuple):
     private_state: State
 
 
+# The order is the one the contest builder shows.
 FAMILY_MODULES = (
-    chess_coverage,
-    dice_chess,
-    machine_reach,
     graph,
     token,
     point,
     grid,
     hidden_wiring,
+    machine_reach,
     fold_punch,
-    classic_math,
+    chess_coverage,
     geo_transform,
     geo_probability,
+    dice_chess,
+    classic_math,
 )
 FAMILIES: dict[str, TaskFamily] = {module.FAMILY.key: module.FAMILY for module in FAMILY_MODULES}
 BUILTIN_KEYS = frozenset(FAMILIES)
