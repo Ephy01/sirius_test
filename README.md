@@ -31,6 +31,10 @@ backend/app/
   telemetry.py      текстовый экспорт журнала
 backend/tests/      pytest
 src/                клиент на React и TypeScript
+  api/              HTTP-клиент и разбор ответов
+  tasks/            по модулю на вид задачи: тип состояния, парсер, сцена
+  participant/      рабочее место участника, команды чата, телеметрия
+  organizer/        конструктор контеста и панель доступа
 deploy/             Caddy и сценарии эксплуатации
 docs/               документация
 ```
@@ -92,8 +96,10 @@ cd backend
 
 ## Точки расширения
 
-- **Новые типы задач.** Контракт `TaskFamily` в `backend/app/tasks/family.py`,
-  список модулей в `backend/app/tasks/registry.py`.
+- **Новые типы задач.** На сервере контракт `TaskFamily` в
+  `backend/app/tasks/family.py` и список модулей в
+  `backend/app/tasks/registry.py`. На клиенте запись `TaskKind` в
+  `src/tasks/<kind>.tsx` и строка в `src/tasks/registry.ts`.
 - **Другая языковая модель.** Протокол `AssistantProvider` в
   `backend/app/ai/provider.py`, выбор провайдера в `provider_from_settings`.
   Подробности в разделе 15 документации.

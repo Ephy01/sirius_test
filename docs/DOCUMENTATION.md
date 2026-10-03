@@ -181,12 +181,14 @@ NetworkX в текущем проекте не используется. Для 
 ```text
 sirius_test/
 ├── src/                         React frontend
-│   ├── App.tsx                  маршрутизация и оркестрация экранов
-│   ├── api.ts                   типизированный HTTP-клиент и runtime-парсинг
+│   ├── App.tsx                  выбор экрана по роли сессии
+│   ├── useAccessSession.ts      сессия, вход, выход, синхронизация пути
 │   ├── auth.ts                  sessionStorage и access session
 │   ├── components.tsx           общие UI-компоненты и логотип
-│   ├── organizer/               конструктор и панель доступов
-│   └── participant/             рабочая зона, чат, визуализаторы, телеметрия
+│   ├── api/                     HTTP-клиент, типы и разбор ответов по разделам API
+│   ├── tasks/                   по модулю на вид задачи и реестр видов
+│   ├── organizer/               dashboard, конструктор и панель доступов
+│   └── participant/             рабочая зона, чат, команды, телеметрия
 ├── public/                      статические assets
 ├── backend/
 │   ├── app/
@@ -280,7 +282,7 @@ flowchart TD
 
 `src/main.tsx` монтирует `App` внутри `React.StrictMode`.
 
-`src/App.tsx` использует ручную маршрутизацию:
+`src/App.tsx` выбирает экран по роли сессии. Сессию, вход, выход и ручную маршрутизацию ведёт хук `src/useAccessSession.ts`:
 
 | Путь | Состояние |
 |---|---|
@@ -304,15 +306,28 @@ flowchart TD
 
 ### 7.3. API-клиент
 
-`src/api.ts`:
+Пакет `src/api/`:
+
+| Файл | Содержимое |
+|---|---|
+| `http.ts` | отправка запросов, Bearer token, разбор ошибок |
+| `errors.ts`, `parsing.ts` | `ApiError` и помощники чтения полей ответа |
+| `files.ts` | скачивание файла по `Content-Disposition` |
+| `models.ts` | контест, участник, регистрация, попытка |
+| `access.ts` | обмен кода на сессию |
+| `organizer.ts` | маршруты организатора |
+| `participant.ts` | маршруты участника и разбор задачи |
+| `assistant.ts` | ИИ-ассистент |
+| `index.ts` | объект `api` и реэкспорт типов |
+
+Клиент:
 
 - использует `/api/v1` по умолчанию;
 - поддерживает build-time `VITE_API_BASE_URL`;
 - добавляет `Authorization: Bearer ...`;
 - нормализует snake_case и camelCase;
 - строго проверяет публичные виды задач;
-- преобразует ошибки в единый `ApiError`;
-- поддерживает скачивание telemetry-файла по `Content-Disposition`.
+- преобразует ошибки в единый `ApiError`.
 
 При неизвестном `public_state.kind` клиент выдаёт `unsupported_task_kind` вместо попытки отрисовать непроверенные данные.
 
@@ -322,7 +337,8 @@ flowchart TD
 |---|---|
 | `ContestBuilder.tsx` | Четырёхэтапное создание контеста, конфигурация контента, участников и кодов |
 | `ContestAccessPanel.tsx` | Состояния кода/попытки, ротация кода, grant новой попытки, скачивание лога |
-| `App.tsx` | Список контестов, открытие экранов и каскадное удаление после подтверждения |
+| `OrganizerDashboard.tsx` | Список контестов, открытие экранов и каскадное удаление после подтверждения |
+| `families.ts` | Каталог семейств для конструктора: подписи, описания, веса и сложность по умолчанию |
 
 Открытые коды существуют в React state только сразу после выпуска или ротации. CSV формируется в браузере с UTF-8 BOM и разделителем `;`.
 
@@ -332,6 +348,20 @@ flowchart TD
 
 - условие и интерактивная сцена;
 - чат-команды и диалог с ИИ.
+
+Сцена и разбор `public_state` каждого вида задачи лежат в отдельном модуле `src/tasks/<kind>.tsx`. Модуль экспортирует запись `TaskKind` с функциями `parse` и `renderScene`, реестр `src/tasks/registry.ts` связывает её со значением `public_state.kind`. Общие части сцен находятся в `src/tasks/shared/`.
+
+Остальное рабочее место разделено по файлам каталога `src/participant/`:
+
+| Файл | Ответственность |
+|---|---|
+| `ParticipantWorkspace.tsx` | раскладка, лог чата, поле ввода |
+| `commands.tsx` | разбор и выполнение команд чата |
+| `TaskBrief.tsx` | условие, подсказки по формату ответа |
+| `taskTraits.ts` | признаки задачи, от которых зависят доступные команды |
+| `telemetry.ts` | очередь клиентской телеметрии |
+| `ParticipantContestScreen.tsx`, `ParticipantWaitingScreen.tsx` | экран попытки и экран ожидания старта |
+| `ParticipantTutorial.tsx` | инструктаж |
 
 Поддержанные визуализаторы:
 
@@ -376,7 +406,7 @@ flowchart TD
 - Montserrat и Roboto Mono загружаются из Google Fonts; при недоступной сети используются системные fallback-шрифты.
 - Поддерживаются responsive breakpoints и `prefers-reduced-motion`.
 
-Технический долг frontend: `participant-workspace.css` содержит несколько поколений поздних cascade override-ов, а `styles.css` — часть старых неиспользуемых правил. Перед крупным редизайном стили стоит разделить по визуализаторам и удалить дубли.
+Технический долг frontend: `participant-workspace.css` остаётся одним файлом на все сцены, и часть селекторов в нём переопределяется дважды. Перед крупным редизайном стили стоит разделить по видам задач вслед за `src/tasks/`. Тексты подсказок и проверки команд для каждого вида задачи пока находятся в `TaskBrief.tsx` и `commands.tsx`, а не в модуле вида.
 
 ## 8. Backend и API
 
@@ -1727,22 +1757,19 @@ Evaluator должен:
 
 ### 23.4. Frontend
 
-В `src/organizer/ContestBuilder.tsx`:
+1. Создать `src/tasks/<kind>.tsx`: тип состояния с литералом `kind`, парсер `(state, base) => State`, компонент сцены и экспорт записи `TaskKind<State>`. Образец небольшого модуля — `foldPunch.tsx`.
+2. Добавить запись в `TASK_KINDS` в `src/tasks/registry.ts`. Ключ должен совпадать с `public_state.kind`, который возвращает генератор.
 
-- расширить `TaskFamilyKey`;
-- добавить label, описание, skin, default weight и difficulty;
-- добавить subtype controls при необходимости.
+Этого достаточно, если ответ отправляется командой `/answer <текст>`: чат, подсказка по формату и `/help` используют тексты по умолчанию.
 
-В `src/api.ts`:
+По необходимости:
 
-- описать и строго распарсить новый `public_state.kind`.
+- команды `/test`, `/hint`, `/op`, `/undo`, `/reset`, `done`: добавить вид в `src/participant/taskTraits.ts`;
+- собственные тексты: `TaskBrief.tsx` (подсказки по ответу), `commands.tsx` (`/help` и проверки команд), `consoleEntries.tsx` (первое сообщение чата);
+- выбор семейства в конструкторе: `src/organizer/families.ts`;
+- стили сцены: `src/participant/participant-workspace.css`.
 
-В `ParticipantWorkspace.tsx`:
-
-- добавить визуализатор;
-- добавить команды и help;
-- связать прямые UI-действия с существующим interaction API;
-- предусмотреть loading, retry и closed state.
+Сцена получает `state`, `family`, `canAct` и `onCommand`. Прямые действия в сцене отправляются как команды чата через `onCommand`, поэтому клик и команда проходят один путь и одинаково попадают в журнал.
 
 ### 23.5. AI context
 
@@ -1772,14 +1799,21 @@ Evaluator должен:
 | Файл | Ответственность |
 |---|---|
 | `src/main.tsx` | React bootstrap |
-| `src/App.tsx` | Роли, маршруты, dashboard, start/answer/next orchestration |
+| `src/App.tsx` | Выбор экрана по роли |
+| `src/useAccessSession.ts` | Сессия, вход, выход и маршруты |
 | `src/auth.ts` | Session normalization и storage |
-| `src/api.ts` | HTTP client, типы и task parsers |
+| `src/api/` | HTTP client, типы и разбор ответов |
+| `src/tasks/registry.ts` | Реестр видов задач: `kind` → парсер и сцена |
+| `src/tasks/<kind>.tsx` | Тип состояния, парсер и сцена одного вида задачи |
 | `src/components.tsx` | Общий header, logo и icons |
 | `src/styles.css` | Глобальная тема и dashboard styles |
+| `src/organizer/OrganizerDashboard.tsx` | Список контестов и переходы организатора |
 | `src/organizer/ContestBuilder.tsx` | Конструктор контеста |
+| `src/organizer/families.ts` | Каталог семейств конструктора |
 | `src/organizer/ContestAccessPanel.tsx` | Управление кодами, попытками и логами |
-| `src/participant/ParticipantWorkspace.tsx` | Chat/console, visualizers, AI UI и telemetry queue |
+| `src/participant/ParticipantWorkspace.tsx` | Раскладка рабочего места, лог чата, поле ввода |
+| `src/participant/commands.tsx` | Команды чата |
+| `src/participant/telemetry.ts` | Очередь клиентской телеметрии |
 | `backend/app/main.py` | FastAPI factory и lifespan |
 | `backend/app/config.py` | Env settings |
 | `backend/app/database.py` | Engine, Session и Base |
