@@ -13,10 +13,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def api_error(status_code: int, code: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail={"code": code, "message": message},
-    )
+    return HTTPException(status_code=status_code, detail={'code': code, 'message': message})
 
 
 def get_settings_from_app(request: Request) -> Settings:
@@ -30,34 +27,23 @@ def get_session(request: Request):
 def get_ai_provider(request: Request) -> Any:
     """Assistant provider instance created in create_app (None when off)."""
 
-    return getattr(request.app.state, "ai_provider", None)
+    return getattr(request.app.state, 'ai_provider', None)
 
 
 SessionDependency = Annotated[Session, Depends(get_session)]
 SettingsDependency = Annotated[Settings, Depends(get_settings_from_app)]
 AiProviderDependency = Annotated[Any, Depends(get_ai_provider)]
-CredentialsDependency = Annotated[
-    HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
-]
+CredentialsDependency = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
 
 
-def get_token_claims(
-    credentials: CredentialsDependency,
-    settings: SettingsDependency,
-) -> dict[str, Any]:
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise api_error(
-            status.HTTP_401_UNAUTHORIZED,
-            "AUTHENTICATION_REQUIRED",
-            "Необходим Bearer-токен.",
-        )
+def get_token_claims(credentials: CredentialsDependency, settings: SettingsDependency) -> dict[str, Any]:
+    if credentials is None or credentials.scheme.lower() != 'bearer':
+        raise api_error(status.HTTP_401_UNAUTHORIZED, 'AUTHENTICATION_REQUIRED', 'Необходим Bearer-токен.')
     try:
         return decode_bearer_token(credentials.credentials, settings)
     except InvalidTokenError as error:
         raise api_error(
-            status.HTTP_401_UNAUTHORIZED,
-            "INVALID_TOKEN",
-            "Токен недействителен или истёк.",
+            status.HTTP_401_UNAUTHORIZED, 'INVALID_TOKEN', 'Токен недействителен или истёк.'
         ) from error
 
 
@@ -65,38 +51,28 @@ TokenClaimsDependency = Annotated[dict[str, Any], Depends(get_token_claims)]
 
 
 def require_organizer(claims: TokenClaimsDependency) -> dict[str, Any]:
-    if claims.get("role") != "organizer":
-        raise api_error(status.HTTP_403_FORBIDDEN, "ORGANIZER_REQUIRED", "Недостаточно прав.")
+    if claims.get('role') != 'organizer':
+        raise api_error(status.HTTP_403_FORBIDDEN, 'ORGANIZER_REQUIRED', 'Недостаточно прав.')
     return claims
 
 
 OrganizerDependency = Annotated[dict[str, Any], Depends(require_organizer)]
 
 
-def require_participant_enrollment(
-    claims: TokenClaimsDependency,
-    session: SessionDependency,
-) -> Enrollment:
-    if claims.get("role") != "participant":
-        raise api_error(status.HTTP_403_FORBIDDEN, "PARTICIPANT_REQUIRED", "Недостаточно прав.")
+def require_participant_enrollment(claims: TokenClaimsDependency, session: SessionDependency) -> Enrollment:
+    if claims.get('role') != 'participant':
+        raise api_error(status.HTTP_403_FORBIDDEN, 'PARTICIPANT_REQUIRED', 'Недостаточно прав.')
 
-    enrollment_id = claims.get("enrollment_id")
-    code_id = claims.get("access_code_id")
+    enrollment_id = claims.get('enrollment_id')
+    code_id = claims.get('access_code_id')
     if not isinstance(enrollment_id, str) or not isinstance(code_id, str):
-        raise api_error(status.HTTP_401_UNAUTHORIZED, "INVALID_TOKEN", "Токен повреждён.")
+        raise api_error(status.HTTP_401_UNAUTHORIZED, 'INVALID_TOKEN', 'Токен повреждён.')
 
     access_code = session.scalar(
-        select(AccessCode).where(
-            AccessCode.id == code_id,
-            AccessCode.enrollment_id == enrollment_id,
-        )
+        select(AccessCode).where(AccessCode.id == code_id, AccessCode.enrollment_id == enrollment_id)
     )
     if access_code is None or access_code.status != AccessCodeStatus.ACTIVE:
-        raise api_error(
-            status.HTTP_401_UNAUTHORIZED,
-            "ACCESS_REVOKED",
-            "Код доступа был отозван.",
-        )
+        raise api_error(status.HTTP_401_UNAUTHORIZED, 'ACCESS_REVOKED', 'Код доступа был отозван.')
 
     enrollment = session.scalar(
         select(Enrollment)
@@ -104,15 +80,8 @@ def require_participant_enrollment(
         .where(Enrollment.id == enrollment_id)
     )
     if enrollment is None or enrollment.status != EnrollmentStatus.REGISTERED:
-        raise api_error(
-            status.HTTP_403_FORBIDDEN,
-            "ENROLLMENT_DISABLED",
-            "Регистрация участника недоступна.",
-        )
+        raise api_error(status.HTTP_403_FORBIDDEN, 'ENROLLMENT_DISABLED', 'Регистрация участника недоступна.')
     return enrollment
 
 
-ParticipantEnrollmentDependency = Annotated[
-    Enrollment, Depends(require_participant_enrollment)
-]
-
+ParticipantEnrollmentDependency = Annotated[Enrollment, Depends(require_participant_enrollment)]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-PROMPT_VERSION_SOCRATIC = "sirius-assistant-socratic-v3"
-PROMPT_VERSION_OPEN = "sirius-assistant-open-v3"
+PROMPT_VERSION_SOCRATIC = 'sirius-assistant-socratic-v3'
+PROMPT_VERSION_OPEN = 'sirius-assistant-open-v3'
 
 MAX_CONTEXT_CHARACTERS = 24_000
 _TRUNCATION_NOTE = '…","note":"контекст сокращён из-за ограничения размера"}'
@@ -43,11 +43,11 @@ _CLOSING_PARAGRAPH = """
 
 
 def prompt_version(mode: str) -> str:
-    return PROMPT_VERSION_OPEN if mode == "open" else PROMPT_VERSION_SOCRATIC
+    return PROMPT_VERSION_OPEN if mode == 'open' else PROMPT_VERSION_SOCRATIC
 
 
 def build_system_prompt(mode: str) -> str:
-    if mode == "open":
+    if mode == 'open':
         return _BASE_PROMPT + _CLOSING_PARAGRAPH
     return _BASE_PROMPT + _SOCRATIC_PARAGRAPH + _CLOSING_PARAGRAPH
 

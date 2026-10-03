@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ..config import Settings
 from .provider import AssistantProvider, ProviderRequest
 
-REPORT_PROMPT_VERSION = "sirius-telemetry-summary-v1"
+REPORT_PROMPT_VERSION = 'sirius-telemetry-summary-v1'
 MAX_REPORT_SOURCE_CHARACTERS = 90_000
 
 SYSTEM_PROMPT = """Ты анализируешь журнал прохождения математического испытания Sirius Gate.
@@ -35,11 +35,8 @@ def _bounded_source(source: str) -> str:
     if len(source) <= MAX_REPORT_SOURCE_CHARACTERS:
         return source
     half = (MAX_REPORT_SOURCE_CHARACTERS - 240) // 2
-    return (
-        source[:half]
-        + "\n\n[СРЕДНЯЯ ЧАСТЬ ЖУРНАЛА СОКРАЩЕНА ИЗ-ЗА ЛИМИТА КОНТЕКСТА]\n\n"
-        + source[-half:]
-    )
+    return source[:half] + '\n\n[СРЕДНЯЯ ЧАСТЬ ЖУРНАЛА СОКРАЩЕНА ИЗ-ЗА ЛИМИТА КОНТЕКСТА]\n\n' + source[-half:]
+
 
 def generate_telemetry_markdown(
     *,
@@ -51,23 +48,21 @@ def generate_telemetry_markdown(
 ) -> str:
     result = provider.generate(
         ProviderRequest(
-            model_uri=settings.yandex_ai_model_uri or "unconfigured",
+            model_uri=settings.yandex_ai_model_uri or 'unconfigured',
             system_prompt=SYSTEM_PROMPT,
             context_text=_bounded_source(telemetry),
             history=(),
             user_message=(
-                "Подготовь отчёт по предоставленному журналу. "
-                f"Контест: {contest_title}. Участник: {participant_label}."
+                'Подготовь отчёт по предоставленному журналу. '
+                f'Контест: {contest_title}. Участник: {participant_label}.'
             ),
             max_tokens=2_400,
             temperature=0.1,
         )
     )
-    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    generated_at = datetime.now(UTC).isoformat(timespec='seconds')
     return (
-        "<!-- "
-        f"prompt_version: {REPORT_PROMPT_VERSION}; generated_at_utc: {generated_at}"
-        " -->\n\n"
-        + result.text.strip()
-        + "\n"
+        '<!-- '
+        f'prompt_version: {REPORT_PROMPT_VERSION}; generated_at_utc: {generated_at}'
+        ' -->\n\n' + result.text.strip() + '\n'
     )

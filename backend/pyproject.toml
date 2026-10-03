@@ -23,6 +23,9 @@ test = [
   "httpx>=0.28,<1.0",
   "pytest>=8.3,<9.0",
 ]
+dev = [
+  "ruff>=0.9,<1.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
@@ -33,5 +36,21 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 100
+line-length = 110
 target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "single"
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+  "E501",  # long Russian messages are left to the formatter
+  "B008",  # FastAPI declares dependencies as default arguments
+  "UP042", # str-mixin enums are stored by SQLAlchemy, StrEnum changes their str()
+]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+known-third-party = ["alembic"]

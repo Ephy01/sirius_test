@@ -1,2 +1,1 @@
 """Sirius Gate API package."""
-

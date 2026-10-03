@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -10,7 +10,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
-    Enum as SqlEnum,
     ForeignKey,
     Index,
     Integer,
@@ -18,13 +17,20 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
+def as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def uuid_string() -> str:
@@ -41,189 +47,161 @@ def enum_type(enum_class: type[enum.Enum], name: str) -> SqlEnum:
 
 
 class ContestStatus(str, enum.Enum):
-    DRAFT = "draft"
-    PUBLISHED = "published"
+    DRAFT = 'draft'
+    PUBLISHED = 'published'
 
 
 class EnrollmentStatus(str, enum.Enum):
-    REGISTERED = "registered"
-    DISABLED = "disabled"
+    REGISTERED = 'registered'
+    DISABLED = 'disabled'
 
 
 class AccessCodeStatus(str, enum.Enum):
-    ACTIVE = "active"
-    REVOKED = "revoked"
-    EXPIRED = "expired"
+    ACTIVE = 'active'
+    REVOKED = 'revoked'
+    EXPIRED = 'expired'
 
 
 class AttemptStatus(str, enum.Enum):
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    EXPIRED = "expired"
+    ACTIVE = 'active'
+    COMPLETED = 'completed'
+    EXPIRED = 'expired'
 
 
 class AttemptGrantStatus(str, enum.Enum):
-    PENDING = "pending"
-    CONSUMED = "consumed"
+    PENDING = 'pending'
+    CONSUMED = 'consumed'
 
 
 class TaskStatus(str, enum.Enum):
-    ACTIVE = "active"
-    ANSWERED = "answered"
-    SKIPPED = "skipped"
+    ACTIVE = 'active'
+    ANSWERED = 'answered'
+    SKIPPED = 'skipped'
 
 
 class AiTurnStatus(str, enum.Enum):
-    PENDING = "pending"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    PENDING = 'pending'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
 
 
 class Contest(Base):
-    __tablename__ = "contests"
+    __tablename__ = 'contests'
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
-    environment_key: Mapped[str] = mapped_column(
-        String(80), nullable=False, default="mixed"
-    )
+    environment_key: Mapped[str] = mapped_column(String(80), nullable=False, default='mixed')
     task_config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[ContestStatus] = mapped_column(
-        enum_type(ContestStatus, "contest_status"),
-        nullable=False,
-        default=ContestStatus.DRAFT,
+        enum_type(ContestStatus, 'contest_status'), nullable=False, default=ContestStatus.DRAFT
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     enrollments: Mapped[list[Enrollment]] = relationship(
-        back_populates="contest", cascade="all, delete-orphan"
+        back_populates='contest', cascade='all, delete-orphan'
     )
 
 
 class Participant(Base):
-    __tablename__ = "participants"
+    __tablename__ = 'participants'
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     external_ref: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
 
-    enrollments: Mapped[list[Enrollment]] = relationship(back_populates="participant")
+    enrollments: Mapped[list[Enrollment]] = relationship(back_populates='participant')
 
 
 class Enrollment(Base):
-    __tablename__ = "enrollments"
+    __tablename__ = 'enrollments'
     __table_args__ = (
-        UniqueConstraint("contest_id", "participant_id", name="uq_enrollment_contest_participant"),
+        UniqueConstraint('contest_id', 'participant_id', name='uq_enrollment_contest_participant'),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     contest_id: Mapped[str] = mapped_column(
-        ForeignKey("contests.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey('contests.id', ondelete='CASCADE'), nullable=False, index=True
     )
     participant_id: Mapped[str] = mapped_column(
-        ForeignKey("participants.id", ondelete="RESTRICT"), nullable=False, index=True
+        ForeignKey('participants.id', ondelete='RESTRICT'), nullable=False, index=True
     )
     status: Mapped[EnrollmentStatus] = mapped_column(
-        enum_type(EnrollmentStatus, "enrollment_status"),
-        nullable=False,
-        default=EnrollmentStatus.REGISTERED,
+        enum_type(EnrollmentStatus, 'enrollment_status'), nullable=False, default=EnrollmentStatus.REGISTERED
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
 
-    contest: Mapped[Contest] = relationship(back_populates="enrollments")
-    participant: Mapped[Participant] = relationship(back_populates="enrollments")
+    contest: Mapped[Contest] = relationship(back_populates='enrollments')
+    participant: Mapped[Participant] = relationship(back_populates='enrollments')
     access_codes: Mapped[list[AccessCode]] = relationship(
-        back_populates="enrollment", cascade="all, delete-orphan"
+        back_populates='enrollment', cascade='all, delete-orphan'
     )
-    attempts: Mapped[list[Attempt]] = relationship(
-        back_populates="enrollment", cascade="all, delete-orphan"
-    )
+    attempts: Mapped[list[Attempt]] = relationship(back_populates='enrollment', cascade='all, delete-orphan')
     attempt_grants: Mapped[list[AttemptGrant]] = relationship(
-        back_populates="enrollment", cascade="all, delete-orphan"
+        back_populates='enrollment', cascade='all, delete-orphan'
     )
 
 
 class AccessCode(Base):
-    __tablename__ = "access_codes"
-    __table_args__ = (
-        UniqueConstraint("enrollment_id", "active_slot", name="uq_access_code_one_active"),
-    )
+    __tablename__ = 'access_codes'
+    __table_args__ = (UniqueConstraint('enrollment_id', 'active_slot', name='uq_access_code_one_active'),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     enrollment_id: Mapped[str] = mapped_column(
-        ForeignKey("enrollments.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey('enrollments.id', ondelete='CASCADE'), nullable=False, index=True
     )
     lookup_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     last4: Mapped[str] = mapped_column(String(4), nullable=False)
     status: Mapped[AccessCodeStatus] = mapped_column(
-        enum_type(AccessCodeStatus, "access_code_status"),
-        nullable=False,
-        default=AccessCodeStatus.ACTIVE,
+        enum_type(AccessCodeStatus, 'access_code_status'), nullable=False, default=AccessCodeStatus.ACTIVE
     )
     active_slot: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    enrollment: Mapped[Enrollment] = relationship(back_populates="access_codes")
+    enrollment: Mapped[Enrollment] = relationship(back_populates='access_codes')
 
 
 class Attempt(Base):
-    __tablename__ = "attempts"
+    __tablename__ = 'attempts'
     __table_args__ = (
-        UniqueConstraint("enrollment_id", "number", name="uq_attempt_enrollment_number"),
-        UniqueConstraint("enrollment_id", "active_slot", name="uq_attempt_one_active"),
+        UniqueConstraint('enrollment_id', 'number', name='uq_attempt_enrollment_number'),
+        UniqueConstraint('enrollment_id', 'active_slot', name='uq_attempt_one_active'),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     enrollment_id: Mapped[str] = mapped_column(
-        ForeignKey("enrollments.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey('enrollments.id', ondelete='CASCADE'), nullable=False, index=True
     )
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     seed: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[AttemptStatus] = mapped_column(
-        enum_type(AttemptStatus, "attempt_status"),
-        nullable=False,
-        default=AttemptStatus.ACTIVE,
+        enum_type(AttemptStatus, 'attempt_status'), nullable=False, default=AttemptStatus.ACTIVE
     )
     active_slot: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
-    started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    enrollment: Mapped[Enrollment] = relationship(back_populates="attempts")
-    tasks: Mapped[list[TaskInstance]] = relationship(
-        back_populates="attempt", cascade="all, delete-orphan"
-    )
-    events: Mapped[list[AttemptEvent]] = relationship(
-        back_populates="attempt", cascade="all, delete-orphan"
-    )
+    enrollment: Mapped[Enrollment] = relationship(back_populates='attempts')
+    tasks: Mapped[list[TaskInstance]] = relationship(back_populates='attempt', cascade='all, delete-orphan')
+    events: Mapped[list[AttemptEvent]] = relationship(back_populates='attempt', cascade='all, delete-orphan')
     client_telemetry_receipts: Mapped[list[ClientTelemetryReceipt]] = relationship(
-        back_populates="attempt", cascade="all, delete-orphan"
+        back_populates='attempt', cascade='all, delete-orphan'
     )
 
 
@@ -235,47 +213,39 @@ class AttemptGrant(Base):
     most one pending grant for an enrollment while retaining its full history.
     """
 
-    __tablename__ = "attempt_grants"
-    __table_args__ = (
-        UniqueConstraint(
-            "enrollment_id",
-            "pending_slot",
-            name="uq_attempt_grant_one_pending",
-        ),
-    )
+    __tablename__ = 'attempt_grants'
+    __table_args__ = (UniqueConstraint('enrollment_id', 'pending_slot', name='uq_attempt_grant_one_pending'),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     enrollment_id: Mapped[str] = mapped_column(
-        ForeignKey("enrollments.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey('enrollments.id', ondelete='CASCADE'), nullable=False, index=True
     )
     status: Mapped[AttemptGrantStatus] = mapped_column(
-        enum_type(AttemptGrantStatus, "attempt_grant_status"),
+        enum_type(AttemptGrantStatus, 'attempt_grant_status'),
         nullable=False,
         default=AttemptGrantStatus.PENDING,
     )
     pending_slot: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
-    granted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consumed_attempt_id: Mapped[str | None] = mapped_column(
-        ForeignKey("attempts.id", ondelete="SET NULL"), nullable=True, unique=True
+        ForeignKey('attempts.id', ondelete='SET NULL'), nullable=True, unique=True
     )
 
-    enrollment: Mapped[Enrollment] = relationship(back_populates="attempt_grants")
+    enrollment: Mapped[Enrollment] = relationship(back_populates='attempt_grants')
     consumed_attempt: Mapped[Attempt | None] = relationship()
 
 
 class TaskInstance(Base):
-    __tablename__ = "task_instances"
+    __tablename__ = 'task_instances'
     __table_args__ = (
-        UniqueConstraint("attempt_id", "ordinal", name="uq_task_attempt_ordinal"),
-        UniqueConstraint("attempt_id", "active_slot", name="uq_task_one_active"),
+        UniqueConstraint('attempt_id', 'ordinal', name='uq_task_attempt_ordinal'),
+        UniqueConstraint('attempt_id', 'active_slot', name='uq_task_one_active'),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     attempt_id: Mapped[str] = mapped_column(
-        ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey('attempts.id', ondelete='CASCADE'), nullable=False, index=True
     )
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     family: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -283,63 +253,45 @@ class TaskInstance(Base):
     seed: Mapped[int] = mapped_column(BigInteger, nullable=False)
     difficulty: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[TaskStatus] = mapped_column(
-        enum_type(TaskStatus, "task_status"),
-        nullable=False,
-        default=TaskStatus.ACTIVE,
+        enum_type(TaskStatus, 'task_status'), nullable=False, default=TaskStatus.ACTIVE
     )
     active_slot: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
     public_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     private_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     participant_answer: Mapped[str | None] = mapped_column(Text)
     evaluation_state: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    attempt: Mapped[Attempt] = relationship(back_populates="tasks")
-    events: Mapped[list[AttemptEvent]] = relationship(back_populates="task")
+    attempt: Mapped[Attempt] = relationship(back_populates='tasks')
+    events: Mapped[list[AttemptEvent]] = relationship(back_populates='task')
     interactions: Mapped[list[TaskInteraction]] = relationship(
-        back_populates="task", cascade="all, delete-orphan"
+        back_populates='task', cascade='all, delete-orphan'
     )
-    ai_turns: Mapped[list[AiTurn]] = relationship(
-        back_populates="task", cascade="all, delete-orphan"
-    )
+    ai_turns: Mapped[list[AiTurn]] = relationship(back_populates='task', cascade='all, delete-orphan')
 
 
 class TaskInteraction(Base):
     """One idempotent participant action inside a stateful task."""
 
-    __tablename__ = "task_interactions"
+    __tablename__ = 'task_interactions'
     __table_args__ = (
-        UniqueConstraint(
-            "task_instance_id",
-            "sequence",
-            name="uq_task_interaction_sequence",
-        ),
-        UniqueConstraint(
-            "task_instance_id",
-            "client_action_id",
-            name="uq_task_interaction_client_action",
-        ),
+        UniqueConstraint('task_instance_id', 'sequence', name='uq_task_interaction_sequence'),
+        UniqueConstraint('task_instance_id', 'client_action_id', name='uq_task_interaction_client_action'),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     task_instance_id: Mapped[str] = mapped_column(
-        ForeignKey("task_instances.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        ForeignKey('task_instances.id', ondelete='CASCADE'), nullable=False, index=True
     )
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     client_action_id: Mapped[str] = mapped_column(String(128), nullable=False)
     action_type: Mapped[str] = mapped_column(String(40), nullable=False)
     request_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     result_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
-    task: Mapped[TaskInstance] = relationship(back_populates="interactions")
+    task: Mapped[TaskInstance] = relationship(back_populates='interactions')
 
 
 class AiTurn(Base):
@@ -349,39 +301,27 @@ class AiTurn(Base):
     turn by id and never duplicate the transcript.
     """
 
-    __tablename__ = "ai_turns"
+    __tablename__ = 'ai_turns'
     __table_args__ = (
-        UniqueConstraint(
-            "task_instance_id",
-            "sequence",
-            name="uq_ai_turn_task_sequence",
-        ),
-        UniqueConstraint(
-            "attempt_id",
-            "client_action_id",
-            name="uq_ai_turn_attempt_client_action",
-        ),
+        UniqueConstraint('task_instance_id', 'sequence', name='uq_ai_turn_task_sequence'),
+        UniqueConstraint('attempt_id', 'client_action_id', name='uq_ai_turn_attempt_client_action'),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     attempt_id: Mapped[str] = mapped_column(
-        ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey('attempts.id', ondelete='CASCADE'), nullable=False, index=True
     )
     task_instance_id: Mapped[str] = mapped_column(
-        ForeignKey("task_instances.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        ForeignKey('task_instances.id', ondelete='CASCADE'), nullable=False, index=True
     )
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     client_action_id: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[AiTurnStatus] = mapped_column(
-        enum_type(AiTurnStatus, "ai_turn_status"),
-        nullable=False,
-        default=AiTurnStatus.PENDING,
+        enum_type(AiTurnStatus, 'ai_turn_status'), nullable=False, default=AiTurnStatus.PENDING
     )
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
     assistant_message: Mapped[str | None] = mapped_column(Text)
-    provider: Mapped[str] = mapped_column(String(40), nullable=False, default="yandex")
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, default='yandex')
     model_uri: Mapped[str] = mapped_column(String(200), nullable=False)
     model_version: Mapped[str | None] = mapped_column(String(200))
     prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -394,48 +334,29 @@ class AiTurn(Base):
     cached_tokens: Mapped[int | None] = mapped_column(Integer)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     error_code: Mapped[str | None] = mapped_column(String(80))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    task: Mapped[TaskInstance] = relationship(back_populates="ai_turns")
+    task: Mapped[TaskInstance] = relationship(back_populates='ai_turns')
     attempt: Mapped[Attempt] = relationship()
 
 
 class ClientTelemetryReceipt(Base):
     """Idempotency and quota record for one accepted client telemetry event."""
 
-    __tablename__ = "client_telemetry_receipts"
+    __tablename__ = 'client_telemetry_receipts'
     __table_args__ = (
-        UniqueConstraint(
-            "attempt_id",
-            "client_event_id",
-            name="uq_client_telemetry_receipt_attempt_event",
-        ),
-        Index(
-            "ix_client_telemetry_receipt_attempt_created",
-            "attempt_id",
-            "created_at",
-        ),
+        UniqueConstraint('attempt_id', 'client_event_id', name='uq_client_telemetry_receipt_attempt_event'),
+        Index('ix_client_telemetry_receipt_attempt_created', 'attempt_id', 'created_at'),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
-    attempt_id: Mapped[str] = mapped_column(
-        ForeignKey("attempts.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    attempt_id: Mapped[str] = mapped_column(ForeignKey('attempts.id', ondelete='CASCADE'), nullable=False)
     client_event_id: Mapped[str] = mapped_column(String(128), nullable=False)
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
-    attempt: Mapped[Attempt] = relationship(
-        back_populates="client_telemetry_receipts"
-    )
+    attempt: Mapped[Attempt] = relationship(back_populates='client_telemetry_receipts')
 
 
 class AttemptEvent(Base):
@@ -445,17 +366,15 @@ class AttemptEvent(Base):
     or delete endpoints for event data.
     """
 
-    __tablename__ = "attempt_events"
-    __table_args__ = (
-        UniqueConstraint("attempt_id", "sequence", name="uq_attempt_event_sequence"),
-    )
+    __tablename__ = 'attempt_events'
+    __table_args__ = (UniqueConstraint('attempt_id', 'sequence', name='uq_attempt_event_sequence'),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     attempt_id: Mapped[str] = mapped_column(
-        ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey('attempts.id', ondelete='CASCADE'), nullable=False, index=True
     )
     task_instance_id: Mapped[str | None] = mapped_column(
-        ForeignKey("task_instances.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey('task_instances.id', ondelete='SET NULL'), nullable=True, index=True
     )
     event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -464,5 +383,5 @@ class AttemptEvent(Base):
         DateTime(timezone=True), nullable=False, default=utc_now, index=True
     )
 
-    attempt: Mapped[Attempt] = relationship(back_populates="events")
-    task: Mapped[TaskInstance | None] = relationship(back_populates="events")
+    attempt: Mapped[Attempt] = relationship(back_populates='events')
+    task: Mapped[TaskInstance | None] = relationship(back_populates='events')

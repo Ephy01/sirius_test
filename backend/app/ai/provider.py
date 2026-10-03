@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-ProviderErrorCode = Literal["AI_PROVIDER_UNAVAILABLE", "AI_PROVIDER_TIMEOUT"]
+ProviderErrorCode = Literal['AI_PROVIDER_UNAVAILABLE', 'AI_PROVIDER_TIMEOUT']
 
 
 class ProviderError(Exception):
@@ -26,7 +26,7 @@ class ProviderError(Exception):
 
 @dataclass(frozen=True)
 class ProviderMessage:
-    role: Literal["user", "assistant"]
+    role: Literal['user', 'assistant']
     content: str
 
 
@@ -55,8 +55,7 @@ class ProviderResult:
 
 
 class AssistantProvider(Protocol):
-    def generate(self, request: ProviderRequest) -> ProviderResult:
-        ...
+    def generate(self, request: ProviderRequest) -> ProviderResult: ...
 
 
 @dataclass
@@ -67,7 +66,7 @@ class FakeAssistantProvider:
     the model would have seen.
     """
 
-    reply: str = "Заглушка ассистента: попробуйте сформулировать гипотезу."
+    reply: str = 'Заглушка ассистента: попробуйте сформулировать гипотезу.'
     error: ProviderError | None = None
     requests: list[ProviderRequest] = field(default_factory=list)
 
@@ -77,9 +76,9 @@ class FakeAssistantProvider:
             raise self.error
         return ProviderResult(
             text=self.reply,
-            provider_request_id="fake-request",
-            model_version="fake-model",
-            finish_reason="stop",
+            provider_request_id='fake-request',
+            model_version='fake-model',
+            finish_reason='stop',
             input_tokens=100,
             output_tokens=42,
             total_tokens=142,
