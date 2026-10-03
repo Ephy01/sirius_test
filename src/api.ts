@@ -1,4 +1,5 @@
 const DEFAULT_API_BASE_URL = "/api/v1";
+const CONTEST_ENVIRONMENT = "mixed";
 
 export type AccessRole = "organizer" | "participant";
 export type ContestStatus = "draft" | "published";
@@ -40,18 +41,9 @@ export type ContestSummary = {
   title: string;
   status: ContestStatus;
   durationMinutes: number;
-  environmentKey?: string;
   participantCount?: number;
   createdAt?: string;
   publishedAt?: string | null;
-};
-
-export type Contest = ContestSummary & {
-  description?: string | null;
-  environmentFamilies?: string[];
-  taskConfig?: Record<string, unknown>;
-  settings?: Record<string, unknown>;
-  updatedAt?: string;
 };
 
 export type ParticipantSummary = {
@@ -81,7 +73,6 @@ export type AttemptSummary = {
 
 export type RedeemCodeResponse = {
   accessToken: string;
-  tokenType: "bearer" | string;
   role: AccessRole;
   expiresAt?: string | null;
 };
@@ -89,11 +80,7 @@ export type RedeemCodeResponse = {
 export type CreateContestInput = {
   title: string;
   durationMinutes: number;
-  description?: string;
-  environmentKey?: string;
   taskConfig?: Record<string, unknown>;
-  environmentFamilies?: string[];
-  settings?: Record<string, unknown>;
 };
 
 export type EnrollmentInput = {
@@ -108,12 +95,6 @@ export type AddEnrollmentsInput = {
 export type AddEnrollmentsResponse = {
   enrollments: EnrollmentSummary[];
   createdCount: number;
-};
-
-export type GenerateCodesInput = {
-  rotate?: boolean;
-  expiresAt?: string | null;
-  recoverOnly?: boolean;
 };
 
 export type GeneratedAccessCode = {
@@ -180,7 +161,7 @@ export type AttemptGrantResponse = {
 
 export type TaskProgressEntry = {
   ordinal: number;
-  status: "active" | "answered" | "skipped";
+  status: TaskStatus;
 };
 
 export type ParticipantContext = {
@@ -200,14 +181,14 @@ export type ParticipantTelemetryEventType =
   | "client_chat_paste"
   | "client_copy";
 
-export type ParticipantTelemetryInput = {
+export type ParticipantTelemetryEvent = {
   clientEventId: string;
   clientSessionId: string;
   eventType: ParticipantTelemetryEventType;
-  attemptId?: string | null;
-  taskId?: string | null;
-  clientTimestamp?: string | null;
-  clientElapsedMs?: number | null;
+  attemptId?: string;
+  taskId?: string;
+  clientTimestamp: string;
+  clientElapsedMs: number;
   payload?: Record<string, unknown>;
 };
 
@@ -222,27 +203,10 @@ export type ChessPieceSymbol = "K" | "Q" | "R" | "B" | "N" | "P";
 export type ChessBoardPieceSymbol = `w${ChessPieceSymbol}` | `b${ChessPieceSymbol}`;
 export type ChessBoardState = (ChessBoardPieceSymbol | null)[][];
 
-export type WorldContext = {
-  world: string;
-  episode: number;
-  family: string;
-  phase: "calibration" | "chapter" | "remediation" | "rotation" | string;
-};
-
 export type DiceDefinition = {
   id: string;
   label: string;
   faces: ChessPieceSymbol[];
-};
-
-export type DiceChessPublicState = {
-  kind: "dice_chess_probability";
-  prompt: string;
-  dice: DiceDefinition[];
-  sampleSpaceSize: number;
-  eventDescription?: string;
-  responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type DiceChessPositionPublicState = {
@@ -251,10 +215,8 @@ export type DiceChessPositionPublicState = {
   board: ChessBoardState;
   sideToMove: "white" | "black";
   die: DiceDefinition;
-  sampleSpaceSize: number;
   eventDescription: string;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type DiceChessInventoryPublicState = {
@@ -262,23 +224,19 @@ export type DiceChessInventoryPublicState = {
   prompt: string;
   board: ChessBoardState;
   die: DiceDefinition;
-  sampleSpaceSize: number;
   eventDescription: string;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
-export type ChessCoverageCandidate = {
-  id: string;
-  piece: "K" | "Q" | "R" | "B" | "N";
-  pieceLabel: string;
+export type BoardPoint = {
   row: number;
   col: number;
-  weight: number;
 };
 
+export type ChessCoveragePieceId = "N" | "B" | "R" | "Q";
+
 export type ChessCoveragePieceType = {
-  id: "N" | "B" | "R" | "Q";
+  id: ChessCoveragePieceId;
   label: string;
   baseCost: number;
   repeatSurcharge: number;
@@ -289,7 +247,7 @@ export type ChessCoveragePieceType = {
 
 export type ChessCoveragePlacement = {
   id: string;
-  piece: ChessCoveragePieceType["id"];
+  piece: ChessCoveragePieceId;
   row: number;
   col: number;
   cost: number;
@@ -298,22 +256,16 @@ export type ChessCoveragePlacement = {
 export type ChessCoveragePublicState = {
   kind: "chess_coverage";
   family: "chess_coverage";
-  variant: "candidate_selection" | "custom_jump_placement";
   prompt: string;
-  boardSize: number;
   targets: BoardPoint[];
-  candidates: ChessCoverageCandidate[];
-  selectedIds: string[];
   pieceTypes: ChessCoveragePieceType[];
   placements: ChessCoveragePlacement[];
   pieceCounts: Record<string, number>;
   coveredTargets: BoardPoint[];
-  totalWeight: number;
   totalCost: number;
   maxPlacements: number;
   allCovered: boolean;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type GeometryPoint = {
@@ -346,17 +298,12 @@ export type GeometryScene = {
 
 export type GeometryPublicState = {
   kind: "geometry_atlas";
-  family:
-    | "geo_zendo"
-    | "geo_transform"
-    | "geo_probability";
+  family: "geo_zendo" | "geo_transform" | "geo_probability";
   variant: string;
   prompt: string;
   scene: GeometryScene;
   content: Record<string, unknown>;
-  interaction: Record<string, unknown>;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type TokenCard = {
@@ -371,9 +318,7 @@ export type TokenZendoPublicState = {
   prompt: string;
   cards: Record<string, TokenCard[]>;
   content: Record<string, unknown>;
-  interaction: Record<string, unknown>;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type FoldStep = {
@@ -396,7 +341,6 @@ export type FoldPunchPublicState = {
     holes: [number, number][];
   };
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type WiringObservation = {
@@ -411,7 +355,6 @@ export type HiddenWiringPublicState = {
   family: "hidden_wiring";
   variant: "reach_target" | "predict_chords";
   prompt: string;
-  legend: string;
   lampCount: number;
   buttonCount: number;
   ops: MachineOperation[];
@@ -422,7 +365,6 @@ export type HiddenWiringPublicState = {
   chordsRemaining: number;
   observations: WiringObservation[];
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type GridZendoPublicState = {
@@ -433,9 +375,7 @@ export type GridZendoPublicState = {
   cards: Record<string, string[]>;
   gridSize: number;
   content: Record<string, unknown>;
-  interaction: Record<string, unknown>;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type PointZendoPublicState = {
@@ -445,9 +385,7 @@ export type PointZendoPublicState = {
   prompt: string;
   scene: GeometryScene;
   content: Record<string, unknown>;
-  interaction: Record<string, unknown>;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type MachineSubKind =
@@ -477,12 +415,6 @@ export type MachinePanelPublicState = {
   stepsSoftCap: number;
   stepsTaken: number;
   responseHint: string;
-  worldContext?: WorldContext;
-};
-
-export type BoardPoint = {
-  row: number;
-  col: number;
 };
 
 export type LeaperBoardPublicState = {
@@ -498,10 +430,7 @@ export type LeaperBoardPublicState = {
   rows: number;
   cols: number;
   blocked: BoardPoint[];
-  jump?: { a: number; b: number };
-  board: ChessBoardState;
   responseHint: string;
-  worldContext?: WorldContext;
 };
 
 export type ClassicMathSubKind = "share_paradox" | "bar_seating";
@@ -522,13 +451,10 @@ export type ClassicMathPublicState = {
   answerFormat: "free_response";
   scripted: true;
   table?: ClassicMathTable;
-  seatCount?: number;
-  worldContext?: WorldContext;
 };
 
 export type TaskPublicState =
   | ChessCoveragePublicState
-  | DiceChessPublicState
   | DiceChessInventoryPublicState
   | DiceChessPositionPublicState
   | GeometryPublicState
@@ -545,12 +471,9 @@ export type ParticipantTask = {
   id: string;
   ordinal: number;
   family: string;
-  generatorVersion: string;
   difficulty: number;
   status: TaskStatus;
   publicState: TaskPublicState;
-  createdAt?: string;
-  resolvedAt?: string | null;
 };
 
 export type CurrentTaskResponse = {
@@ -574,20 +497,12 @@ export type TaskInteractionInput =
       clientActionId: string;
     }
   | {
-      actionType: "hint";
-      clientActionId: string;
-    }
-  | {
       actionType: "apply_op";
       opId: string;
       clientActionId: string;
     }
   | {
-      actionType: "undo";
-      clientActionId: string;
-    }
-  | {
-      actionType: "reset";
+      actionType: "hint" | "undo" | "reset";
       clientActionId: string;
     };
 
@@ -636,12 +551,12 @@ export type TaskInteractionResponse = {
   task: ParticipantTask;
   accepted: boolean;
   completed: boolean;
-  message: string;
+  message?: string;
   clientActionId: string;
 };
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "DELETE";
   token?: string;
   body?: unknown;
   signal?: AbortSignal;
@@ -653,20 +568,27 @@ export type AuthenticatedRequestOptions = {
   signal?: AbortSignal;
 };
 
-export type PublicRequestOptions = {
-  signal?: AbortSignal;
-};
+export type UnknownRecord = Record<string, unknown>;
 
-type UnknownRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is UnknownRecord {
+export function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readString(record: UnknownRecord, ...keys: string[]): string | undefined {
+export function readString(record: UnknownRecord, ...keys: string[]): string | undefined {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
+export function readNullableString(
+  record: UnknownRecord,
+  ...keys: string[]
+): string | null | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || typeof value === "string") return value;
   }
   return undefined;
 }
@@ -679,27 +601,33 @@ function readNumber(record: UnknownRecord, ...keys: string[]): number | undefine
   return undefined;
 }
 
-function readNullableString(
-  record: UnknownRecord,
-  ...keys: string[]
-): string | null | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (value === null || typeof value === "string") return value;
-  }
-  return undefined;
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function invalidResponse(message: string, details?: unknown): ApiError {
+  return new ApiError(502, { code: "invalid_api_response", message, details });
+}
+
+function expectRecord(value: unknown, message: string): UnknownRecord {
+  if (!isRecord(value)) throw invalidResponse(message, value);
+  return value;
 }
 
 function requiredString(record: UnknownRecord, label: string, ...keys: string[]): string {
   const value = readString(record, ...keys);
   if (!value) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: `Сервер вернул некорректное поле «${label}».`,
-      details: record,
-    });
+    throw invalidResponse(`Сервер вернул некорректное поле «${label}».`, record);
   }
   return value;
+}
+
+function unwrapItems(body: unknown, message: string): unknown[] {
+  if (Array.isArray(body)) return body;
+  if (isRecord(body) && Array.isArray(body.items)) return body.items;
+  throw invalidResponse(message, body);
 }
 
 function parseContestStatus(value: unknown): ContestStatus {
@@ -718,48 +646,39 @@ function parseAccessCodeStatus(value: unknown): AccessCodeStatus {
   return value === "revoked" || value === "expired" ? value : "active";
 }
 
-function parseContestSummary(value: unknown): ContestSummary {
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректные данные контеста.",
-      details: value,
-    });
-  }
+function parseTaskStatus(value: unknown): TaskStatus {
+  return value === "answered" || value === "skipped" ? value : "active";
+}
+
+export function parseContestSummary(value: unknown): ContestSummary {
+  const record = expectRecord(value, "Сервер вернул некорректные данные контеста.");
 
   return {
-    id: requiredString(value, "contest.id", "id"),
-    title: requiredString(value, "contest.title", "title", "name"),
-    status: parseContestStatus(value.status),
+    id: requiredString(record, "contest.id", "id"),
+    title: requiredString(record, "contest.title", "title", "name"),
+    status: parseContestStatus(record.status),
     durationMinutes:
-      readNumber(value, "durationMinutes", "duration_minutes") ?? 60,
-    participantCount: readNumber(value, "participantCount", "participant_count"),
-    environmentKey: readString(value, "environmentKey", "environment_key"),
-    createdAt: readString(value, "createdAt", "created_at"),
-    publishedAt: readNullableString(value, "publishedAt", "published_at"),
+      readNumber(record, "durationMinutes", "duration_minutes") ?? 60,
+    participantCount: readNumber(record, "participantCount", "participant_count"),
+    createdAt: readString(record, "createdAt", "created_at"),
+    publishedAt: readNullableString(record, "publishedAt", "published_at"),
   };
 }
 
-function parseParticipant(value: unknown): ParticipantSummary {
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректные данные участника.",
-      details: value,
-    });
-  }
+export function parseParticipant(value: unknown): ParticipantSummary {
+  const record = expectRecord(value, "Сервер вернул некорректные данные участника.");
 
   return {
-    id: requiredString(value, "participant.id", "id"),
+    id: requiredString(record, "participant.id", "id"),
     displayName: requiredString(
-      value,
+      record,
       "participant.displayName",
       "displayName",
       "display_name",
       "name",
     ),
     externalRef: readNullableString(
-      value,
+      record,
       "externalRef",
       "external_ref",
       "externalId",
@@ -768,100 +687,75 @@ function parseParticipant(value: unknown): ParticipantSummary {
   };
 }
 
-function parseEnrollment(value: unknown): EnrollmentSummary {
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректную регистрацию участника.",
-      details: value,
-    });
-  }
+export function parseEnrollment(value: unknown): EnrollmentSummary {
+  const record = expectRecord(
+    value,
+    "Сервер вернул некорректную регистрацию участника.",
+  );
 
   const participant =
-    value.participant === undefined ? undefined : parseParticipant(value.participant);
+    record.participant === undefined ? undefined : parseParticipant(record.participant);
   const participantId =
-    readString(value, "participantId", "participant_id") ?? participant?.id;
+    readString(record, "participantId", "participant_id") ?? participant?.id;
   if (!participantId) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул регистрацию без участника.",
-      details: value,
-    });
+    throw invalidResponse("Сервер вернул регистрацию без участника.", record);
   }
 
   return {
-    id: requiredString(value, "enrollment.id", "id"),
-    contestId: requiredString(value, "enrollment.contestId", "contestId", "contest_id"),
+    id: requiredString(record, "enrollment.id", "id"),
+    contestId: requiredString(record, "enrollment.contestId", "contestId", "contest_id"),
     participantId,
     participant,
-    status: parseEnrollmentStatus(value.status),
-    createdAt: readString(value, "createdAt", "created_at"),
+    status: parseEnrollmentStatus(record.status),
+    createdAt: readString(record, "createdAt", "created_at"),
   };
 }
 
-function parseAttempt(value: unknown): AttemptSummary {
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректные данные попытки.",
-      details: value,
-    });
-  }
+export function parseAttempt(value: unknown): AttemptSummary {
+  const record = expectRecord(value, "Сервер вернул некорректные данные попытки.");
 
   return {
-    id: requiredString(value, "attempt.id", "id"),
+    id: requiredString(record, "attempt.id", "id"),
     enrollmentId: requiredString(
-      value,
+      record,
       "attempt.enrollmentId",
       "enrollmentId",
       "enrollment_id",
     ),
-    number: readNumber(value, "number") ?? 1,
-    status: parseAttemptStatus(value.status),
-    startedAt: readNullableString(value, "startedAt", "started_at"),
-    deadlineAt: readNullableString(value, "deadlineAt", "deadline_at"),
-    finishedAt: readNullableString(value, "finishedAt", "finished_at"),
+    number: readNumber(record, "number") ?? 1,
+    status: parseAttemptStatus(record.status),
+    startedAt: readNullableString(record, "startedAt", "started_at"),
+    deadlineAt: readNullableString(record, "deadlineAt", "deadline_at"),
+    finishedAt: readNullableString(record, "finishedAt", "finished_at"),
   };
 }
 
 function parseAccessCodeOverview(value: unknown): AccessCodeOverview | null {
   if (value === null || value === undefined) return null;
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректные данные кода доступа.",
-      details: value,
-    });
-  }
+  const record = expectRecord(value, "Сервер вернул некорректные данные кода доступа.");
 
   return {
-    id: requiredString(value, "code.id", "id"),
-    last4: requiredString(value, "code.last4", "last4"),
-    status: parseAccessCodeStatus(value.status),
-    createdAt: readString(value, "createdAt", "created_at"),
-    expiresAt: readNullableString(value, "expiresAt", "expires_at"),
-    revokedAt: readNullableString(value, "revokedAt", "revoked_at"),
-    redeemedAt: readNullableString(value, "redeemedAt", "redeemed_at"),
+    id: requiredString(record, "code.id", "id"),
+    last4: requiredString(record, "code.last4", "last4"),
+    status: parseAccessCodeStatus(record.status),
+    createdAt: readString(record, "createdAt", "created_at"),
+    expiresAt: readNullableString(record, "expiresAt", "expires_at"),
+    revokedAt: readNullableString(record, "revokedAt", "revoked_at"),
+    redeemedAt: readNullableString(record, "redeemedAt", "redeemed_at"),
   };
 }
 
 function parseAttemptOverview(value: unknown): AttemptOverview | null {
   if (value === null || value === undefined) return null;
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректные данные попытки.",
-      details: value,
-    });
-  }
+  const record = expectRecord(value, "Сервер вернул некорректные данные попытки.");
 
   return {
-    id: requiredString(value, "attempt.id", "id"),
-    number: readNumber(value, "number") ?? 1,
-    status: parseAttemptStatus(value.status),
-    startedAt: readNullableString(value, "startedAt", "started_at"),
-    deadlineAt: readNullableString(value, "deadlineAt", "deadline_at"),
-    finishedAt: readNullableString(value, "finishedAt", "finished_at"),
+    id: requiredString(record, "attempt.id", "id"),
+    number: readNumber(record, "number") ?? 1,
+    status: parseAttemptStatus(record.status),
+    startedAt: readNullableString(record, "startedAt", "started_at"),
+    deadlineAt: readNullableString(record, "deadlineAt", "deadline_at"),
+    finishedAt: readNullableString(record, "finishedAt", "finished_at"),
   };
 }
 
@@ -869,37 +763,69 @@ function parseContestEnrollmentAccess(
   value: unknown,
   contestId: string,
 ): ContestEnrollmentAccess {
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректную строку доступа участника.",
-      details: value,
-    });
-  }
-
-  const participant = parseParticipant(value.participant);
-  const latestCode = value.latestCode ?? value.latest_code;
-  const latestAttempt = value.latestAttempt ?? value.latest_attempt;
+  const record = expectRecord(
+    value,
+    "Сервер вернул некорректную строку доступа участника.",
+  );
+  const participant = parseParticipant(record.participant);
 
   return {
-    id: requiredString(value, "enrollment.id", "id"),
-    contestId:
-      readString(value, "contestId", "contest_id") ?? contestId,
+    id: requiredString(record, "enrollment.id", "id"),
+    contestId: readString(record, "contestId", "contest_id") ?? contestId,
     participantId:
-      readString(value, "participantId", "participant_id") ?? participant.id,
+      readString(record, "participantId", "participant_id") ?? participant.id,
     participant,
-    status: parseEnrollmentStatus(value.status),
-    createdAt: readString(value, "createdAt", "created_at"),
-    latestCode: parseAccessCodeOverview(latestCode),
-    latestAttempt: parseAttemptOverview(latestAttempt),
+    status: parseEnrollmentStatus(record.status),
+    createdAt: readString(record, "createdAt", "created_at"),
+    latestCode: parseAccessCodeOverview(record.latestCode ?? record.latest_code),
+    latestAttempt: parseAttemptOverview(
+      record.latestAttempt ?? record.latest_attempt,
+    ),
     attemptGrantPending:
-      value.attemptGrantPending === true || value.attempt_grant_pending === true,
+      record.attemptGrantPending === true || record.attempt_grant_pending === true,
   };
 }
 
-function parseTaskStatus(value: unknown): TaskStatus {
-  if (value === "answered" || value === "skipped") return value;
-  return "active";
+function parseGeneratedCodes(body: unknown): GenerateCodesResponse {
+  const items = unwrapItems(body, "Сервер вернул некорректный список кодов.");
+  const counters = isRecord(body) ? body : {};
+
+  return {
+    codes: items.map((value) => {
+      const item = expectRecord(value, "Сервер вернул некорректный код доступа.");
+      const participant = isRecord(item.participant) ? item.participant : {};
+
+      return {
+        enrollmentId: requiredString(
+          item,
+          "enrollmentId",
+          "enrollmentId",
+          "enrollment_id",
+        ),
+        participantId: requiredString(participant, "participantId", "id"),
+        participantName: requiredString(
+          participant,
+          "participantName",
+          "displayName",
+          "display_name",
+        ),
+        participantExternalRef: readString(
+          participant,
+          "externalRef",
+          "external_ref",
+        ),
+        code: requiredString(item, "code", "code"),
+        codeLabel:
+          readString(item, "codeLabel", "code_label") ??
+          `••••${requiredString(item, "last4", "last4")}`,
+        status: parseAccessCodeStatus(item.status),
+        expiresAt: readNullableString(item, "expiresAt", "expires_at"),
+      };
+    }),
+    generatedCount:
+      readNumber(counters, "generatedCount", "generated_count") ?? items.length,
+    skippedCount: readNumber(counters, "skippedCount", "skipped_count") ?? 0,
+  };
 }
 
 function isChessPieceSymbol(value: unknown): value is ChessPieceSymbol {
@@ -913,63 +839,50 @@ function isChessPieceSymbol(value: unknown): value is ChessPieceSymbol {
   );
 }
 
-function isChessBoardPieceSymbol(
+function isChessBoardCell(
   value: unknown,
-): value is ChessBoardPieceSymbol {
+): value is ChessBoardPieceSymbol | null {
   return (
-    typeof value === "string" &&
-    value.length === 2 &&
-    (value[0] === "w" || value[0] === "b") &&
-    isChessPieceSymbol(value[1])
+    value === null ||
+    (typeof value === "string" &&
+      value.length === 2 &&
+      (value[0] === "w" || value[0] === "b") &&
+      isChessPieceSymbol(value[1]))
   );
 }
 
-function parsePieceSymbols(
-  value: unknown,
-  expectedLength: number,
-): ChessPieceSymbol[] | null {
-  const pieces =
-    typeof value === "string"
-      ? Array.from(value)
-      : Array.isArray(value)
-        ? value
-        : [];
-  return pieces.length === expectedLength && pieces.every(isChessPieceSymbol)
-    ? pieces
-    : null;
+function isCoveragePieceId(value: unknown): value is ChessCoveragePieceId {
+  return value === "N" || value === "B" || value === "R" || value === "Q";
 }
 
-function parseDiceDefinition(
-  value: unknown,
-  index = 0,
-): DiceDefinition | null {
+function parseDiceDefinition(value: unknown): DiceDefinition | null {
   if (!isRecord(value)) return null;
-  const faces = parsePieceSymbols(value.faces, 6);
-  if (!faces) return null;
+  const faces: unknown[] =
+    typeof value.faces === "string"
+      ? Array.from(value.faces)
+      : Array.isArray(value.faces)
+        ? value.faces
+        : [];
+  if (faces.length !== 6 || !faces.every(isChessPieceSymbol)) return null;
   return {
-    id: readString(value, "id") ?? `die-${index + 1}`,
-    label: readString(value, "label") ?? `Кубик ${index + 1}`,
+    id: readString(value, "id") ?? "die-1",
+    label: readString(value, "label") ?? "Кубик 1",
     faces,
   };
 }
 
-function parseChessBoard(
-  value: unknown,
-  expectedRows = 8,
-  expectedCols = 8,
-): ChessBoardState | null {
-  if (!Array.isArray(value) || value.length !== expectedRows) return null;
+function parseChessBoard(value: unknown): ChessBoardState | null {
+  if (!Array.isArray(value) || value.length !== 8) return null;
   const board: ChessBoardState = [];
   for (const rank of value) {
-    if (!Array.isArray(rank) || rank.length !== expectedCols) return null;
     if (
-      !rank.every(
-        (piece) => piece === null || isChessBoardPieceSymbol(piece),
-      )
+      !Array.isArray(rank) ||
+      rank.length !== 8 ||
+      !rank.every(isChessBoardCell)
     ) {
       return null;
     }
-    board.push([...rank] as (ChessBoardPieceSymbol | null)[]);
+    board.push([...rank]);
   }
   return board;
 }
@@ -1036,6 +949,20 @@ function parseBoardPoint(value: unknown): BoardPoint | null {
   return { row, col };
 }
 
+function parseBoardPoints(value: unknown): BoardPoint[] | null {
+  if (!Array.isArray(value)) return [];
+  const points = value.map(parseBoardPoint);
+  return points.every((point): point is BoardPoint => point !== null)
+    ? points
+    : null;
+}
+
+function parseLamps(value: unknown): number[] | null {
+  return Array.isArray(value) && value.every((item) => item === 0 || item === 1)
+    ? (value as number[])
+    : null;
+}
+
 function parseGeometryScene(value: unknown): GeometryScene | null {
   if (!isRecord(value) || !isRecord(value.bounds)) return null;
   const minX = readNumber(value.bounds, "minX", "min_x");
@@ -1092,854 +1019,606 @@ function parseGeometryScene(value: unknown): GeometryScene | null {
   };
 }
 
-function parseWorldContext(value: unknown): WorldContext | undefined {
-  if (!isRecord(value)) return undefined;
-  const world = readString(value, "world");
-  const episode = readNumber(value, "episode");
-  const family = readString(value, "family");
-  const phase = readString(value, "phase");
-  if (
-    !world ||
-    episode === undefined ||
-    !family ||
-    !phase
-  ) {
-    return undefined;
-  }
-  return { world, episode, family, phase };
+type PublicStateBase = {
+  prompt: string;
+  responseHint: string;
+};
+
+function readContent(state: UnknownRecord): Record<string, unknown> {
+  return isRecord(state.content) ? state.content : {};
 }
 
-function parseParticipantTask(value: unknown): ParticipantTask {
-  if (!isRecord(value)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул некорректную задачу.",
-      details: value,
-    });
-  }
-
-  const publicStateValue = value.publicState ?? value.public_state;
-  if (!isRecord(publicStateValue)) {
-    throw new ApiError(502, {
-      code: "invalid_api_response",
-      message: "Сервер вернул задачу без публичного состояния.",
-      details: value,
-    });
-  }
-
-  const kind = readString(publicStateValue, "kind");
-  const prompt = requiredString(publicStateValue, "task.prompt", "prompt");
-  const responseHint =
-    readString(publicStateValue, "responseHint", "response_hint") ??
-    (kind === "machine_panel" || kind === "chess"
-      ? "/op op1 · /undo · done / impossible"
-      : "/answer ваш ответ");
-  const worldContext = parseWorldContext(
-    publicStateValue.worldContext ?? publicStateValue.world_context,
+function parseChessCoverageState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): ChessCoveragePublicState {
+  const boardSize = readNumber(state, "boardSize", "board_size");
+  const targets = parseBoardPoints(state.targets);
+  const coveredTargets = parseBoardPoints(
+    state.coveredTargets ?? state.covered_targets,
   );
-  let publicState: TaskPublicState;
-
-  if (kind === "chess_coverage") {
-    const boardSize = readNumber(
-      publicStateValue,
-      "boardSize",
-      "board_size",
-    );
-    const targetValues = publicStateValue.targets;
-    const candidateValues = publicStateValue.candidates;
-    const selectedValues =
-      publicStateValue.selectedIds ?? publicStateValue.selected_ids;
-    const coveredValues =
-      publicStateValue.coveredTargets ?? publicStateValue.covered_targets;
-    const pieceTypeValues =
-      publicStateValue.pieceTypes ?? publicStateValue.piece_types;
-    const placementValues = publicStateValue.placements;
-    const pieceCountValue =
-      publicStateValue.pieceCounts ?? publicStateValue.piece_counts;
-    const targets = Array.isArray(targetValues)
-      ? targetValues.map(parseBoardPoint)
-      : [];
-    const coveredTargets = Array.isArray(coveredValues)
-      ? coveredValues.map(parseBoardPoint)
-      : [];
-    const candidates = Array.isArray(candidateValues)
-      ? candidateValues.flatMap((item): ChessCoverageCandidate[] => {
-          if (!isRecord(item)) return [];
-          const id = readString(item, "id");
-          const piece = readString(item, "piece");
-          const row = readNumber(item, "row");
-          const col = readNumber(item, "col");
-          const weight = readNumber(item, "weight");
-          if (
-            !id ||
-            !piece ||
-            !["K", "Q", "R", "B", "N"].includes(piece) ||
-            row === undefined ||
-            col === undefined ||
-            weight === undefined
-          ) {
-            return [];
-          }
-          return [{
-            id,
-            piece: piece as ChessCoverageCandidate["piece"],
-            pieceLabel:
-              readString(item, "pieceLabel", "piece_label") ?? piece,
-            row,
-            col,
-            weight,
-          }];
-        })
-      : [];
-    const pieceTypes = Array.isArray(pieceTypeValues)
-      ? pieceTypeValues.flatMap((item): ChessCoveragePieceType[] => {
-          if (!isRecord(item)) return [];
-          const id = readString(item, "id");
-          const baseCost = readNumber(item, "baseCost", "base_cost");
-          const repeatSurcharge = readNumber(
-            item,
-            "repeatSurcharge",
-            "repeat_surcharge",
-          );
-          const limit = readNumber(item, "limit");
-          const offsetValues = item.offsets;
-          const offsets = Array.isArray(offsetValues)
-            ? offsetValues.map(parseBoardPoint)
-            : [];
-          if (
-            !id ||
-            !["N", "B", "R", "Q"].includes(id) ||
-            baseCost === undefined ||
-            repeatSurcharge === undefined ||
-            limit === undefined ||
-            offsets.length === 0 ||
-            offsets.some((point) => point === null)
-          ) {
-            return [];
-          }
-          return [{
-            id: id as ChessCoveragePieceType["id"],
-            label: readString(item, "label") ?? id,
-            baseCost,
-            repeatSurcharge,
-            limit,
-            moveLabel:
-              readString(item, "moveLabel", "move_label") ?? "особый прыжок",
-            offsets: offsets as BoardPoint[],
-          }];
-        })
-      : [];
-    const placements = Array.isArray(placementValues)
-      ? placementValues.flatMap((item): ChessCoveragePlacement[] => {
-          if (!isRecord(item)) return [];
-          const id = readString(item, "id");
-          const piece = readString(item, "piece");
-          const row = readNumber(item, "row");
-          const col = readNumber(item, "col");
-          const cost = readNumber(item, "cost");
-          if (
-            !id ||
-            !piece ||
-            !["N", "B", "R", "Q"].includes(piece) ||
-            row === undefined ||
-            col === undefined ||
-            cost === undefined
-          ) {
-            return [];
-          }
-          return [{
-            id,
-            piece: piece as ChessCoveragePlacement["piece"],
-            row,
-            col,
-            cost,
-          }];
-        })
-      : [];
-    const pieceCounts = isRecord(pieceCountValue)
-      ? Object.fromEntries(
-          Object.entries(pieceCountValue).flatMap(([key, item]) =>
-            typeof item === "number" && Number.isFinite(item)
-              ? [[key, item] as const]
-              : [],
-          ),
-        )
-      : {};
-    const variant = pieceTypes.length > 0
-      ? "custom_jump_placement"
-      : "candidate_selection";
-    if (
-      boardSize === undefined ||
-      !Number.isInteger(boardSize) ||
-      boardSize < 3 ||
-      boardSize > 8 ||
-      targets.length === 0 ||
-      targets.some((point) => point === null) ||
-      coveredTargets.some((point) => point === null) ||
-      (variant === "candidate_selection" &&
-        (candidates.length === 0 ||
-          !Array.isArray(selectedValues) ||
-          !selectedValues.every((item) => typeof item === "string"))) ||
-      (variant === "custom_jump_placement" && boardSize !== 8)
-    ) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную шахматную расстановку.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      family: "chess_coverage",
-      variant,
-      prompt,
-      boardSize,
-      targets: targets as BoardPoint[],
-      candidates,
-      selectedIds: Array.isArray(selectedValues)
-        ? selectedValues.filter((item): item is string => typeof item === "string")
-        : [],
-      pieceTypes,
-      placements,
-      pieceCounts,
-      coveredTargets: coveredTargets as BoardPoint[],
-      totalWeight:
-        readNumber(publicStateValue, "totalWeight", "total_weight") ?? 0,
-      totalCost:
-        readNumber(publicStateValue, "totalCost", "total_cost") ?? 0,
-      maxPlacements:
-        readNumber(publicStateValue, "maxPlacements", "max_placements") ?? 0,
-      allCovered:
-        publicStateValue.allCovered === true ||
-        publicStateValue.all_covered === true,
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "dice_chess_probability") {
-    const diceValue = publicStateValue.dice;
-    if (!Array.isArray(diceValue) || diceValue.length < 2 || diceValue.length > 4) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный набор кубиков.",
-        details: value,
-      });
-    }
-    const dice = diceValue.map((die, index): DiceDefinition => {
-      const parsed = parseDiceDefinition(die, index);
-      if (!parsed) {
-        throw new ApiError(502, {
-          code: "invalid_api_response",
-          message: "Каждый кубик должен содержать шесть шахматных граней.",
-          details: die,
-        });
-      }
-      return parsed;
-    });
-    publicState = {
-      kind,
-      prompt,
-      dice,
-      sampleSpaceSize:
-        readNumber(
-          publicStateValue,
-          "sampleSpaceSize",
-          "sample_space_size",
-        ) ?? 6 ** dice.length,
-      eventDescription: readString(
-        publicStateValue,
-        "eventDescription",
-        "event_description",
-      ),
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "dice_chess_board_inventory_probability") {
-    const board = parseChessBoard(publicStateValue.board);
-    const die = parseDiceDefinition(publicStateValue.die);
-    const eventDescription = readString(
-      publicStateValue,
-      "eventDescription",
-      "event_description",
-    );
-    if (!board || !die || !eventDescription) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную задачу Dice & Chess.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      prompt,
-      board,
-      die,
-      sampleSpaceSize:
-        readNumber(
-          publicStateValue,
-          "sampleSpaceSize",
-          "sample_space_size",
-        ) ?? 6,
-      eventDescription,
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "dice_chess_position_probability") {
-    const board = parseChessBoard(publicStateValue.board);
-    const die = parseDiceDefinition(publicStateValue.die);
-    const sideToMove = readString(
-      publicStateValue,
-      "sideToMove",
-      "side_to_move",
-    );
-    const eventDescription = readString(
-      publicStateValue,
-      "eventDescription",
-      "event_description",
-    );
-    if (
-      !board ||
-      !die ||
-      !eventDescription ||
-      (sideToMove !== "white" && sideToMove !== "black")
-    ) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную позицию Dice & Chess.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      prompt,
-      board,
-      sideToMove,
-      die,
-      sampleSpaceSize:
-        readNumber(
-          publicStateValue,
-          "sampleSpaceSize",
-          "sample_space_size",
-        ) ?? 6,
-      eventDescription,
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "geometry_atlas") {
-    const scene = parseGeometryScene(publicStateValue.scene);
-    const family = readString(publicStateValue, "family");
-    const variant = readString(publicStateValue, "variant");
-    if (
-      !scene ||
-      !variant ||
-      (family !== "geo_zendo" &&
-        family !== "geo_transform" &&
-        family !== "geo_probability")
-    ) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную сцену Геометрического мира.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      family,
-      variant,
-      prompt,
-      scene,
-      content: isRecord(publicStateValue.content)
-        ? publicStateValue.content
-        : {},
-      interaction: isRecord(publicStateValue.interaction)
-        ? publicStateValue.interaction
-        : {},
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "hidden_wiring") {
-    const variantValue = readString(publicStateValue, "variant");
-    const lampCount = readNumber(publicStateValue, "lampCount", "lamp_count");
-    const buttonCount = readNumber(
-      publicStateValue,
-      "buttonCount",
-      "button_count",
-    );
-    const operations = parseMachineOperations(publicStateValue.ops);
-    const parseLamps = (value: unknown): number[] | null =>
-      Array.isArray(value) &&
-      value.every((item) => item === 0 || item === 1)
-        ? (value as number[])
-        : null;
-    const current = parseLamps(publicStateValue.current);
-    if (
-      (variantValue !== "reach_target" && variantValue !== "predict_chords") ||
-      lampCount === undefined ||
-      buttonCount === undefined ||
-      !operations ||
-      !current
-    ) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную панель скрытой проводки.",
-        details: value,
-      });
-    }
-    const target = parseLamps(publicStateValue.target);
-    const examChordsValue =
-      publicStateValue.examChords ?? publicStateValue.exam_chords;
-    const examChords = Array.isArray(examChordsValue)
-      ? examChordsValue.flatMap((item) => {
-          if (!isRecord(item)) return [];
-          const id = readString(item, "id");
-          if (!id) return [];
-          return [{ id, label: readString(item, "label") ?? id }];
-        })
-      : undefined;
-    const observationsValue = publicStateValue.observations;
-    const observations: WiringObservation[] = Array.isArray(observationsValue)
-      ? observationsValue.flatMap((item) => {
-          if (!isRecord(item)) return [];
-          const chord = readString(item, "chord");
-          const effect = parseLamps(item.effect);
-          const lampsAfter = parseLamps(
-            item.lampsAfter ?? item.lamps_after,
-          );
-          if (!chord || !effect || !lampsAfter) return [];
-          return [{
-            chord,
-            training: item.training === true,
-            effect,
-            lampsAfter,
-          }];
-        })
-      : [];
-    publicState = {
-      kind,
-      family: "hidden_wiring",
-      variant: variantValue,
-      prompt,
-      legend:
-        readString(publicStateValue, "legend") ??
-        "Кнопки срабатывают только парами.",
-      lampCount,
-      buttonCount,
-      ops: operations,
-      current,
-      target: target ?? undefined,
-      examChords,
-      chordBudget:
-        readNumber(publicStateValue, "chordBudget", "chord_budget") ?? 8,
-      chordsRemaining:
-        readNumber(
-          publicStateValue,
-          "chordsRemaining",
-          "chords_remaining",
-        ) ?? 8,
-      observations,
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "fold_punch") {
-    const foldsValue = publicStateValue.folds;
-    const foldedValue = publicStateValue.folded;
-    const sheetSize =
-      readNumber(publicStateValue, "sheetSize", "sheet_size") ?? 8;
-    const folds: FoldStep[] = Array.isArray(foldsValue)
-      ? foldsValue.flatMap((item) => {
-          if (!isRecord(item)) return [];
-          const axis = readString(item, "axis");
-          const direction = readString(item, "direction");
-          if (
-            (axis !== "vertical" &&
-              axis !== "horizontal" &&
-              axis !== "diagonal") ||
-            !direction
-          ) {
-            return [];
-          }
-          return [{
-            axis,
-            direction,
-            label: readString(item, "label") ?? direction,
-          }];
-        })
-      : [];
-    const parseCellPairs = (value: unknown): [number, number][] | null =>
-      Array.isArray(value) &&
-      value.every(
-        (item) =>
-          Array.isArray(item) &&
-          item.length === 2 &&
-          item.every((part) => typeof part === "number"),
-      )
-        ? (value as [number, number][])
-        : null;
-    const holes = isRecord(foldedValue)
-      ? parseCellPairs(foldedValue.holes)
-      : null;
-    const variantValue = readString(publicStateValue, "variant") ?? "unfold_holes";
-    if (
-      folds.length === 0 ||
-      !isRecord(foldedValue) ||
-      !holes ||
-      readNumber(foldedValue, "width") === undefined ||
-      readNumber(foldedValue, "height") === undefined
-    ) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную задачу дырокола.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      family: "fold_punch",
-      variant: variantValue,
-      prompt,
-      sheetSize,
-      folds,
-      folded: {
-        width: readNumber(foldedValue, "width") ?? sheetSize,
-        height: readNumber(foldedValue, "height") ?? sheetSize,
-        triangle: foldedValue.triangle === true,
-        holes,
-      },
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "grid_zendo") {
-    const cardsValue = publicStateValue.cards;
-    const variant = readString(publicStateValue, "variant");
-    const gridSize =
-      readNumber(publicStateValue, "gridSize", "grid_size") ?? 5;
-    const cards: Record<string, string[]> = {};
-    if (isRecord(cardsValue)) {
-      for (const [cardId, rows] of Object.entries(cardsValue)) {
+  const pieceTypeValues = state.pieceTypes ?? state.piece_types;
+  const pieceCountValue = state.pieceCounts ?? state.piece_counts;
+  const pieceTypes = Array.isArray(pieceTypeValues)
+    ? pieceTypeValues.flatMap((item): ChessCoveragePieceType[] => {
+        if (!isRecord(item)) return [];
+        const id = readString(item, "id");
+        const baseCost = readNumber(item, "baseCost", "base_cost");
+        const repeatSurcharge = readNumber(
+          item,
+          "repeatSurcharge",
+          "repeat_surcharge",
+        );
+        const limit = readNumber(item, "limit");
+        const offsets = parseBoardPoints(item.offsets);
         if (
-          Array.isArray(rows) &&
-          rows.length === gridSize &&
-          rows.every(
-            (row) =>
-              typeof row === "string" &&
-              row.length === gridSize &&
-              [...row].every((cell) => cell === "0" || cell === "1"),
-          )
+          !isCoveragePieceId(id) ||
+          baseCost === undefined ||
+          repeatSurcharge === undefined ||
+          limit === undefined ||
+          !offsets ||
+          offsets.length === 0
         ) {
-          cards[cardId] = rows as string[];
+          return [];
         }
-      }
-    }
-    if (!variant || Object.keys(cards).length === 0) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректные узоры grid_zendo.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      family: "grid_zendo",
-      variant,
-      prompt,
-      cards,
-      gridSize,
-      content: isRecord(publicStateValue.content)
-        ? publicStateValue.content
-        : {},
-      interaction: isRecord(publicStateValue.interaction)
-        ? publicStateValue.interaction
-        : {},
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "point_zendo") {
-    const scene = parseGeometryScene(publicStateValue.scene);
-    const variant = readString(publicStateValue, "variant");
-    if (!scene || !variant) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную сцену point_zendo.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      family: "point_zendo",
-      variant,
-      prompt,
-      scene,
-      content: isRecord(publicStateValue.content)
-        ? publicStateValue.content
-        : {},
-      interaction: isRecord(publicStateValue.interaction)
-        ? publicStateValue.interaction
-        : {},
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "token_zendo") {
-    const cardsValue = publicStateValue.cards;
-    const variant = readString(publicStateValue, "variant");
-    const cards: Record<string, TokenCard[]> = {};
-    if (isRecord(cardsValue)) {
-      for (const [cardId, tokens] of Object.entries(cardsValue)) {
-        if (!Array.isArray(tokens)) continue;
-        const parsedTokens = tokens.flatMap((item): TokenCard[] => {
-          if (!isRecord(item)) return [];
-          const num = readNumber(item, "num");
-          const color = readString(item, "color");
-          if (
-            num === undefined ||
-            !Number.isInteger(num) ||
-            (color !== "R" && color !== "G" && color !== "B")
-          ) {
-            return [];
-          }
-          return [{ num, color }];
-        });
-        if (parsedTokens.length === tokens.length) {
-          cards[cardId] = parsedTokens;
+        return [{
+          id,
+          label: readString(item, "label") ?? id,
+          baseCost,
+          repeatSurcharge,
+          limit,
+          moveLabel:
+            readString(item, "moveLabel", "move_label") ?? "особый прыжок",
+          offsets,
+        }];
+      })
+    : [];
+  const placements = Array.isArray(state.placements)
+    ? state.placements.flatMap((item): ChessCoveragePlacement[] => {
+        if (!isRecord(item)) return [];
+        const id = readString(item, "id");
+        const piece = readString(item, "piece");
+        const row = readNumber(item, "row");
+        const col = readNumber(item, "col");
+        const cost = readNumber(item, "cost");
+        if (
+          !id ||
+          !isCoveragePieceId(piece) ||
+          row === undefined ||
+          col === undefined ||
+          cost === undefined
+        ) {
+          return [];
         }
-      }
-    }
-    if (!variant || Object.keys(cards).length === 0) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректные карточки token_zendo.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      family: "token_zendo",
-      variant,
-      prompt,
-      cards,
-      content: isRecord(publicStateValue.content)
-        ? publicStateValue.content
-        : {},
-      interaction: isRecord(publicStateValue.interaction)
-        ? publicStateValue.interaction
-        : {},
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "machine_panel") {
-    const subKindValue = readString(
-      publicStateValue,
-      "subKind",
-      "sub_kind",
-    );
-    const subKind =
-      subKindValue === "lamps_gf2" ||
-      subKindValue === "numeric_machine" ||
-      subKindValue === "perm_puzzle"
-        ? subKindValue
-        : undefined;
-    const operations = parseMachineOperations(publicStateValue.ops);
-    const start = subKind
-      ? parseMachineState(publicStateValue.start, subKind)
-      : null;
-    const target = subKind
-      ? parseMachineState(publicStateValue.target, subKind)
-      : null;
-    const current = subKind
-      ? parseMachineState(publicStateValue.current, subKind)
-      : null;
-    if (!subKind || !operations || !start || !target || !current) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректное состояние машины.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      subKind,
-      prompt,
-      ops: operations,
-      start,
-      target,
-      current,
-      stepsSoftCap:
-        readNumber(publicStateValue, "stepsSoftCap", "steps_soft_cap") ?? 24,
-      stepsTaken:
-        readNumber(publicStateValue, "stepsTaken", "steps_taken") ?? 0,
-      responseHint,
-      worldContext,
-    };
-  } else if (
-    kind === "chess" &&
-    readString(publicStateValue, "subKind", "sub_kind") === "leaper_board"
+        return [{ id, piece, row, col, cost }];
+      })
+    : [];
+  const pieceCounts = isRecord(pieceCountValue)
+    ? Object.fromEntries(
+        Object.entries(pieceCountValue).flatMap(([key, item]) =>
+          typeof item === "number" && Number.isFinite(item)
+            ? [[key, item] as const]
+            : [],
+        ),
+      )
+    : {};
+  if (
+    boardSize !== 8 ||
+    pieceTypes.length === 0 ||
+    !targets ||
+    targets.length === 0 ||
+    !coveredTargets
   ) {
-    const rows = readNumber(publicStateValue, "rows");
-    const cols = readNumber(publicStateValue, "cols");
-    const operations = parseMachineOperations(publicStateValue.ops);
-    const start = parseBoardPoint(publicStateValue.start);
-    const target = parseBoardPoint(publicStateValue.target);
-    const current = parseBoardPoint(publicStateValue.current);
-    const blockedValue = publicStateValue.blocked;
-    const blocked = Array.isArray(blockedValue)
-      ? blockedValue.map(parseBoardPoint)
-      : [];
-    const board =
-      rows !== undefined && cols !== undefined
-        ? parseChessBoard(publicStateValue.board, rows, cols)
-        : null;
-    const jumpValue = publicStateValue.jump;
-    const jumpA = isRecord(jumpValue) ? readNumber(jumpValue, "a") : undefined;
-    const jumpB = isRecord(jumpValue) ? readNumber(jumpValue, "b") : undefined;
-    if (
-      rows === undefined ||
-      cols === undefined ||
-      !Number.isInteger(rows) ||
-      !Number.isInteger(cols) ||
-      rows < 1 ||
-      rows > 8 ||
-      cols < 1 ||
-      cols > 8 ||
-      !operations ||
-      !start ||
-      !target ||
-      !current ||
-      !board ||
-      blocked.some((point) => point === null)
-    ) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную доску прыгуна.",
-        details: value,
-      });
-    }
-    publicState = {
-      kind,
-      subKind: "leaper_board",
-      prompt,
-      ops: operations,
-      start,
-      target,
-      current,
-      stepsSoftCap:
-        readNumber(publicStateValue, "stepsSoftCap", "steps_soft_cap") ?? 24,
-      stepsTaken:
-        readNumber(publicStateValue, "stepsTaken", "steps_taken") ?? 0,
-      rows,
-      cols,
-      blocked: blocked as BoardPoint[],
-      jump:
-        jumpA === undefined || jumpB === undefined
-          ? undefined
-          : { a: jumpA, b: jumpB },
-      board,
-      responseHint,
-      worldContext,
-    };
-  } else if (kind === "classic_math_free_response") {
-    const family = readString(publicStateValue, "family");
-    const subKindValue = readString(
-      publicStateValue,
-      "subKind",
-      "sub_kind",
+    throw invalidResponse(
+      "Сервер вернул некорректную шахматную расстановку.",
+      state,
     );
-    const title = readString(publicStateValue, "title");
-    const answerFormat = readString(
-      publicStateValue,
-      "answerFormat",
-      "answer_format",
-    );
-    const submissionTemplate = readString(
-      publicStateValue,
-      "submissionTemplate",
-      "submission_template",
-    );
-    const subKind =
-      subKindValue === "share_paradox" || subKindValue === "bar_seating"
-        ? subKindValue
-        : undefined;
-
-    if (
-      family !== "classic_math" ||
-      !subKind ||
-      !title ||
-      !submissionTemplate ||
-      answerFormat !== "free_response"
-    ) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную классическую задачу.",
-        details: value,
-      });
-    }
-
-    const tableValue = publicStateValue.table;
-    let table: ClassicMathTable | undefined;
-    if (isRecord(tableValue) && Array.isArray(tableValue.columns)) {
-      const columns = tableValue.columns.filter(
-        (column): column is string => typeof column === "string",
-      );
-      const rows = Array.isArray(tableValue.rows)
-        ? tableValue.rows.flatMap((row): string[][] =>
-            Array.isArray(row) &&
-            row.length === columns.length &&
-            row.every((cell) => typeof cell === "string")
-              ? [row as string[]]
-              : [],
-          )
-        : [];
-      if (
-        columns.length === tableValue.columns.length &&
-        columns.length > 0 &&
-        rows.length > 0
-      ) {
-        table = { columns, rows };
-      }
-    }
-
-    publicState = {
-      kind,
-      family,
-      subKind,
-      title,
-      prompt,
-      responseHint,
-      submissionTemplate,
-      answerFormat,
-      scripted: true,
-      table,
-      seatCount: readNumber(publicStateValue, "seatCount", "seat_count"),
-      worldContext,
-    };
-  } else {
-    throw new ApiError(502, {
-      code: "unsupported_task_kind",
-      message: "Этот тип задачи пока не поддерживается интерфейсом.",
-      details: value,
-    });
   }
 
   return {
-    id: requiredString(value, "task.id", "id"),
-    ordinal: readNumber(value, "ordinal") ?? 1,
-    family: requiredString(value, "task.family", "family"),
-    generatorVersion: requiredString(
-      value,
-      "task.generatorVersion",
-      "generatorVersion",
-      "generator_version",
+    kind: "chess_coverage",
+    family: "chess_coverage",
+    ...base,
+    targets,
+    pieceTypes,
+    placements,
+    pieceCounts,
+    coveredTargets,
+    totalCost: readNumber(state, "totalCost", "total_cost") ?? 0,
+    maxPlacements: readNumber(state, "maxPlacements", "max_placements") ?? 0,
+    allCovered: state.allCovered === true || state.all_covered === true,
+  };
+}
+
+function parseDiceChessState(
+  kind:
+    | "dice_chess_board_inventory_probability"
+    | "dice_chess_position_probability",
+  state: UnknownRecord,
+  base: PublicStateBase,
+): DiceChessInventoryPublicState | DiceChessPositionPublicState {
+  const board = parseChessBoard(state.board);
+  const die = parseDiceDefinition(state.die);
+  const eventDescription = readString(
+    state,
+    "eventDescription",
+    "event_description",
+  );
+  if (kind === "dice_chess_board_inventory_probability") {
+    if (!board || !die || !eventDescription) {
+      throw invalidResponse(
+        "Сервер вернул некорректную задачу Dice & Chess.",
+        state,
+      );
+    }
+    return { kind, ...base, board, die, eventDescription };
+  }
+
+  const sideToMove = readString(state, "sideToMove", "side_to_move");
+  if (
+    !board ||
+    !die ||
+    !eventDescription ||
+    (sideToMove !== "white" && sideToMove !== "black")
+  ) {
+    throw invalidResponse(
+      "Сервер вернул некорректную позицию Dice & Chess.",
+      state,
+    );
+  }
+  return { kind, ...base, board, sideToMove, die, eventDescription };
+}
+
+function parseGeometryState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): GeometryPublicState {
+  const scene = parseGeometryScene(state.scene);
+  const family = readString(state, "family");
+  const variant = readString(state, "variant");
+  if (
+    !scene ||
+    !variant ||
+    (family !== "geo_zendo" &&
+      family !== "geo_transform" &&
+      family !== "geo_probability")
+  ) {
+    throw invalidResponse(
+      "Сервер вернул некорректную геометрическую сцену.",
+      state,
+    );
+  }
+  return {
+    kind: "geometry_atlas",
+    family,
+    variant,
+    ...base,
+    scene,
+    content: readContent(state),
+  };
+}
+
+function parseHiddenWiringState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): HiddenWiringPublicState {
+  const variant = readString(state, "variant");
+  const lampCount = readNumber(state, "lampCount", "lamp_count");
+  const buttonCount = readNumber(state, "buttonCount", "button_count");
+  const operations = parseMachineOperations(state.ops);
+  const current = parseLamps(state.current);
+  if (
+    (variant !== "reach_target" && variant !== "predict_chords") ||
+    lampCount === undefined ||
+    buttonCount === undefined ||
+    !operations ||
+    !current
+  ) {
+    throw invalidResponse(
+      "Сервер вернул некорректную панель скрытой проводки.",
+      state,
+    );
+  }
+  const examChordsValue = state.examChords ?? state.exam_chords;
+  const examChords = Array.isArray(examChordsValue)
+    ? examChordsValue.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const id = readString(item, "id");
+        if (!id) return [];
+        return [{ id, label: readString(item, "label") ?? id }];
+      })
+    : undefined;
+  const observations = Array.isArray(state.observations)
+    ? state.observations.flatMap((item): WiringObservation[] => {
+        if (!isRecord(item)) return [];
+        const chord = readString(item, "chord");
+        const effect = parseLamps(item.effect);
+        const lampsAfter = parseLamps(item.lampsAfter ?? item.lamps_after);
+        if (!chord || !effect || !lampsAfter) return [];
+        return [{
+          chord,
+          training: item.training === true,
+          effect,
+          lampsAfter,
+        }];
+      })
+    : [];
+
+  return {
+    kind: "hidden_wiring",
+    family: "hidden_wiring",
+    variant,
+    ...base,
+    lampCount,
+    buttonCount,
+    ops: operations,
+    current,
+    target: parseLamps(state.target) ?? undefined,
+    examChords,
+    chordBudget: readNumber(state, "chordBudget", "chord_budget") ?? 8,
+    chordsRemaining:
+      readNumber(state, "chordsRemaining", "chords_remaining") ?? 8,
+    observations,
+  };
+}
+
+function parseFoldPunchState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): FoldPunchPublicState {
+  const sheetSize = readNumber(state, "sheetSize", "sheet_size") ?? 8;
+  const folds: FoldStep[] = Array.isArray(state.folds)
+    ? state.folds.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const axis = readString(item, "axis");
+        const direction = readString(item, "direction");
+        if (
+          (axis !== "vertical" &&
+            axis !== "horizontal" &&
+            axis !== "diagonal") ||
+          !direction
+        ) {
+          return [];
+        }
+        return [{
+          axis,
+          direction,
+          label: readString(item, "label") ?? direction,
+        }];
+      })
+    : [];
+  const folded = isRecord(state.folded) ? state.folded : {};
+  const holes =
+    Array.isArray(folded.holes) &&
+    folded.holes.every(
+      (item) =>
+        Array.isArray(item) &&
+        item.length === 2 &&
+        item.every((part) => typeof part === "number"),
+    )
+      ? (folded.holes as [number, number][])
+      : null;
+  const width = readNumber(folded, "width");
+  const height = readNumber(folded, "height");
+  if (folds.length === 0 || !holes || width === undefined || height === undefined) {
+    throw invalidResponse("Сервер вернул некорректную задачу дырокола.", state);
+  }
+
+  return {
+    kind: "fold_punch",
+    family: "fold_punch",
+    variant: readString(state, "variant") ?? "unfold_holes",
+    ...base,
+    sheetSize,
+    folds,
+    folded: {
+      width,
+      height,
+      triangle: folded.triangle === true,
+      holes,
+    },
+  };
+}
+
+function parseGridZendoState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): GridZendoPublicState {
+  const variant = readString(state, "variant");
+  const gridSize = readNumber(state, "gridSize", "grid_size") ?? 5;
+  const cards: Record<string, string[]> = {};
+  if (isRecord(state.cards)) {
+    for (const [cardId, rows] of Object.entries(state.cards)) {
+      if (
+        Array.isArray(rows) &&
+        rows.length === gridSize &&
+        rows.every(
+          (row) =>
+            typeof row === "string" &&
+            row.length === gridSize &&
+            [...row].every((cell) => cell === "0" || cell === "1"),
+        )
+      ) {
+        cards[cardId] = rows as string[];
+      }
+    }
+  }
+  if (!variant || Object.keys(cards).length === 0) {
+    throw invalidResponse("Сервер вернул некорректные узоры grid_zendo.", state);
+  }
+
+  return {
+    kind: "grid_zendo",
+    family: "grid_zendo",
+    variant,
+    ...base,
+    cards,
+    gridSize,
+    content: readContent(state),
+  };
+}
+
+function parsePointZendoState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): PointZendoPublicState {
+  const scene = parseGeometryScene(state.scene);
+  const variant = readString(state, "variant");
+  if (!scene || !variant) {
+    throw invalidResponse("Сервер вернул некорректную сцену point_zendo.", state);
+  }
+
+  return {
+    kind: "point_zendo",
+    family: "point_zendo",
+    variant,
+    ...base,
+    scene,
+    content: readContent(state),
+  };
+}
+
+function parseTokenZendoState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): TokenZendoPublicState {
+  const variant = readString(state, "variant");
+  const cards: Record<string, TokenCard[]> = {};
+  if (isRecord(state.cards)) {
+    for (const [cardId, tokens] of Object.entries(state.cards)) {
+      if (!Array.isArray(tokens)) continue;
+      const parsedTokens = tokens.flatMap((item): TokenCard[] => {
+        if (!isRecord(item)) return [];
+        const num = readNumber(item, "num");
+        const color = readString(item, "color");
+        if (
+          num === undefined ||
+          !Number.isInteger(num) ||
+          (color !== "R" && color !== "G" && color !== "B")
+        ) {
+          return [];
+        }
+        return [{ num, color }];
+      });
+      if (parsedTokens.length === tokens.length) {
+        cards[cardId] = parsedTokens;
+      }
+    }
+  }
+  if (!variant || Object.keys(cards).length === 0) {
+    throw invalidResponse(
+      "Сервер вернул некорректные карточки token_zendo.",
+      state,
+    );
+  }
+
+  return {
+    kind: "token_zendo",
+    family: "token_zendo",
+    variant,
+    ...base,
+    cards,
+    content: readContent(state),
+  };
+}
+
+function parseMachinePanelState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): MachinePanelPublicState {
+  const subKindValue = readString(state, "subKind", "sub_kind");
+  const subKind =
+    subKindValue === "lamps_gf2" ||
+    subKindValue === "numeric_machine" ||
+    subKindValue === "perm_puzzle"
+      ? subKindValue
+      : undefined;
+  const operations = parseMachineOperations(state.ops);
+  const start = subKind ? parseMachineState(state.start, subKind) : null;
+  const target = subKind ? parseMachineState(state.target, subKind) : null;
+  const current = subKind ? parseMachineState(state.current, subKind) : null;
+  if (!subKind || !operations || !start || !target || !current) {
+    throw invalidResponse("Сервер вернул некорректное состояние машины.", state);
+  }
+
+  return {
+    kind: "machine_panel",
+    subKind,
+    ...base,
+    ops: operations,
+    start,
+    target,
+    current,
+    stepsSoftCap: readNumber(state, "stepsSoftCap", "steps_soft_cap") ?? 24,
+    stepsTaken: readNumber(state, "stepsTaken", "steps_taken") ?? 0,
+  };
+}
+
+function parseLeaperBoardState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): LeaperBoardPublicState {
+  const rows = readNumber(state, "rows");
+  const cols = readNumber(state, "cols");
+  const operations = parseMachineOperations(state.ops);
+  const start = parseBoardPoint(state.start);
+  const target = parseBoardPoint(state.target);
+  const current = parseBoardPoint(state.current);
+  const blocked = parseBoardPoints(state.blocked);
+  if (
+    rows === undefined ||
+    cols === undefined ||
+    !Number.isInteger(rows) ||
+    !Number.isInteger(cols) ||
+    rows < 1 ||
+    rows > 8 ||
+    cols < 1 ||
+    cols > 8 ||
+    !operations ||
+    !start ||
+    !target ||
+    !current ||
+    !blocked
+  ) {
+    throw invalidResponse("Сервер вернул некорректную доску прыгуна.", state);
+  }
+
+  return {
+    kind: "chess",
+    subKind: "leaper_board",
+    ...base,
+    ops: operations,
+    start,
+    target,
+    current,
+    stepsSoftCap: readNumber(state, "stepsSoftCap", "steps_soft_cap") ?? 24,
+    stepsTaken: readNumber(state, "stepsTaken", "steps_taken") ?? 0,
+    rows,
+    cols,
+    blocked,
+  };
+}
+
+function parseClassicMathState(
+  state: UnknownRecord,
+  base: PublicStateBase,
+): ClassicMathPublicState {
+  const family = readString(state, "family");
+  const subKind = readString(state, "subKind", "sub_kind");
+  const title = readString(state, "title");
+  const answerFormat = readString(state, "answerFormat", "answer_format");
+  const submissionTemplate = readString(
+    state,
+    "submissionTemplate",
+    "submission_template",
+  );
+  if (
+    family !== "classic_math" ||
+    (subKind !== "share_paradox" && subKind !== "bar_seating") ||
+    !title ||
+    !submissionTemplate ||
+    answerFormat !== "free_response"
+  ) {
+    throw invalidResponse("Сервер вернул некорректную классическую задачу.", state);
+  }
+
+  let table: ClassicMathTable | undefined;
+  if (isRecord(state.table) && Array.isArray(state.table.columns)) {
+    const columns = readStringList(state.table.columns);
+    const rows = Array.isArray(state.table.rows)
+      ? state.table.rows.flatMap((row): string[][] =>
+          Array.isArray(row) &&
+          row.length === columns.length &&
+          row.every((cell) => typeof cell === "string")
+            ? [row as string[]]
+            : [],
+        )
+      : [];
+    if (
+      columns.length === state.table.columns.length &&
+      columns.length > 0 &&
+      rows.length > 0
+    ) {
+      table = { columns, rows };
+    }
+  }
+
+  return {
+    kind: "classic_math_free_response",
+    family,
+    subKind,
+    title,
+    ...base,
+    submissionTemplate,
+    answerFormat,
+    scripted: true,
+    table,
+  };
+}
+
+function parsePublicState(state: UnknownRecord): TaskPublicState {
+  const kind = readString(state, "kind");
+  const base: PublicStateBase = {
+    prompt: requiredString(state, "task.prompt", "prompt"),
+    responseHint:
+      readString(state, "responseHint", "response_hint") ??
+      (kind === "machine_panel" || kind === "chess"
+        ? "/op op1 · /undo · done / impossible"
+        : "/answer ваш ответ"),
+  };
+
+  switch (kind) {
+    case "chess_coverage":
+      return parseChessCoverageState(state, base);
+    case "dice_chess_board_inventory_probability":
+    case "dice_chess_position_probability":
+      return parseDiceChessState(kind, state, base);
+    case "geometry_atlas":
+      return parseGeometryState(state, base);
+    case "hidden_wiring":
+      return parseHiddenWiringState(state, base);
+    case "fold_punch":
+      return parseFoldPunchState(state, base);
+    case "grid_zendo":
+      return parseGridZendoState(state, base);
+    case "point_zendo":
+      return parsePointZendoState(state, base);
+    case "token_zendo":
+      return parseTokenZendoState(state, base);
+    case "machine_panel":
+      return parseMachinePanelState(state, base);
+    case "chess":
+      if (readString(state, "subKind", "sub_kind") === "leaper_board") {
+        return parseLeaperBoardState(state, base);
+      }
+      break;
+    case "classic_math_free_response":
+      return parseClassicMathState(state, base);
+  }
+
+  throw new ApiError(502, {
+    code: "unsupported_task_kind",
+    message: "Этот тип задачи пока не поддерживается интерфейсом.",
+    details: state,
+  });
+}
+
+function parseParticipantTask(value: unknown): ParticipantTask {
+  const record = expectRecord(value, "Сервер вернул некорректную задачу.");
+  const publicState = parsePublicState(
+    expectRecord(
+      record.publicState ?? record.public_state,
+      "Сервер вернул задачу без публичного состояния.",
     ),
-    difficulty: readNumber(value, "difficulty") ?? 1,
-    status: parseTaskStatus(value.status),
+  );
+
+  return {
+    id: requiredString(record, "task.id", "id"),
+    ordinal: readNumber(record, "ordinal") ?? 1,
+    family: requiredString(record, "task.family", "family"),
+    difficulty: readNumber(record, "difficulty") ?? 1,
+    status: parseTaskStatus(record.status),
     publicState,
-    createdAt: readString(value, "createdAt", "created_at"),
-    resolvedAt: readNullableString(
-      value,
-      "resolvedAt",
-      "resolved_at",
-      "completedAt",
-      "completed_at",
-      "answeredAt",
-      "answered_at",
-    ),
   };
 }
 
@@ -1951,7 +1630,7 @@ function parseAiRemaining(value: unknown): AiTurnRemaining {
   };
 }
 
-function parseAiTurn(body: Record<string, unknown>): AiTurn {
+function parseAiTurn(body: UnknownRecord): AiTurn {
   const usageValue = isRecord(body.usage) ? body.usage : {};
   return {
     id: readString(body, "id") ?? "",
@@ -2041,6 +1720,14 @@ async function readResponseBody(response: Response): Promise<unknown> {
   return text || undefined;
 }
 
+function decodeFilename(value: string): string | undefined {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function contentDispositionFilename(value: string | null): string | undefined {
   if (!value) return undefined;
 
@@ -2049,12 +1736,10 @@ function contentDispositionFilename(value: string | null): string | undefined {
   );
   if (encodedMatch) {
     const encodedValue = (encodedMatch[1] ?? encodedMatch[2] ?? "").trim();
-    const filenameValue =
-      encodedValue.match(/^[^']*'[^']*'(.*)$/)?.[1] ?? encodedValue;
-    try {
-      return decodeURIComponent(filenameValue);
-    } catch {
-    }
+    const decoded = decodeFilename(
+      encodedValue.match(/^[^']*'[^']*'(.*)$/)?.[1] ?? encodedValue,
+    );
+    if (decoded !== undefined) return decoded;
   }
 
   const quotedMatch = value.match(
@@ -2089,6 +1774,22 @@ function safeDownloadFilename(
   );
 }
 
+export function saveDownloadedFile(file: DownloadedFile): void {
+  const url = URL.createObjectURL(file.blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.filename;
+  anchor.hidden = true;
+  document.body.append(anchor);
+
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+}
+
 export class ApiClient {
   readonly baseUrl: string;
 
@@ -2096,20 +1797,10 @@ export class ApiClient {
     this.baseUrl = normalizeBaseUrl(baseUrl);
   }
 
-  private async request(path: string, options: RequestOptions = {}): Promise<unknown> {
-    const headers = new Headers({ Accept: "application/json" });
-    if (options.body !== undefined) headers.set("Content-Type", "application/json");
-    if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
-
+  private async send(path: string, init: RequestInit): Promise<Response> {
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
-        method: options.method ?? "GET",
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: options.signal,
-        keepalive: options.keepalive,
-      });
+      response = await fetch(`${this.baseUrl}${path}`, init);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") throw error;
       throw new ApiError(0, {
@@ -2118,21 +1809,32 @@ export class ApiClient {
         details: error,
       });
     }
-    const body = await readResponseBody(response);
+    if (response.ok) return response;
 
-    if (!response.ok) {
-      throw new ApiError(
+    throw new ApiError(
+      response.status,
+      createErrorPayload(
         response.status,
-        createErrorPayload(
-          response.status,
-          response.statusText,
-          body,
-          response.headers.get("x-request-id") ?? undefined,
-        ),
-      );
-    }
+        response.statusText,
+        await readResponseBody(response),
+        response.headers.get("x-request-id") ?? undefined,
+      ),
+    );
+  }
 
-    return body;
+  private async request(path: string, options: RequestOptions = {}): Promise<unknown> {
+    const headers = new Headers({ Accept: "application/json" });
+    if (options.body !== undefined) headers.set("Content-Type", "application/json");
+    if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
+
+    const response = await this.send(path, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: options.signal,
+      keepalive: options.keepalive,
+    });
+    return readResponseBody(response);
   }
 
   private async requestFile(
@@ -2140,40 +1842,14 @@ export class ApiClient {
     fallbackFilename: string,
     options: AuthenticatedRequestOptions,
   ): Promise<DownloadedFile> {
-    const headers = new Headers({
-      Accept: "text/plain, application/octet-stream",
-      Authorization: `Bearer ${options.token}`,
+    const response = await this.send(path, {
+      method: "GET",
+      headers: new Headers({
+        Accept: "text/plain, application/octet-stream",
+        Authorization: `Bearer ${options.token}`,
+      }),
+      signal: options.signal,
     });
-
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${path}`, {
-        method: "GET",
-        headers,
-        signal: options.signal,
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") throw error;
-      throw new ApiError(0, {
-        code: "network_error",
-        message:
-          "Не удалось связаться с сервером. Проверьте подключение и повторите попытку.",
-        details: error,
-      });
-    }
-
-    if (!response.ok) {
-      const body = await readResponseBody(response);
-      throw new ApiError(
-        response.status,
-        createErrorPayload(
-          response.status,
-          response.statusText,
-          body,
-          response.headers.get("x-request-id") ?? undefined,
-        ),
-      );
-    }
 
     let blob: Blob;
     try {
@@ -2195,32 +1871,19 @@ export class ApiClient {
     };
   }
 
-  async redeemCode(
-    code: string,
-    options: PublicRequestOptions = {},
-  ): Promise<RedeemCodeResponse> {
+  async redeemCode(code: string): Promise<RedeemCodeResponse> {
     const body = await this.request("/access/redeem", {
       method: "POST",
       body: { code },
-      signal: options.signal,
     });
-
-    const response = isRecord(body) && isRecord(body.session) ? body.session : body;
-    if (!isRecord(response)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную сессию доступа.",
-        details: body,
-      });
-    }
+    const response = expectRecord(
+      isRecord(body) && isRecord(body.session) ? body.session : body,
+      "Сервер вернул некорректную сессию доступа.",
+    );
 
     const role = readString(response, "role");
     if (role !== "organizer" && role !== "participant") {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул неизвестную роль доступа.",
-        details: body,
-      });
+      throw invalidResponse("Сервер вернул неизвестную роль доступа.", body);
     }
 
     return {
@@ -2231,7 +1894,6 @@ export class ApiClient {
         "access_token",
         "token",
       ),
-      tokenType: readString(response, "tokenType", "token_type") ?? "bearer",
       role,
       expiresAt: readNullableString(response, "expiresAt", "expires_at"),
     };
@@ -2239,21 +1901,9 @@ export class ApiClient {
 
   async listContests(options: AuthenticatedRequestOptions): Promise<ContestSummary[]> {
     const body = await this.request("/contests", options);
-    const items = Array.isArray(body)
-      ? body
-      : isRecord(body) && Array.isArray(body.items)
-        ? body.items
-        : null;
-
-    if (!items) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный список контестов.",
-        details: body,
-      });
-    }
-
-    return items.map(parseContestSummary);
+    return unwrapItems(body, "Сервер вернул некорректный список контестов.").map(
+      parseContestSummary,
+    );
   }
 
   async deleteContest(
@@ -2269,36 +1919,18 @@ export class ApiClient {
   async createContest(
     input: CreateContestInput,
     options: AuthenticatedRequestOptions,
-  ): Promise<Contest> {
+  ): Promise<ContestSummary> {
     const body = await this.request("/contests", {
       ...options,
       method: "POST",
       body: {
         title: input.title,
         duration_minutes: input.durationMinutes,
-        description: input.description,
-        environment_key: input.environmentKey,
+        environment_key: CONTEST_ENVIRONMENT,
         task_config: input.taskConfig,
-        environment_families: input.environmentFamilies,
-        settings: input.settings,
       },
     });
-    const summary = parseContestSummary(body);
-    const record = isRecord(body) ? body : {};
-
-    return {
-      ...summary,
-      description: readNullableString(record, "description"),
-      environmentKey: readString(record, "environmentKey", "environment_key"),
-      taskConfig: isRecord(record.task_config) ? record.task_config : undefined,
-      environmentFamilies: Array.isArray(record.environment_families)
-        ? record.environment_families.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : undefined,
-      settings: isRecord(record.settings) ? record.settings : undefined,
-      updatedAt: readString(record, "updatedAt", "updated_at"),
-    };
+    return parseContestSummary(body);
   }
 
   async addEnrollments(
@@ -2319,25 +1951,14 @@ export class ApiClient {
         },
       },
     );
-    const items =
-      isRecord(body) && Array.isArray(body.items)
-        ? body.items
-        : Array.isArray(body)
-          ? body
-          : null;
-
-    if (!items) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный список регистраций.",
-        details: body,
-      });
-    }
+    const items = unwrapItems(body, "Сервер вернул некорректный список регистраций.");
 
     return {
       enrollments: items.map(parseEnrollment),
       createdCount:
-        isRecord(body) ? readNumber(body, "createdCount", "created_count") ?? items.length : items.length,
+        (isRecord(body)
+          ? readNumber(body, "createdCount", "created_count")
+          : undefined) ?? items.length,
     };
   }
 
@@ -2349,22 +1970,9 @@ export class ApiClient {
       `/contests/${encodeURIComponent(contestId)}/enrollments`,
       options,
     );
-    const items =
-      isRecord(body) && Array.isArray(body.items)
-        ? body.items
-        : Array.isArray(body)
-          ? body
-          : null;
-
-    if (!items) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный список доступов.",
-        details: body,
-      });
-    }
-
-    return items.map((item) => parseContestEnrollmentAccess(item, contestId));
+    return unwrapItems(body, "Сервер вернул некорректный список доступов.").map(
+      (item) => parseContestEnrollmentAccess(item, contestId),
+    );
   }
 
   async downloadEnrollmentTelemetry(
@@ -2394,7 +2002,6 @@ export class ApiClient {
   async rotateEnrollmentCode(
     contestId: string,
     enrollmentId: string,
-    input: { expiresAt?: string | null },
     options: AuthenticatedRequestOptions,
   ): Promise<RotatedAccessCode> {
     const body = await this.request(
@@ -2402,17 +2009,13 @@ export class ApiClient {
       {
         ...options,
         method: "POST",
-        body: { expires_at: input.expiresAt },
+        body: {},
       },
     );
-    const value = isRecord(body) && isRecord(body.item) ? body.item : body;
-    if (!isRecord(value)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный новый код.",
-        details: body,
-      });
-    }
+    const value = expectRecord(
+      isRecord(body) && isRecord(body.item) ? body.item : body,
+      "Сервер вернул некорректный новый код.",
+    );
 
     const last4 =
       readString(value, "last4") ??
@@ -2435,20 +2038,16 @@ export class ApiClient {
     enrollmentId: string,
     options: AuthenticatedRequestOptions,
   ): Promise<AttemptGrantResponse> {
-    const body = await this.request(
-      `/contests/${encodeURIComponent(contestId)}/enrollments/${encodeURIComponent(enrollmentId)}/attempts/grant`,
-      {
-        ...options,
-        method: "POST",
-      },
+    const body = expectRecord(
+      await this.request(
+        `/contests/${encodeURIComponent(contestId)}/enrollments/${encodeURIComponent(enrollmentId)}/attempts/grant`,
+        {
+          ...options,
+          method: "POST",
+        },
+      ),
+      "Сервер вернул некорректное подтверждение новой попытки.",
     );
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректное подтверждение новой попытки.",
-        details: body,
-      });
-    }
 
     return {
       enrollmentId:
@@ -2460,137 +2059,59 @@ export class ApiClient {
 
   async generateCodes(
     contestId: string,
-    input: GenerateCodesInput,
     options: AuthenticatedRequestOptions,
   ): Promise<GenerateCodesResponse> {
-    const body = await this.request(
-      input.recoverOnly
-        ? `/contests/${encodeURIComponent(contestId)}/codes/recover`
-        : `/contests/${encodeURIComponent(contestId)}/codes`,
-      {
+    return parseGeneratedCodes(
+      await this.request(`/contests/${encodeURIComponent(contestId)}/codes`, {
         ...options,
         method: "POST",
-        body: input.recoverOnly
-          ? undefined
-          : {
-              rotate: input.rotate,
-              expires_at: input.expiresAt,
-            },
-      },
-    );
-    const items =
-      isRecord(body) && Array.isArray(body.items)
-        ? body.items
-        : Array.isArray(body)
-          ? body
-          : null;
-
-    if (!items) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный список кодов.",
-        details: body,
-      });
-    }
-
-    return {
-      codes: items.map((item) => {
-        if (!isRecord(item)) {
-          throw new ApiError(502, {
-            code: "invalid_api_response",
-            message: "Сервер вернул некорректный код доступа.",
-            details: item,
-          });
-        }
-        const status = readString(item, "status");
-        const participant = isRecord(item.participant) ? item.participant : {};
-
-        return {
-          enrollmentId: requiredString(
-            item,
-            "enrollmentId",
-            "enrollmentId",
-            "enrollment_id",
-          ),
-          participantId: requiredString(
-            participant,
-            "participantId",
-            "id",
-          ),
-          participantName: requiredString(
-            participant,
-            "participantName",
-            "displayName",
-            "display_name",
-          ),
-          participantExternalRef: readString(
-            participant,
-            "externalRef",
-            "external_ref",
-          ),
-          code: requiredString(item, "code", "code"),
-          codeLabel:
-            readString(item, "codeLabel", "code_label") ??
-            `••••${requiredString(item, "last4", "last4")}`,
-          status: status === "revoked" || status === "expired" ? status : "active",
-          expiresAt: readNullableString(item, "expiresAt", "expires_at"),
-        };
+        body: {},
       }),
-      generatedCount:
-        isRecord(body) ? readNumber(body, "generatedCount", "generated_count") ?? items.length : items.length,
-      skippedCount:
-        isRecord(body) ? readNumber(body, "skippedCount", "skipped_count") ?? 0 : 0,
-    };
+    );
+  }
+
+  async recoverCodes(
+    contestId: string,
+    options: AuthenticatedRequestOptions,
+  ): Promise<GenerateCodesResponse> {
+    return parseGeneratedCodes(
+      await this.request(
+        `/contests/${encodeURIComponent(contestId)}/codes/recover`,
+        { ...options, method: "POST" },
+      ),
+    );
   }
 
   async publishContest(
     contestId: string,
     options: AuthenticatedRequestOptions,
-  ): Promise<Contest> {
+  ): Promise<ContestSummary> {
     const body = await this.request(
       `/contests/${encodeURIComponent(contestId)}/publish`,
       { ...options, method: "POST" },
     );
-    const summary = parseContestSummary(body);
-    const record = isRecord(body) ? body : {};
-
-    return {
-      ...summary,
-      description: readNullableString(record, "description"),
-      environmentKey: readString(record, "environmentKey", "environment_key"),
-      taskConfig: isRecord(record.task_config) ? record.task_config : undefined,
-      environmentFamilies: Array.isArray(record.environment_families)
-        ? record.environment_families.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : undefined,
-      settings: isRecord(record.settings) ? record.settings : undefined,
-      updatedAt: readString(record, "updatedAt", "updated_at"),
-    };
+    return parseContestSummary(body);
   }
 
   async getParticipantContext(
     options: AuthenticatedRequestOptions,
   ): Promise<ParticipantContext> {
-    const body = await this.request("/participant/context", options);
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный контекст участника.",
-        details: body,
-      });
-    }
+    const body = expectRecord(
+      await this.request("/participant/context", options),
+      "Сервер вернул некорректный контекст участника.",
+    );
+    const attempt = body.activeAttempt ?? body.active_attempt;
 
     return {
       contest: parseContestSummary(body.contest),
       participant: parseParticipant(body.participant),
       enrollment: parseEnrollment(body.enrollment),
       attempt:
-        (body.activeAttempt ?? body.active_attempt) === null
+        attempt === null
           ? null
-          : (body.activeAttempt ?? body.active_attempt) === undefined
+          : attempt === undefined
             ? undefined
-            : parseAttempt(body.activeAttempt ?? body.active_attempt),
+            : parseAttempt(attempt),
     };
   }
 
@@ -2599,11 +2120,7 @@ export class ApiClient {
   ): Promise<TaskProgressEntry[]> {
     const body = await this.request("/participant/tasks/progress", options);
     if (!isRecord(body) || !Array.isArray(body.items)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный прогресс задач.",
-        details: body,
-      });
+      throw invalidResponse("Сервер вернул некорректный прогресс задач.", body);
     }
     return body.items.flatMap((item): TaskProgressEntry[] => {
       if (!isRecord(item)) return [];
@@ -2620,7 +2137,7 @@ export class ApiClient {
   }
 
   async recordParticipantTelemetry(
-    input: ParticipantTelemetryInput,
+    event: ParticipantTelemetryEvent,
     options: AuthenticatedRequestOptions,
   ): Promise<void> {
     await this.request("/participant/telemetry", {
@@ -2628,14 +2145,14 @@ export class ApiClient {
       method: "POST",
       keepalive: true,
       body: {
-        client_event_id: input.clientEventId,
-        client_session_id: input.clientSessionId,
-        event_type: input.eventType,
-        attempt_id: input.attemptId,
-        task_id: input.taskId,
-        client_timestamp: input.clientTimestamp,
-        client_elapsed_ms: input.clientElapsedMs,
-        payload: input.payload,
+        client_event_id: event.clientEventId,
+        client_session_id: event.clientSessionId,
+        event_type: event.eventType,
+        attempt_id: event.attemptId,
+        task_id: event.taskId,
+        client_timestamp: event.clientTimestamp,
+        client_elapsed_ms: event.clientElapsedMs,
+        payload: event.payload,
       },
     });
   }
@@ -2660,14 +2177,10 @@ export class ApiClient {
   async getCurrentTask(
     options: AuthenticatedRequestOptions,
   ): Promise<CurrentTaskResponse> {
-    const body = await this.request("/participant/tasks/current", options);
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный ответ задачи.",
-        details: body,
-      });
-    }
+    const body = expectRecord(
+      await this.request("/participant/tasks/current", options),
+      "Сервер вернул некорректный ответ задачи.",
+    );
 
     return {
       task: body.task === null ? null : parseParticipantTask(body.task),
@@ -2677,17 +2190,13 @@ export class ApiClient {
   async getNextTask(
     options: AuthenticatedRequestOptions,
   ): Promise<NextTaskResponse> {
-    const body = await this.request("/participant/tasks/next", {
-      ...options,
-      method: "POST",
-    });
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный ответ следующей задачи.",
-        details: body,
-      });
-    }
+    const body = expectRecord(
+      await this.request("/participant/tasks/next", {
+        ...options,
+        method: "POST",
+      }),
+      "Сервер вернул некорректный ответ следующей задачи.",
+    );
 
     return {
       task: parseParticipantTask(body.task),
@@ -2700,21 +2209,17 @@ export class ApiClient {
     answer: string,
     options: AuthenticatedRequestOptions,
   ): Promise<TaskActionResponse> {
-    const body = await this.request(
-      `/participant/tasks/${encodeURIComponent(taskId)}/answer`,
-      {
-        ...options,
-        method: "POST",
-        body: { answer },
-      },
+    const body = expectRecord(
+      await this.request(
+        `/participant/tasks/${encodeURIComponent(taskId)}/answer`,
+        {
+          ...options,
+          method: "POST",
+          body: { answer },
+        },
+      ),
+      "Сервер вернул некорректное подтверждение ответа.",
     );
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректное подтверждение ответа.",
-        details: body,
-      });
-    }
 
     return {
       task: parseParticipantTask(body.task),
@@ -2729,39 +2234,31 @@ export class ApiClient {
     input: TaskInteractionInput,
     options: AuthenticatedRequestOptions,
   ): Promise<TaskInteractionResponse> {
-    const body = await this.request(
-      `/participant/tasks/${encodeURIComponent(taskId)}/interactions`,
-      {
-        ...options,
-        method: "POST",
-        body: {
-          action_type: input.actionType,
-          ...(input.actionType === "probe"
-            ? { probe: input.probe }
-            : input.actionType === "apply_op"
-              ? { op_id: input.opId }
-              : {}),
-          client_action_id: input.clientActionId,
+    const body = expectRecord(
+      await this.request(
+        `/participant/tasks/${encodeURIComponent(taskId)}/interactions`,
+        {
+          ...options,
+          method: "POST",
+          body: {
+            action_type: input.actionType,
+            ...(input.actionType === "probe"
+              ? { probe: input.probe }
+              : input.actionType === "apply_op"
+                ? { op_id: input.opId }
+                : {}),
+            client_action_id: input.clientActionId,
+          },
         },
-      },
+      ),
+      "Сервер вернул некорректный результат хода.",
     );
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный результат хода.",
-        details: body,
-      });
-    }
 
     return {
       task: parseParticipantTask(body.task),
       accepted: body.accepted === true,
       completed: body.completed === true,
-      message:
-        readString(body, "message") ??
-        (body.accepted === true
-          ? "Арбитр принял ход."
-          : "Арбитр отклонил ход."),
+      message: readString(body, "message"),
       clientActionId:
         readString(body, "clientActionId", "client_action_id") ??
         input.clientActionId,
@@ -2772,30 +2269,18 @@ export class ApiClient {
     taskId: string,
     options: AuthenticatedRequestOptions,
   ): Promise<DebugAnswerResponse> {
-    const body = await this.request(
-      `/participant/tasks/${encodeURIComponent(taskId)}/debug-answer`,
-      options,
+    const body = expectRecord(
+      await this.request(
+        `/participant/tasks/${encodeURIComponent(taskId)}/debug-answer`,
+        options,
+      ),
+      "Сервер вернул некорректный эталонный ответ.",
     );
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный эталонный ответ.",
-        details: body,
-      });
-    }
     return {
       family: readString(body, "family") ?? "",
       answer: readString(body, "answer") ?? "",
-      commands: Array.isArray(body.commands)
-        ? body.commands.filter(
-            (item): item is string => typeof item === "string",
-          )
-        : [],
-      details: Array.isArray(body.details)
-        ? body.details.filter(
-            (item): item is string => typeof item === "string",
-          )
-        : [],
+      commands: readStringList(body.commands),
+      details: readStringList(body.details),
     };
   }
 
@@ -2804,24 +2289,20 @@ export class ApiClient {
     input: { clientActionId: string; message: string },
     options: AuthenticatedRequestOptions,
   ): Promise<AiTurn> {
-    const body = await this.request(
-      `/participant/tasks/${encodeURIComponent(taskId)}/ai/turns`,
-      {
-        ...options,
-        method: "POST",
-        body: {
-          clientActionId: input.clientActionId,
-          message: input.message,
+    const body = expectRecord(
+      await this.request(
+        `/participant/tasks/${encodeURIComponent(taskId)}/ai/turns`,
+        {
+          ...options,
+          method: "POST",
+          body: {
+            clientActionId: input.clientActionId,
+            message: input.message,
+          },
         },
-      },
+      ),
+      "Сервер вернул некорректный ответ ассистента.",
     );
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректный ответ ассистента.",
-        details: body,
-      });
-    }
     return parseAiTurn(body);
   }
 
@@ -2829,17 +2310,13 @@ export class ApiClient {
     taskId: string,
     options: AuthenticatedRequestOptions,
   ): Promise<AiTurnHistory> {
-    const body = await this.request(
-      `/participant/tasks/${encodeURIComponent(taskId)}/ai/turns`,
-      options,
+    const body = expectRecord(
+      await this.request(
+        `/participant/tasks/${encodeURIComponent(taskId)}/ai/turns`,
+        options,
+      ),
+      "Сервер вернул некорректную историю диалога.",
     );
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректную историю диалога.",
-        details: body,
-      });
-    }
     const turnsValue = Array.isArray(body.turns) ? body.turns : [];
     return {
       turns: turnsValue.flatMap((item): AiHistoryTurn[] => {
@@ -2872,20 +2349,16 @@ export class ApiClient {
     taskId: string,
     options: AuthenticatedRequestOptions,
   ): Promise<TaskActionResponse> {
-    const body = await this.request(
-      `/participant/tasks/${encodeURIComponent(taskId)}/skip`,
-      {
-        ...options,
-        method: "POST",
-      },
+    const body = expectRecord(
+      await this.request(
+        `/participant/tasks/${encodeURIComponent(taskId)}/skip`,
+        {
+          ...options,
+          method: "POST",
+        },
+      ),
+      "Сервер вернул некорректное подтверждение пропуска.",
     );
-    if (!isRecord(body)) {
-      throw new ApiError(502, {
-        code: "invalid_api_response",
-        message: "Сервер вернул некорректное подтверждение пропуска.",
-        details: body,
-      });
-    }
 
     return {
       task: parseParticipantTask(body.task),

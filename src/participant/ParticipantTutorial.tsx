@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import type { AiTurn } from "../api";
+import { useEffect, useState } from "react";
+import type {
+  AiTurn,
+  GeometryEdge,
+  GeometryPoint,
+  GeometryPublicState,
+  ParticipantTask,
+} from "../api";
 import {
   ParticipantWorkspace,
-  type GeometryEdge,
-  type GeometryPoint,
-  type ParticipantTask,
   type TaskMoveTransitionResult,
 } from "./ParticipantWorkspace";
 import "./participant-tutorial.css";
 
 type TourAction = "probe" | "ai" | "answer";
+
+type TutorialTask = ParticipantTask & { publicState: GeometryPublicState };
 
 type TourStep = {
   selector: string;
@@ -54,6 +59,8 @@ const STEPS: TourStep[] = [
   },
 ];
 
+const CORRECT_ANSWER = ["да", "нет", "да"];
+
 const CLASSIFICATIONS: Record<string, "positive" | "negative"> = {
   P01: "positive",
   P02: "negative",
@@ -84,7 +91,7 @@ function graph(
   return { points, edges };
 }
 
-function tutorialTask(): ParticipantTask {
+function tutorialTask(): TutorialTask {
   const configurations = [
     graph("E01", [[2, 2], [8, 2], [5, 8]], [[1, 2], [2, 3], [3, 1]]),
     graph("E02", [[2, 2], [7, 2], [4, 7], [8, 8]], [[1, 2], [2, 3], [3, 1], [2, 4]]),
@@ -102,33 +109,36 @@ function tutorialTask(): ParticipantTask {
     id: "tutorial-graph-zendo",
     ordinal: 1,
     family: "geo_zendo",
-    kind: "geometry_atlas",
     difficulty: 1,
     status: "active",
-    prompt:
-      "Некоторые графы подчиняются скрытому правилу. Изучите положительные и отрицательные примеры, используйте не более трёх проб и определите, какие целевые графы подходят.",
-    geometryScene: {
-      bounds: { minX: 0, maxX: 10, minY: 0, maxY: 10 },
-      points: configurations.flatMap((item) => item.points),
-      edges: configurations.flatMap((item) => item.edges),
+    publicState: {
+      kind: "geometry_atlas",
+      family: "geo_zendo",
+      variant: "tutorial",
+      prompt:
+        "Некоторые графы подчиняются скрытому правилу. Изучите положительные и отрицательные примеры, используйте не более трёх проб и определите, какие целевые графы подходят.",
+      scene: {
+        bounds: { minX: 0, maxX: 10, minY: 0, maxY: 10 },
+        points: configurations.flatMap((item) => item.points),
+        edges: configurations.flatMap((item) => item.edges),
+      },
+      content: {
+        examples: [
+          { card_id: "E01", classification: "positive" },
+          { card_id: "E02", classification: "positive" },
+          { card_id: "E03", classification: "negative" },
+          { card_id: "E04", classification: "negative" },
+        ],
+        probe_cards: ["P01", "P02", "P03", "P04"].map((card_id) => ({
+          card_id,
+        })),
+        probe_observations: [],
+        targets: ["T01", "T02", "T03"].map((card_id) => ({ card_id })),
+        probe_budget: 3,
+        probes_remaining: 3,
+      },
+      responseHint: "/answer да нет да",
     },
-    geometryContent: {
-      examples: [
-        { card_id: "E01", classification: "positive" },
-        { card_id: "E02", classification: "positive" },
-        { card_id: "E03", classification: "negative" },
-        { card_id: "E04", classification: "negative" },
-      ],
-      probe_cards: ["P01", "P02", "P03", "P04"].map((card_id) => ({
-        card_id,
-      })),
-      probe_observations: [],
-      targets: ["T01", "T02", "T03"].map((card_id) => ({ card_id })),
-      probe_budget: 3,
-      probes_remaining: 3,
-    },
-    geometryInteraction: {},
-    responseHint: "/answer да нет да",
   };
 }
 
@@ -206,7 +216,7 @@ function GuidedTourOverlay({
       : Math.max(14, target.top - 230);
 
   return (
-    <div className="guided-tour" aria-live="polite">
+    <div aria-live="polite">
       <div className="guided-tour__shade" style={{ inset: `0 0 auto 0`, height: target.top }} />
       <div className="guided-tour__shade" style={{ top: target.top, left: 0, width: target.left, height: target.bottom - target.top }} />
       <div className="guided-tour__shade" style={{ top: target.top, left: target.right, right: 0, height: target.bottom - target.top }} />
@@ -253,10 +263,9 @@ function GuidedTourOverlay({
 }
 
 export function ParticipantTutorial({ onClose }: { onClose: () => void }) {
-  const [task, setTask] = useState<ParticipantTask>(() => tutorialTask());
+  const [task, setTask] = useState(tutorialTask);
   const [step, setStep] = useState(0);
   const [finished, setFinished] = useState(false);
-  const correctAnswer = useMemo(() => ["да", "нет", "да"], []);
 
   function advance(action: TourAction) {
     if (STEPS[step]?.action === action) {
@@ -266,7 +275,7 @@ export function ParticipantTutorial({ onClose }: { onClose: () => void }) {
 
   async function probe(cardId: string): Promise<TaskMoveTransitionResult> {
     const normalized = cardId.trim().toUpperCase();
-    const content = task.geometryContent ?? {};
+    const content = task.publicState.content;
     const observations = Array.isArray(content.probe_observations)
       ? content.probe_observations
       : [];
@@ -302,13 +311,16 @@ export function ParticipantTutorial({ onClose }: { onClose: () => void }) {
     }
     setTask((current) => ({
       ...current,
-      geometryContent: {
-        ...(current.geometryContent ?? {}),
-        probe_observations: [
-          ...observations,
-          { card_id: normalized, classification: CLASSIFICATIONS[normalized] },
-        ],
-        probes_remaining: remaining - 1,
+      publicState: {
+        ...current.publicState,
+        content: {
+          ...current.publicState.content,
+          probe_observations: [
+            ...observations,
+            { card_id: normalized, classification: CLASSIFICATIONS[normalized] },
+          ],
+          probes_remaining: remaining - 1,
+        },
       },
     }));
     advance("probe");
@@ -321,8 +333,7 @@ export function ParticipantTutorial({ onClose }: { onClose: () => void }) {
     };
   }
 
-  async function aiMessage(message: string): Promise<AiTurn> {
-    void message;
+  async function aiMessage(): Promise<AiTurn> {
     advance("ai");
     return {
       id: "tutorial-ai-turn",
@@ -350,8 +361,8 @@ export function ParticipantTutorial({ onClose }: { onClose: () => void }) {
       .filter(Boolean)
       .map((item) => (item === "1" ? "да" : item === "0" ? "нет" : item));
     const correct =
-      normalized.length === correctAnswer.length &&
-      normalized.every((item, index) => item === correctAnswer[index]);
+      normalized.length === CORRECT_ANSWER.length &&
+      normalized.every((item, index) => item === CORRECT_ANSWER[index]);
     if (correct) {
       setFinished(true);
       advance("answer");
@@ -369,14 +380,12 @@ export function ParticipantTutorial({ onClose }: { onClose: () => void }) {
     <div className="participant-tutorial">
       <ParticipantWorkspace
         task={task}
-        contestTitle="Демонстрационный вариант"
-        participantName="Инструктаж"
         tutorialMode
         onAnswer={answer}
         onSkip={async () => ({ ordinal: 1, advanced: false })}
         onNext={async () => ({ ordinal: 1, advanced: false })}
-        onProbe={(cardId) => probe(cardId)}
-        onAiMessage={(message) => aiMessage(message)}
+        onProbe={probe}
+        onAiMessage={aiMessage}
       />
       {finished ? (
         <div className="tutorial-complete" role="dialog" aria-modal="true">

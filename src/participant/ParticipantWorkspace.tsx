@@ -4,122 +4,34 @@ import {
   type FormEvent,
   type ReactNode,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import { ApiError } from "../api";
-import type {
-  AiTurn as AiTurnResult,
-  AiTurnHistory as AiTurnHistoryResult,
-  ChessCoveragePublicState,
-  ClassicMathPublicState,
-  FoldPunchPublicState,
-  HiddenWiringPublicState,
-  LeaperBoardPublicState,
-  MachinePanelPublicState,
-  MachineState,
-  TokenCard,
+import {
+  ApiError,
+  isRecord,
+  type AiTurn,
+  type AiTurnHistory,
+  type ChessBoardPieceSymbol,
+  type ChessBoardState,
+  type ChessCoveragePieceType,
+  type ChessCoveragePublicState,
+  type ChessPieceSymbol,
+  type DebugAnswerResponse,
+  type DiceDefinition,
+  type FoldPunchPublicState,
+  type GeometryScene,
+  type HiddenWiringPublicState,
+  type LeaperBoardPublicState,
+  type MachinePanelPublicState,
+  type MachineState,
+  type ParticipantTask,
+  type ParticipantTelemetryEvent,
+  type ParticipantTelemetryEventType,
+  type TaskProgressEntry,
+  type TokenCard,
 } from "../api";
 import "./participant-workspace.css";
-
-export type ChessPieceKind = "K" | "Q" | "R" | "B" | "N";
-export type DicePieceKind = ChessPieceKind | "P";
-export type DiceFaces = readonly [
-  DicePieceKind,
-  DicePieceKind,
-  DicePieceKind,
-  DicePieceKind,
-  DicePieceKind,
-  DicePieceKind,
-];
-export type ChessDie = {
-  id: string;
-  label: string;
-  faces: DiceFaces;
-};
-export type ChessDiceSet =
-  | readonly [ChessDie]
-  | readonly [ChessDie, ChessDie]
-  | readonly [ChessDie, ChessDie, ChessDie]
-  | readonly [ChessDie, ChessDie, ChessDie, ChessDie];
-export type ChessPieceCode =
-  | "wK"
-  | "wQ"
-  | "wR"
-  | "wB"
-  | "wN"
-  | "wP"
-  | "bK"
-  | "bQ"
-  | "bR"
-  | "bB"
-  | "bN"
-  | "bP";
-export type ChessBoardCell = ChessPieceCode | null;
-export type ChessBoard = readonly (readonly ChessBoardCell[])[];
-export type GeometryPoint = {
-  id: string;
-  group: string;
-  x: number;
-  y: number;
-  label?: string;
-  color?: string;
-};
-export type GeometryEdge = {
-  id: string;
-  group: string;
-  source: string;
-  target: string;
-  color?: string;
-};
-export type GeometryScene = {
-  bounds: {
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-  };
-  points: readonly GeometryPoint[];
-  edges: readonly GeometryEdge[];
-};
-
-export type ParticipantTask = {
-  id: string;
-  ordinal: number;
-  family: "dice_chess" | (string & {});
-  kind:
-    | "dice_chess_probability"
-    | "dice_chess_board_inventory_probability"
-    | "dice_chess_position_probability"
-    | (string & {});
-  difficulty: number;
-  status: "active" | "answered" | "skipped";
-  prompt: string;
-  board?: ChessBoard;
-  dice?: ChessDiceSet;
-  sampleSpaceSize?: number;
-  eventDescription?: string;
-  sideToMove?: "white" | "black";
-  geometryScene?: GeometryScene;
-  geometryContent?: Record<string, unknown>;
-  geometryInteraction?: Record<string, unknown>;
-  tokenCards?: Record<string, TokenCard[]>;
-  gridCards?: Record<string, string[]>;
-  machinePanel?: MachinePanelPublicState;
-  wiring?: HiddenWiringPublicState;
-  foldPunch?: FoldPunchPublicState;
-  leaperBoard?: LeaperBoardPublicState;
-  chessCoverage?: ChessCoveragePublicState;
-  classicMath?: ClassicMathPublicState;
-  responseHint?: string;
-  worldPhase?: string;
-};
-
-export type TaskProgressEntry = {
-  ordinal: number;
-  status: "active" | "answered" | "skipped";
-};
 
 export type TaskTransitionResult = {
   ordinal: number;
@@ -132,34 +44,10 @@ export type TaskMoveTransitionResult = TaskTransitionResult & {
   completed: boolean;
 };
 
-export type ParticipantTelemetryEventType =
-  | "client_task_viewed"
-  | "client_command_submitted"
-  | "client_focus"
-  | "client_blur"
-  | "client_visibility_visible"
-  | "client_visibility_hidden"
-  | "client_chat_paste"
-  | "client_copy";
-
-export type ParticipantTelemetryEvent = {
-  clientEventId: string;
-  clientSessionId: string;
-  eventType: ParticipantTelemetryEventType;
-  attemptId?: string;
-  taskId?: string;
-  clientTimestamp: string;
-  clientElapsedMs: number;
-  payload?: Record<string, unknown>;
-};
-
-export type ParticipantWorkspaceProps = {
+type ParticipantWorkspaceProps = {
   task: ParticipantTask;
   attemptId?: string;
   deadlineAt?: string | null;
-  contestTitle: string;
-  participantName?: string;
-  totalTasks?: number;
   taskProgress?: readonly TaskProgressEntry[];
   busy?: boolean;
   error?: string;
@@ -172,22 +60,15 @@ export type ParticipantWorkspaceProps = {
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
   onHint?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
-  onGetAnswer?: () => Promise<{
-    answer: string;
-    commands: string[];
-    details: string[];
-  }>;
+  onGetAnswer?: () => Promise<DebugAnswerResponse>;
   onApplyOperation?: (
     opId: string,
     clientActionId: string,
   ) => Promise<TaskMoveTransitionResult>;
   onUndo?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
   onReset?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
-  onAiMessage?: (
-    message: string,
-    clientActionId: string,
-  ) => Promise<AiTurnResult>;
-  onLoadAiHistory?: () => Promise<AiTurnHistoryResult>;
+  onAiMessage?: (message: string, clientActionId: string) => Promise<AiTurn>;
+  onLoadAiHistory?: () => Promise<AiTurnHistory>;
   onTelemetry?: (
     event: ParticipantTelemetryEvent,
   ) => Promise<unknown> | unknown;
@@ -211,7 +92,7 @@ const MAX_TELEMETRY_QUEUE_LENGTH = 5_000;
 const MAX_PERSISTED_TELEMETRY_EVENTS = 300;
 const TELEMETRY_STORAGE_PREFIX = "sirius-gate:telemetry:";
 
-const PIECE_GLYPHS: Record<ChessPieceCode, string> = {
+const PIECE_GLYPHS: Record<ChessBoardPieceSymbol, string> = {
   wK: "♔",
   wQ: "♕",
   wR: "♖",
@@ -226,7 +107,7 @@ const PIECE_GLYPHS: Record<ChessPieceCode, string> = {
   bP: "♟",
 };
 
-const PIECE_NAMES: Record<ChessPieceCode, string> = {
+const PIECE_NAMES: Record<ChessBoardPieceSymbol, string> = {
   wK: "белый король",
   wQ: "белый ферзь",
   wR: "белая ладья",
@@ -241,38 +122,7 @@ const PIECE_NAMES: Record<ChessPieceCode, string> = {
   bP: "чёрная пешка",
 };
 
-const DEFAULT_DICE: ChessDiceSet = [
-  {
-    id: "white",
-    label: "Кубик A",
-    faces: ["K", "Q", "R", "B", "N", "P"],
-  },
-  {
-    id: "black",
-    label: "Кубик B",
-    faces: ["K", "Q", "R", "B", "N", "P"],
-  },
-];
-
-const DICE_GLYPHS: Record<DicePieceKind, string> = {
-  K: "♔",
-  Q: "♕",
-  R: "♖",
-  B: "♗",
-  N: "♘",
-  P: "♙",
-};
-
-const BLACK_DICE_GLYPHS: Record<DicePieceKind, string> = {
-  K: "♚",
-  Q: "♛",
-  R: "♜",
-  B: "♝",
-  N: "♞",
-  P: "♟",
-};
-
-const DICE_FACE_NAMES: Record<DicePieceKind, string> = {
+const DICE_FACE_NAMES: Record<ChessPieceSymbol, string> = {
   K: "король",
   Q: "ферзь",
   R: "ладья",
@@ -281,19 +131,8 @@ const DICE_FACE_NAMES: Record<DicePieceKind, string> = {
   P: "пешка",
 };
 
-function normalizeBoard(task: ParticipantTask): ChessBoardCell[][] {
-  if (!task.board) {
-    return Array.from({ length: 8 }, () => Array<ChessBoardCell>(8).fill(null));
-  }
-
-  return task.board.map((rank) => [...rank]);
-}
-
-function normalizeDice(task: ParticipantTask): ChessDiceSet {
-  if (!task.dice || task.dice.length < 1 || task.dice.length > 4) {
-    return DEFAULT_DICE;
-  }
-  return task.dice;
+function pieceGlyph(color: "w" | "b", piece: ChessPieceSymbol): string {
+  return PIECE_GLYPHS[`${color}${piece}`];
 }
 
 function formatRemainingTime(deadlineAt?: string | null): string {
@@ -437,146 +276,84 @@ function persistTelemetryQueue(
   }
 }
 
+function TaskNumber({ ordinal }: { ordinal: number }) {
+  return <strong>№{String(ordinal).padStart(2, "0")}</strong>;
+}
+
+function openingEntries(opened: ReactNode, guide: ReactNode): ConsoleEntry[] {
+  return [
+    { id: 1, author: "system", content: opened },
+    { id: 2, author: "system", content: guide },
+  ];
+}
+
 function initialEntries(task: ParticipantTask): ConsoleEntry[] {
-  if (task.kind === "chess_coverage") {
-    return [
-      {
-        id: 1,
-        author: "system",
-        content: (
-          <>
-            Открыта шахматная расстановка{" "}
-            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
-          </>
-        ),
-      },
-      {
-        id: 2,
-        author: "system",
-        content:
-          "Выберите фигуру в палитре и ставьте её на свободные клетки. Покройте все цели с минимальной стоимостью.",
-      },
-    ];
+  const kind = task.publicState.kind;
+  const number = <TaskNumber ordinal={task.ordinal} />;
+
+  if (kind === "chess_coverage") {
+    return openingEntries(
+      <>Открыта шахматная расстановка {number}.</>,
+      "Выберите фигуру в палитре и ставьте её на свободные клетки. Покройте все цели с минимальной стоимостью.",
+    );
   }
   if (
-    task.kind === "machine_panel" ||
-    (task.kind === "chess" && task.family === "machine_reach")
+    kind === "machine_panel" ||
+    (kind === "chess" && task.family === "machine_reach")
   ) {
-    return [
-      {
-        id: 1,
-        author: "system",
-        content: (
-          <>
-            Открыта машина{" "}
-            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
-            Переведите текущее состояние в целевое.
-          </>
-        ),
-      },
-      {
-        id: 2,
-        author: "system",
-        content: (
-          <>
-            Применяйте операции командой <code>/op &lt;id&gt;</code>, отменяйте
-            последний шаг через <code>/undo</code>. Итог: <code>done</code>{" "}
-            или <code>impossible</code>.
-          </>
-        ),
-      },
-    ];
+    return openingEntries(
+      <>
+        Открыта машина {number}. Переведите текущее состояние в целевое.
+      </>,
+      <>
+        Применяйте операции командой <code>/op &lt;id&gt;</code>, отменяйте
+        последний шаг через <code>/undo</code>. Итог: <code>done</code> или{" "}
+        <code>impossible</code>.
+      </>,
+    );
   }
-  if (task.kind === "hidden_wiring") {
-    return [
-      {
-        id: 1,
-        author: "system",
-        content: (
-          <>
-            Открыта панель{" "}
-            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
-            Проводка скрыта. Кнопки срабатывают только парами.
-          </>
-        ),
-      },
-      {
-        id: 2,
-        author: "system",
-        content: (
-          <>
-            Нажимайте комбинации из двух кнопок командой{" "}
-            <code>/op b1+b2</code> или кнопками на панели. Первая проба
-            обучающая и не тратит лимит.
-          </>
-        ),
-      },
-    ];
-  }
-  if (
-    task.kind === "geometry_atlas" ||
-    task.kind === "token_zendo" ||
-    task.kind === "point_zendo" ||
-    task.kind === "grid_zendo"
-  ) {
-    return [
-      {
-        id: 1,
-        author: "system",
-        content: (
-          <>
-            Открыта задача{" "}
-            <strong>№{String(task.ordinal).padStart(2, "0")}</strong>
-            {task.kind === "geometry_atlas" ? " Геометрического мира" : ""}.
-          </>
-        ),
-      },
-      {
-        id: 2,
-        author: "system",
-        content:
-          task.kind === "grid_zendo" ? (
-            <>
-              Нарисуйте узор на пустой сетке и проверьте его кнопкой или
-              командой <code>/test</code>, затем отправьте итоговый ответ.
-            </>
-          ) : task.family === "geo_zendo" ||
-          task.kind === "token_zendo" ||
-          task.kind === "point_zendo" ? (
-            <>
-              Можно проверить доступную карточку командой{" "}
-              <code>/test &lt;код&gt;</code>, затем отправить итоговый ответ.
-            </>
-          ) : (
-            <>
-              Введите <code>/help</code>, чтобы увидеть доступные команды.
-            </>
-          ),
-      },
-    ];
+  if (kind === "hidden_wiring") {
+    return openingEntries(
+      <>
+        Открыта панель {number}. Проводка скрыта. Кнопки срабатывают только
+        парами.
+      </>,
+      <>
+        Нажимайте комбинации из двух кнопок командой <code>/op b1+b2</code>{" "}
+        или кнопками на панели. Первая проба обучающая и не тратит лимит.
+      </>,
+    );
   }
 
-  return [
-    {
-      id: 1,
-      author: "system",
-      content: (
-        <>
-          Открыта задача{" "}
-          <strong>№{String(task.ordinal).padStart(2, "0")}</strong>.
-        </>
-      ),
-    },
-    {
-      id: 2,
-      author: "system",
-      content: (
-        <>
-          Введите <code>/help</code>, чтобы увидеть доступные команды.
-        </>
-      ),
-    },
-  ];
+  const opened = <>Открыта задача {number}.</>;
+  if (kind === "grid_zendo") {
+    return openingEntries(
+      opened,
+      <>
+        Нарисуйте узор на пустой сетке и проверьте его кнопкой или командой{" "}
+        <code>/test</code>, затем отправьте итоговый ответ.
+      </>,
+    );
+  }
+  if (
+    kind === "token_zendo" ||
+    kind === "point_zendo" ||
+    (kind === "geometry_atlas" && task.family === "geo_zendo")
+  ) {
+    return openingEntries(
+      opened,
+      <>
+        Можно проверить доступную карточку командой{" "}
+        <code>/test &lt;код&gt;</code>, затем отправить итоговый ответ.
+      </>,
+    );
+  }
+  return openingEntries(
+    opened,
+    <>
+      Введите <code>/help</code>, чтобы увидеть доступные команды.
+    </>,
+  );
 }
 
 export function ParticipantWorkspace({
@@ -600,8 +377,7 @@ export function ParticipantWorkspace({
   onLoadAiHistory,
   onTelemetry,
 }: ParticipantWorkspaceProps) {
-  const board = useMemo(() => normalizeBoard(task), [task]);
-  const dice = useMemo(() => normalizeDice(task), [task]);
+  const state = task.publicState;
   const [draft, setDraft] = useState("");
   const [entries, setEntries] = useState<ConsoleEntry[]>(() =>
     initialEntries(task),
@@ -635,59 +411,53 @@ export function ParticipantWorkspace({
 
   const timeIsUp = Boolean(deadlineAt) && remainingTime === "00:00";
   const isBusy = busy || commandBusy || timeIsUp;
-  const isDiceChess = task.family === "dice_chess";
-  const isDicePosition =
-    task.kind === "dice_chess_position_probability" ||
-    task.kind === "dice_chess_board_inventory_probability";
-  const isGeometry = task.kind === "geometry_atlas";
+  const canAct = task.status === "active" && !isBusy;
+  const diceChess =
+    state.kind === "dice_chess_position_probability" ||
+    state.kind === "dice_chess_board_inventory_probability"
+      ? state
+      : null;
+  const classicMath =
+    state.kind === "classic_math_free_response" ? state : null;
   const isZendo =
-    (isGeometry && task.family === "geo_zendo") ||
-    task.kind === "token_zendo" ||
-    task.kind === "point_zendo" ||
-    task.kind === "grid_zendo";
+    (state.kind === "geometry_atlas" && task.family === "geo_zendo") ||
+    state.kind === "token_zendo" ||
+    state.kind === "point_zendo" ||
+    state.kind === "grid_zendo";
   const isMachine =
-    task.kind === "machine_panel" ||
-    (task.kind === "chess" && task.family === "machine_reach");
-  const isWiring = task.kind === "hidden_wiring";
-  const isChessCoverage =
-    task.kind === "chess_coverage" && Boolean(task.chessCoverage);
-  const chessCoverageHasPlacement = Boolean(
-    task.chessCoverage &&
-      (task.chessCoverage.variant === "custom_jump_placement"
-        ? task.chessCoverage.placements.length > 0
-        : task.chessCoverage.selectedIds.length > 0),
-  );
-  const isLeaperBoard = task.kind === "chess" && Boolean(task.leaperBoard);
-  const isClassicMath =
-    task.kind === "classic_math_free_response" &&
-    task.family === "classic_math";
-  const rawStatementPrompt = isDiceChess
-    ? task.prompt.replace(
+    state.kind === "machine_panel" ||
+    (state.kind === "chess" && task.family === "machine_reach");
+  const isWiring = state.kind === "hidden_wiring";
+  const isChessCoverage = state.kind === "chess_coverage";
+  const chessCoverageHasPlacement =
+    state.kind === "chess_coverage" && state.placements.length > 0;
+  const rawStatementPrompt = diceChess
+    ? state.prompt.replace(
         /\s*Найдите вероятность описанного события\.\s*$/u,
         "",
       )
-    : task.prompt;
+    : state.prompt;
   const statementPrompt = task.family === "geo_zendo"
     ? rawStatementPrompt
         .replaceAll("Конструкции", "Графы")
         .replaceAll("конструкции", "графы")
         .replaceAll("конструкций", "графов")
     : rawStatementPrompt;
-  const statementQuestion =
-    isDiceChess && task.eventDescription
-      ? `Найдите вероятность того, что ${task.eventDescription
-          .charAt(0)
-          .toLocaleLowerCase("ru-RU")}${task.eventDescription.slice(1)}`
-      : task.eventDescription;
+  const statementQuestion = diceChess
+    ? `Найдите вероятность того, что ${diceChess.eventDescription
+        .charAt(0)
+        .toLocaleLowerCase("ru-RU")}${diceChess.eventDescription.slice(1)}`
+    : undefined;
   const statementParagraphs = statementPrompt
     .split(/\n{2,}/u)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
-  const zendoContent = task.geometryContent ?? {};
+  const zendoContent: Record<string, unknown> =
+    "content" in state ? state.content : {};
   const zendoProbesRemaining =
     typeof zendoContent.probes_remaining === "number"
-      ? (zendoContent.probes_remaining as number)
+      ? zendoContent.probes_remaining
       : undefined;
   const zendoTargetCount = Array.isArray(zendoContent.targets)
     ? zendoContent.targets.length
@@ -697,15 +467,12 @@ export function ParticipantWorkspace({
     (_, index) => (index % 2 === 0 ? "1" : "0"),
   ).join(" ")}`;
   const transformOptions = Array.isArray(zendoContent.answer_cards)
-    ? (zendoContent.answer_cards as unknown[]).flatMap((option) =>
-        typeof option === "object" && option !== null && "id" in option
+    ? zendoContent.answer_cards.flatMap((option: unknown) =>
+        isRecord(option) && "id" in option
           ? [
               {
-                id: String((option as { id: unknown }).id),
-                label:
-                  "label" in option
-                    ? String((option as { label?: unknown }).label)
-                    : String((option as { id: unknown }).id),
+                id: String(option.id),
+                label: String("label" in option ? option.label : option.id),
               },
             ]
           : [],
@@ -715,61 +482,45 @@ export function ParticipantWorkspace({
   if (isZendo && zendoProbesRemaining !== undefined) {
     briefMetaLines.push(`Осталось проб: ${zendoProbesRemaining}`);
   }
-  if (task.wiring) {
+  if (state.kind === "hidden_wiring") {
     briefMetaLines.push(
-      `Доступно проб: ${task.wiring.chordsRemaining} / ${task.wiring.chordBudget}`,
+      `Доступно проб: ${state.chordsRemaining} / ${state.chordBudget}`,
     );
-    if (task.wiring.examChords && task.wiring.examChords.length > 0) {
+    if (state.examChords && state.examChords.length > 0) {
       briefMetaLines.push(
         "экзаменационные комбинации (недоступны для проб): " +
-          task.wiring.examChords.map((chord) => chord.id).join(", "),
+          state.examChords.map((chord) => chord.id).join(", "),
       );
     }
   }
-  if (task.machinePanel) {
+  if (state.kind === "machine_panel") {
+    briefMetaLines.push(`Шагов: ${state.stepsTaken} / ${state.stepsSoftCap}`);
+  }
+  if (state.kind === "chess") {
     briefMetaLines.push(
-      `Шагов: ${task.machinePanel.stepsTaken} / ${task.machinePanel.stepsSoftCap}`,
+      `Фигура: (${state.current.row + 1}, ${state.current.col + 1})`,
+      `Цель: (${state.target.row + 1}, ${state.target.col + 1})`,
+      `Шагов: ${state.stepsTaken} / ${state.stepsSoftCap}`,
     );
   }
-  if (task.leaperBoard) {
+  if (state.kind === "chess_coverage") {
     briefMetaLines.push(
-      `Фигура: (${task.leaperBoard.current.row + 1}, ${
-        task.leaperBoard.current.col + 1
-      })`,
-      `Цель: (${task.leaperBoard.target.row + 1}, ${
-        task.leaperBoard.target.col + 1
-      })`,
-      `Шагов: ${task.leaperBoard.stepsTaken} / ${task.leaperBoard.stepsSoftCap}`,
+      `Выбрано фигур: ${state.placements.length}`,
+      `Текущая стоимость: ${state.totalCost}`,
     );
   }
-  if (task.chessCoverage) {
-    const customPlacement =
-      task.chessCoverage.variant === "custom_jump_placement";
-    briefMetaLines.push(
-      `Выбрано фигур: ${
-        customPlacement
-          ? task.chessCoverage.placements.length
-          : task.chessCoverage.selectedIds.length
-      }`,
-      `Текущая стоимость: ${
-        customPlacement
-          ? task.chessCoverage.totalCost
-          : task.chessCoverage.totalWeight
-      }`,
-    );
-  }
-  if (task.foldPunch) {
+  if (state.kind === "fold_punch") {
     briefMetaLines.push(
       "сгибы выполняются по порядку; дырки пробиты через все слои сразу",
     );
   }
-  if (task.gridCards) {
+  if (state.kind === "grid_zendo") {
     briefMetaLines.push("узор проверяется целиком");
   }
-  if (task.tokenCards) {
+  if (state.kind === "token_zendo") {
     briefMetaLines.push("цвет и число каждой фишки видны на полке");
   }
-  if (isGeometry || task.kind === "point_zendo") {
+  if (state.kind === "geometry_atlas" || state.kind === "point_zendo") {
     briefMetaLines.push("все рисунки даны в одной системе обозначений");
   }
 
@@ -988,9 +739,7 @@ export function ParticipantWorkspace({
       transition.advanced ? (
         <>
           {transition.message ?? "Задача завершена."} Открыта задача{" "}
-          <strong>
-            №{String(transition.ordinal).padStart(2, "0")}
-          </strong>
+          <TaskNumber ordinal={transition.ordinal} />
           .
         </>
       ) : (
@@ -1040,15 +789,19 @@ export function ParticipantWorkspace({
         (transition.advanced ? (
           <>
             Ответ зафиксирован. Открыта задача{" "}
-            <strong>
-              №{String(transition.ordinal).padStart(2, "0")}
-            </strong>
+            <TaskNumber ordinal={transition.ordinal} />
             .
           </>
         ) : (
           "Ответ зафиксирован. Для продолжения используйте /next."
         )),
     );
+  }
+
+  function reportClosedTask(): boolean {
+    if (task.status === "active") return false;
+    appendEntry("system", "Текущая задача уже закрыта. Используйте /next.");
+    return true;
   }
 
   async function runCommand(rawInput: string) {
@@ -1141,13 +894,7 @@ export function ParticipantWorkspace({
             );
             break;
           }
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая задача уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (!payload) {
             appendEntry(
               "system",
@@ -1171,13 +918,7 @@ export function ParticipantWorkspace({
             );
             break;
           }
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая задача уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (!onGetAnswer) {
             appendEntry("system", "Эталонный ответ сейчас недоступен.");
             break;
@@ -1227,13 +968,7 @@ export function ParticipantWorkspace({
             );
             break;
           }
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая задача уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (!onHint) {
             appendEntry("system", "Подсказка сейчас недоступна.");
             break;
@@ -1258,13 +993,7 @@ export function ParticipantWorkspace({
             );
             break;
           }
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая машина уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (!payload || parts.length !== 1) {
             appendEntry(
               "system",
@@ -1285,13 +1014,7 @@ export function ParticipantWorkspace({
             );
             break;
           }
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая задача уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (parts.length > 0) {
             appendEntry(
               "system",
@@ -1310,13 +1033,7 @@ export function ParticipantWorkspace({
             );
             break;
           }
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая машина уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (parts.length > 0) {
             appendEntry(
               "system",
@@ -1328,13 +1045,7 @@ export function ParticipantWorkspace({
           break;
 
         case "/answer":
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая задача уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (!payload) {
             appendEntry(
               "system",
@@ -1343,11 +1054,11 @@ export function ParticipantWorkspace({
                 <code>
                   {isMachine || isChessCoverage
                     ? "/answer done"
-                    : isDiceChess
+                    : diceChess
                       ? "/answer 5/12"
-                      : isClassicMath
+                      : classicMath
                         ? "/answer <развёрнутое решение>"
-                        : "/answer да, допустима"}
+                        : "/answer <ваш ответ>"}
                 </code>
                 .
               </>,
@@ -1358,13 +1069,7 @@ export function ParticipantWorkspace({
           break;
 
         case "/skip":
-          if (task.status !== "active") {
-            appendEntry(
-              "system",
-              "Текущая задача уже закрыта. Используйте /next.",
-            );
-            break;
-          }
+          if (reportClosedTask()) break;
           if (parts.length > 0) {
             appendEntry("system", "Команда /skip не принимает дополнительных данных.");
             break;
@@ -1377,9 +1082,7 @@ export function ParticipantWorkspace({
                 (transition.advanced ? (
                   <>
                     Пропуск зафиксирован. Открыта задача{" "}
-                    <strong>
-                      №{String(transition.ordinal).padStart(2, "0")}
-                    </strong>
+                    <TaskNumber ordinal={transition.ordinal} />
                     .
                   </>
                 ) : (
@@ -1408,9 +1111,7 @@ export function ParticipantWorkspace({
               transition.message ?? (
                 <>
                   Открыта задача{" "}
-                  <strong>
-                    №{String(transition.ordinal).padStart(2, "0")}
-                  </strong>
+                  <TaskNumber ordinal={transition.ordinal} />
                   .
                 </>
               ),
@@ -1433,13 +1134,7 @@ export function ParticipantWorkspace({
             (isMachine || isChessCoverage) &&
             /^(?:done|impossible|готово?|невозможно|недостижимо)$/iu.test(input)
           ) {
-            if (task.status !== "active") {
-              appendEntry(
-                "system",
-                "Текущая машина уже закрыта. Используйте /next.",
-              );
-              break;
-            }
+            if (reportClosedTask()) break;
             await submitFinalAnswer(input);
             break;
           }
@@ -1506,9 +1201,6 @@ export function ParticipantWorkspace({
   return (
     <main
       className="participant-workspace"
-      data-task-family={task.family}
-      data-task-kind={task.kind}
-      data-task-difficulty={task.difficulty}
       onCopy={(event: ClipboardEvent<HTMLElement>) => {
         const target = event.target;
         let characterCount = 0;
@@ -1566,31 +1258,28 @@ export function ParticipantWorkspace({
 
         <div
           className={`participant-task__stage${
-            isClassicMath ? " participant-task__stage--text-only" : ""
+            classicMath ? " participant-task__stage--text-only" : ""
           }`}
           ref={stageRef}
-          data-tour="task-stage"
         >
           <article
             className={`participant-brief${
-              isClassicMath ? " participant-brief--classic" : ""
+              classicMath ? " participant-brief--classic" : ""
             }`}
             data-tour="task-statement"
           >
             <div className="participant-brief__statement">
-              {isClassicMath && task.classicMath?.title && (
-                <h2>{task.classicMath.title}</h2>
-              )}
+              {classicMath && <h2>{classicMath.title}</h2>}
               {statementParagraphs.map((paragraph, index) => (
                 <p key={`${task.id}-paragraph-${index}`}>{paragraph}</p>
               ))}
               {statementQuestion && <p>{statementQuestion}</p>}
-              {isClassicMath && task.classicMath?.table && (
+              {classicMath?.table && (
                 <div className="classic-math-table-wrap">
                   <table className="classic-math-table">
                     <thead>
                       <tr>
-                        {task.classicMath.table.columns.map((column) => (
+                        {classicMath.table.columns.map((column) => (
                           <th key={column} scope="col">
                             {column}
                           </th>
@@ -1598,7 +1287,7 @@ export function ParticipantWorkspace({
                       </tr>
                     </thead>
                     <tbody>
-                      {task.classicMath.table.rows.map((row, rowIndex) => (
+                      {classicMath.table.rows.map((row, rowIndex) => (
                         <tr key={`${task.id}-table-row-${rowIndex}`}>
                           {row.map((cell, cellIndex) => (
                             <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>
@@ -1611,56 +1300,59 @@ export function ParticipantWorkspace({
               )}
             </div>
             <div className="participant-brief__answer">
-              {!(isWiring && task.wiring?.variant === "reach_target") && (
-              <p>
-                {isWiring ? (
-                  <>
-                    Ответ отправьте в чате (пример:{" "}
-                    <code>/answer 1101 0000 1000</code> — три битовые
-                    строки по лампам экзаменационных комбинаций, 1 —
-                    лампа переключится).
-                  </>
-                ) : isChessCoverage ? (
-                  <>
-                    Выберите тип фигуры в палитре, расставьте фигуры на доске
-                    и зафиксируйте решение кнопкой под доской или командой{" "}
-                    <code>/answer done</code>.
-                  </>
-                ) : isMachine ? (
-                  <>
-                    Ответ отправьте в чате: <code>done</code> — когда решение
-                    найдено, <code>impossible</code> — если цель недостижима.
-                  </>
-                ) : isZendo ? (
-                  <>
-                    Ответ отправьте в чате (пример:{" "}
-                    <code>{zendoAnswerExample}</code> — по одному значению для
-                    каждой из {zendoTargetCount || "показанных"} целей в их
-                    порядке, 1 — подходит, 0 — нет).
-                  </>
-                ) : task.foldPunch ? (
-                  <>
-                    Кликните клетки на развёрнутом листе и нажмите «Отправить
-                    отмеченные клетки», или отправьте ответ в чате (пример:{" "}
-                    <code>/answer 2,3 5,8</code> — строка,столбец).
-                  </>
-                ) : isClassicMath && task.classicMath ? (
-                  <>
-                    Ответ отправьте в чате одной командой по шаблону:
-                    <code className="classic-math-submission-template">
-                      {task.classicMath.submissionTemplate.replace(
-                        /\s*\n+\s*/gu,
-                        " ",
-                      )}
-                    </code>
-                  </>
-                ) : (
-                  <>
-                    Ответ отправьте в чате командой{" "}
-                    <code>/answer &lt;ваш ответ&gt;</code>.
-                  </>
-                )}
-              </p>
+              {!(
+                state.kind === "hidden_wiring" &&
+                state.variant === "reach_target"
+              ) && (
+                <p>
+                  {isWiring ? (
+                    <>
+                      Ответ отправьте в чате (пример:{" "}
+                      <code>/answer 1101 0000 1000</code> — три битовые
+                      строки по лампам экзаменационных комбинаций, 1 —
+                      лампа переключится).
+                    </>
+                  ) : isChessCoverage ? (
+                    <>
+                      Выберите тип фигуры в палитре, расставьте фигуры на доске
+                      и зафиксируйте решение кнопкой под доской или командой{" "}
+                      <code>/answer done</code>.
+                    </>
+                  ) : isMachine ? (
+                    <>
+                      Ответ отправьте в чате: <code>done</code> — когда решение
+                      найдено, <code>impossible</code> — если цель недостижима.
+                    </>
+                  ) : isZendo ? (
+                    <>
+                      Ответ отправьте в чате (пример:{" "}
+                      <code>{zendoAnswerExample}</code> — по одному значению для
+                      каждой из {zendoTargetCount || "показанных"} целей в их
+                      порядке, 1 — подходит, 0 — нет).
+                    </>
+                  ) : state.kind === "fold_punch" ? (
+                    <>
+                      Кликните клетки на развёрнутом листе и нажмите «Отправить
+                      отмеченные клетки», или отправьте ответ в чате (пример:{" "}
+                      <code>/answer 2,3 5,8</code> — строка,столбец).
+                    </>
+                  ) : classicMath ? (
+                    <>
+                      Ответ отправьте в чате одной командой по шаблону:
+                      <code className="classic-math-submission-template">
+                        {classicMath.submissionTemplate.replace(
+                          /\s*\n+\s*/gu,
+                          " ",
+                        )}
+                      </code>
+                    </>
+                  ) : (
+                    <>
+                      Ответ отправьте в чате командой{" "}
+                      <code>/answer &lt;ваш ответ&gt;</code>.
+                    </>
+                  )}
+                </p>
               )}
               {(isMachine || isZendo || isChessCoverage) && (
                 <p>
@@ -1674,7 +1366,7 @@ export function ParticipantWorkspace({
                       <code>/op &lt;id&gt;</code> — применить операцию ·{" "}
                       <code>/undo</code> — отменить последний шаг.
                     </>
-                  ) : task.gridCards ? (
+                  ) : state.kind === "grid_zendo" ? (
                     <>
                       Пробы рисуются: закрасьте клетки в блоке «Свой узор» и
                       нажмите «Проверить узор», или отправьте{" "}
@@ -1699,7 +1391,7 @@ export function ParticipantWorkspace({
                   {transformOptions.map((option) => (
                     <button
                       type="button"
-                      disabled={task.status !== "active" || isBusy}
+                      disabled={!canAct}
                       onClick={() => void runCommand(`/answer ${option.id}`)}
                       key={option.id}
                     >
@@ -1716,76 +1408,12 @@ export function ParticipantWorkspace({
             </div>
           </article>
 
-          <Fragment key={task.id}>
-            {task.foldPunch ? (
-              <FoldPunchScene
-                state={task.foldPunch}
-                canAnswer={task.status === "active" && !isBusy}
-                onSubmit={(cells) => void runCommand(`/answer ${cells}`)}
-              />
-            ) : task.wiring ? (
-              <WiringPanelScene
-                state={task.wiring}
-                canAct={task.status === "active" && !isBusy}
-                onChord={(opId) => void runCommand(`/op ${opId}`)}
-              />
-            ) : task.machinePanel ? (
-              <MachinePanel
-                state={task.machinePanel}
-                canAct={task.status === "active" && !isBusy}
-                onOp={(opId) => void runCommand(`/op ${opId}`)}
-                onReset={() => void runCommand("/reset")}
-              />
-            ) : task.chessCoverage ? (
-              <ChessCoverageScene
-                state={task.chessCoverage}
-                canAct={task.status === "active" && !isBusy}
-                onToggle={(candidateId) =>
-                  void runCommand(`/op ${candidateId}`)
-                }
-                onReset={() => void runCommand("/reset")}
-                onSubmit={() => void runCommand("/answer done")}
-              />
-            ) : isLeaperBoard && task.leaperBoard ? (
-              <LeaperBoardScene
-                state={task.leaperBoard}
-                canAct={task.status === "active" && !isBusy}
-                onOp={(opId) => void runCommand(`/op ${opId}`)}
-              />
-            ) : task.tokenCards ? (
-              <TokenShelfScene
-                cards={task.tokenCards}
-                content={task.geometryContent ?? {}}
-                canProbe={task.status === "active" && !isBusy}
-                onProbe={(cardId) => void runCommand(`/test ${cardId}`)}
-              />
-            ) : task.gridCards ? (
-              <GridZendoScene
-                cards={task.gridCards}
-                content={task.geometryContent ?? {}}
-                canProbe={task.status === "active" && !isBusy}
-                onProbe={(pattern) => void runCommand(`/test ${pattern}`)}
-              />
-            ) : task.geometryScene ? (
-              <GeometryAtlasScene
-                scene={task.geometryScene}
-                content={task.geometryContent ?? {}}
-                showGrid={task.kind === "point_zendo"}
-                canProbe={isZendo && task.status === "active" && !isBusy}
-                onProbe={(cardId) => void runCommand(`/test ${cardId}`)}
-              />
-            ) : isDicePosition ? (
-              <DicePositionScene
-                board={board}
-                die={dice[0]}
-                sideToMove={task.sideToMove}
-              />
-            ) : isDiceChess ? (
-              <DiceScene dice={dice} />
-            ) : isClassicMath ? null : (
-              <Chessboard board={board} />
-            )}
-          </Fragment>
+          <TaskScene
+            task={task}
+            canAct={canAct}
+            onCommand={(command) => void runCommand(command)}
+            key={task.id}
+          />
         </div>
       </section>
 
@@ -1807,7 +1435,6 @@ export function ParticipantWorkspace({
           aria-live="polite"
           aria-relevant="additions"
           ref={consoleLogRef}
-          data-tour="chat-log"
         >
           {entries.map((entry) => (
             <article
@@ -1907,7 +1534,7 @@ export function ParticipantWorkspace({
               id="participantCommand"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              title={task.responseHint ?? undefined}
+              title={state.responseHint}
               placeholder={
                 timeIsUp
                   ? "Время попытки завершено"
@@ -1950,6 +1577,107 @@ export function ParticipantWorkspace({
   );
 }
 
+function TaskScene({
+  task,
+  canAct,
+  onCommand,
+}: {
+  task: ParticipantTask;
+  canAct: boolean;
+  onCommand: (command: string) => void;
+}) {
+  const state = task.publicState;
+  switch (state.kind) {
+    case "fold_punch":
+      return (
+        <FoldPunchScene
+          state={state}
+          canAnswer={canAct}
+          onSubmit={(cells) => onCommand(`/answer ${cells}`)}
+        />
+      );
+    case "hidden_wiring":
+      return (
+        <WiringPanelScene
+          state={state}
+          canAct={canAct}
+          onChord={(opId) => onCommand(`/op ${opId}`)}
+        />
+      );
+    case "machine_panel":
+      return (
+        <MachinePanel
+          state={state}
+          canAct={canAct}
+          onOp={(opId) => onCommand(`/op ${opId}`)}
+          onReset={() => onCommand("/reset")}
+        />
+      );
+    case "chess_coverage":
+      return (
+        <ChessCoverageScene
+          state={state}
+          canAct={canAct}
+          onAction={(action) => onCommand(`/op ${action}`)}
+          onReset={() => onCommand("/reset")}
+          onSubmit={() => onCommand("/answer done")}
+        />
+      );
+    case "chess":
+      return (
+        <LeaperBoardScene
+          state={state}
+          canAct={canAct}
+          onOp={(opId) => onCommand(`/op ${opId}`)}
+        />
+      );
+    case "token_zendo":
+      return (
+        <TokenShelfScene
+          cards={state.cards}
+          content={state.content}
+          canProbe={canAct}
+          onProbe={(cardId) => onCommand(`/test ${cardId}`)}
+        />
+      );
+    case "grid_zendo":
+      return (
+        <GridZendoScene
+          cards={state.cards}
+          content={state.content}
+          canProbe={canAct}
+          onProbe={(pattern) => onCommand(`/test ${pattern}`)}
+        />
+      );
+    case "geometry_atlas":
+    case "point_zendo":
+      return (
+        <GeometryAtlasScene
+          scene={state.scene}
+          content={state.content}
+          showGrid={state.kind === "point_zendo"}
+          canProbe={
+            canAct &&
+            (state.kind === "point_zendo" || task.family === "geo_zendo")
+          }
+          onProbe={(cardId) => onCommand(`/test ${cardId}`)}
+        />
+      );
+    case "dice_chess_position_probability":
+      return (
+        <DicePositionScene
+          board={state.board}
+          die={state.die}
+          sideToMove={state.sideToMove}
+        />
+      );
+    case "dice_chess_board_inventory_probability":
+      return <DicePositionScene board={state.board} die={state.die} />;
+    case "classic_math_free_response":
+      return null;
+  }
+}
+
 const GEOMETRY_COLORS: Record<string, string> = {
   cyan: "#4bbecf",
   navy: "#004278",
@@ -1984,122 +1712,137 @@ function DotSeparated({ items }: { items: string[] }) {
   );
 }
 
-function cardIn(content: Record<string, unknown>, key: string, group: string) {
-  return (Array.isArray(content[key]) ? (content[key] as unknown[]) : []).some(
-    (item) =>
-      typeof item === "object" &&
-      item !== null &&
-      "card_id" in item &&
-      (item as { card_id?: unknown }).card_id === group,
-  );
+function contentList(content: Record<string, unknown>, key: string): unknown[] {
+  const items = content[key];
+  return Array.isArray(items) ? items : [];
 }
 
-function geometryGroupOutcome(
-  group: string,
+function isCard(item: unknown, cardId: string): item is Record<string, unknown> {
+  return isRecord(item) && item.card_id === cardId;
+}
+
+function findCard(
+  content: Record<string, unknown>,
+  key: string,
+  cardId: string,
+): Record<string, unknown> | undefined {
+  return contentList(content, key).find((item) => isCard(item, cardId));
+}
+
+function classificationLabel(card: Record<string, unknown>): string {
+  return card.classification === "positive" ? "подходит" : "не подходит";
+}
+
+function cardOutcome(
+  cardId: string,
   content: Record<string, unknown>,
 ): "positive" | "negative" | null {
   for (const key of ["examples", "probe_observations"]) {
-    const found = (
-      Array.isArray(content[key]) ? (content[key] as unknown[]) : []
-    ).find(
-      (item) =>
-        typeof item === "object" &&
-        item !== null &&
-        "card_id" in item &&
-        (item as { card_id?: unknown }).card_id === group,
-    );
-    if (found && typeof found === "object" && "classification" in found) {
-      return (found as { classification?: unknown }).classification ===
-        "positive"
-        ? "positive"
-        : "negative";
+    const card = findCard(content, key, cardId);
+    if (card && "classification" in card) {
+      return card.classification === "positive" ? "positive" : "negative";
     }
   }
   return null;
 }
 
-function geometryGroupRole(
-  group: string,
-  content: Record<string, unknown>,
-): string {
-  if (group === "source" || group === "image") return group;
-  if (cardIn(content, "examples", group)) return "example";
-  if (cardIn(content, "targets", group)) return "target";
+function cardRole(cardId: string, content: Record<string, unknown>): string {
+  if (cardId === "source" || cardId === "image") return cardId;
+  if (findCard(content, "examples", cardId)) return "example";
+  if (findCard(content, "targets", cardId)) return "target";
   // Вскрытая проба ведёт себя как открытая конструкция-пример.
-  if (cardIn(content, "probe_observations", group)) return "example";
-  if (cardIn(content, "probe_cards", group)) return "probe";
+  if (findCard(content, "probe_observations", cardId)) return "example";
+  if (findCard(content, "probe_cards", cardId)) return "probe";
   return "plain";
 }
 
-function geometryGroupLabel(
-  group: string,
-  content: Record<string, unknown>,
-): string {
-  if (group === "source") return "Исходная фигура";
-  if (group === "image") return "Образ";
-  const examples = Array.isArray(content.examples) ? content.examples : [];
-  const example = examples.find(
-    (item) =>
-      typeof item === "object" &&
-      item !== null &&
-      "card_id" in item &&
-      item.card_id === group,
-  );
+function cardLabel(cardId: string, content: Record<string, unknown>): string {
+  if (cardId === "source") return "Исходная фигура";
+  if (cardId === "image") return "Образ";
+  const example = findCard(content, "examples", cardId);
   if (example && "classification" in example) {
-    return `${group} · ${
-      example.classification === "positive" ? "подходит" : "не подходит"
-    }`;
+    return `${cardId} · ${classificationLabel(example)}`;
   }
-  const targetIndex = (Array.isArray(content.targets) ? content.targets : [])
-    .findIndex(
-      (item) =>
-        typeof item === "object" &&
-        item !== null &&
-        "card_id" in item &&
-        item.card_id === group,
-    );
-  if (targetIndex >= 0) return `${group} · цель ${targetIndex + 1}`;
-  const probe = (Array.isArray(content.probe_cards) ? content.probe_cards : [])
-    .find(
-      (item) =>
-        typeof item === "object" &&
-        item !== null &&
-        "card_id" in item &&
-        item.card_id === group,
-    );
-  if (probe) {
-    const observed = (Array.isArray(content.probe_observations)
-      ? content.probe_observations
-      : []
-    ).find(
-      (item) =>
-        typeof item === "object" &&
-        item !== null &&
-        "card_id" in item &&
-        item.card_id === group,
-    );
-    if (observed && "classification" in observed) {
-      return `${group} · ${
-        observed.classification === "positive" ? "подходит" : "не подходит"
-      }`;
-    }
-    return `${group} · доступна проба`;
+  const targetIndex = contentList(content, "targets").findIndex((item) =>
+    isCard(item, cardId),
+  );
+  if (targetIndex >= 0) return `${cardId} · цель ${targetIndex + 1}`;
+  if (findCard(content, "probe_cards", cardId)) {
+    const observed = findCard(content, "probe_observations", cardId);
+    return observed && "classification" in observed
+      ? `${cardId} · ${classificationLabel(observed)}`
+      : `${cardId} · доступна проба`;
   }
-  return group.replaceAll("_", " ");
+  return cardId.replaceAll("_", " ");
+}
+
+function ZendoCard({
+  className,
+  probeableClassName = "",
+  cardId,
+  content,
+  canProbe = false,
+  onProbe,
+  children,
+}: {
+  className: string;
+  probeableClassName?: string;
+  cardId: string;
+  content: Record<string, unknown>;
+  canProbe?: boolean;
+  onProbe?: (cardId: string) => void;
+  children: ReactNode;
+}) {
+  const role = cardRole(cardId, content);
+  const probe =
+    role === "probe" && canProbe && onProbe ? () => onProbe(cardId) : undefined;
+  return (
+    <section
+      className={probe ? `${className} ${probeableClassName}` : className}
+      data-role={role}
+      data-outcome={cardOutcome(cardId, content) ?? undefined}
+      data-tour={
+        role === "probe"
+          ? "probe-card"
+          : role === "target"
+            ? "targets"
+            : undefined
+      }
+      role={probe ? "button" : undefined}
+      tabIndex={probe ? 0 : undefined}
+      onClick={probe}
+      onKeyDown={
+        probe
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                probe();
+              }
+            }
+          : undefined
+      }
+    >
+      <header>
+        {cardLabel(cardId, content)}
+        {probe && <span aria-hidden="true"> · нажми, чтобы проверить</span>}
+      </header>
+      {children}
+    </section>
+  );
 }
 
 function GeometryAtlasScene({
   scene,
   content,
-  showGrid = false,
-  canProbe = false,
+  showGrid,
+  canProbe,
   onProbe,
 }: {
   scene: GeometryScene;
   content: Record<string, unknown>;
-  showGrid?: boolean;
-  canProbe?: boolean;
-  onProbe?: (cardId: string) => void;
+  showGrid: boolean;
+  canProbe: boolean;
+  onProbe: (cardId: string) => void;
 }) {
   const groups = Array.from(
     new Set([
@@ -2152,42 +1895,16 @@ function GeometryAtlasScene({
         {groups.map((group) => {
           const points = scene.points.filter((point) => point.group === group);
           const edges = scene.edges.filter((edge) => edge.group === group);
-          const role = geometryGroupRole(group, content);
-          const outcome = geometryGroupOutcome(group, content);
-          const probeable = role === "probe" && canProbe && Boolean(onProbe);
           return (
-            <section
-              className={`geometry-card${
-                probeable ? " geometry-card--probeable" : ""
-              }`}
-              data-role={role}
-              data-outcome={outcome ?? undefined}
-              data-tour={
-                role === "probe"
-                  ? "probe-card"
-                  : role === "target"
-                    ? "targets"
-                    : undefined
-              }
-              onClick={probeable ? () => onProbe?.(group) : undefined}
-              role={probeable ? "button" : undefined}
-              tabIndex={probeable ? 0 : undefined}
-              onKeyDown={
-                probeable
-                  ? (event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onProbe?.(group);
-                      }
-                    }
-                  : undefined
-              }
+            <ZendoCard
+              className="geometry-card"
+              probeableClassName="geometry-card--probeable"
+              cardId={group}
+              content={content}
+              canProbe={canProbe}
+              onProbe={onProbe}
               key={group}
             >
-              <header>
-                {geometryGroupLabel(group, content)}
-                {probeable && <span aria-hidden="true"> · нажми, чтобы проверить</span>}
-              </header>
               <svg
                 viewBox={`${scene.bounds.minX - viewPadding} ${
                   scene.bounds.minY - viewPadding
@@ -2273,7 +1990,7 @@ function GeometryAtlasScene({
                   </g>
                 ))}
               </svg>
-            </section>
+            </ZendoCard>
           );
         })}
       </div>
@@ -2290,45 +2007,27 @@ const TOKEN_COLOR_STYLES: Record<TokenCard["color"], { fill: string; label: stri
 function TokenShelfScene({
   cards,
   content,
-  canProbe = false,
+  canProbe,
   onProbe,
 }: {
   cards: Record<string, TokenCard[]>;
   content: Record<string, unknown>;
-  canProbe?: boolean;
-  onProbe?: (cardId: string) => void;
+  canProbe: boolean;
+  onProbe: (cardId: string) => void;
 }) {
   return (
     <figure className="token-shelf" aria-label="Полки с фишками">
       <div className="token-shelf__cards">
-        {Object.entries(cards).map(([cardId, tokens]) => {
-          const role = geometryGroupRole(cardId, content);
-          const outcome = geometryGroupOutcome(cardId, content);
-          const probeable = role === "probe" && canProbe && Boolean(onProbe);
-          return (
-          <section
-            className={`token-card${probeable ? " token-card--probeable" : ""}`}
-            data-role={role}
-            data-outcome={outcome ?? undefined}
-            onClick={probeable ? () => onProbe?.(cardId) : undefined}
-            role={probeable ? "button" : undefined}
-            tabIndex={probeable ? 0 : undefined}
-            onKeyDown={
-              probeable
-                ? (event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onProbe?.(cardId);
-                    }
-                  }
-                : undefined
-            }
+        {Object.entries(cards).map(([cardId, tokens]) => (
+          <ZendoCard
+            className="token-card"
+            probeableClassName="token-card--probeable"
+            cardId={cardId}
+            content={content}
+            canProbe={canProbe}
+            onProbe={onProbe}
             key={cardId}
           >
-            <header>
-              {geometryGroupLabel(cardId, content)}
-              {probeable && <span aria-hidden="true"> · нажми, чтобы проверить</span>}
-            </header>
             <ol
               className="token-card__shelf"
               aria-label={`Карточка ${cardId}`}
@@ -2346,14 +2045,12 @@ function TokenShelfScene({
                 </li>
               ))}
             </ol>
-          </section>
-          );
-        })}
+          </ZendoCard>
+        ))}
       </div>
     </figure>
   );
 }
-
 
 function GridPatternPreview({ rows }: { rows: readonly string[] }) {
   return (
@@ -2400,15 +2097,14 @@ function GridZendoScene({
     <figure className="grid-zendo" aria-label="Узоры на сетке">
       <div className="grid-zendo__cards">
         {Object.entries(cards).map(([cardId, rows]) => (
-          <section
+          <ZendoCard
             className="grid-card"
-            data-role={geometryGroupRole(cardId, content)}
-            data-outcome={geometryGroupOutcome(cardId, content) ?? undefined}
+            cardId={cardId}
+            content={content}
             key={cardId}
           >
-            <header>{geometryGroupLabel(cardId, content)}</header>
             <GridPatternPreview rows={rows} />
-          </section>
+          </ZendoCard>
         ))}
         <section className="grid-card grid-card--draw">
           <header>Свой узор</header>
@@ -2450,61 +2146,19 @@ function GridZendoScene({
       {observations.length > 0 && (
         <div className="grid-zendo__observations">
           {observations.flatMap((item, index) => {
-            if (
-              typeof item !== "object" ||
-              item === null ||
-              !("pattern" in item) ||
-              !Array.isArray(item.pattern)
-            ) {
-              return [];
-            }
+            if (!isRecord(item) || !Array.isArray(item.pattern)) return [];
             return [
               <section className="grid-card" key={index}>
                 <header>
-                  Проба {index + 1}:{" "}
-                  {"classification" in item &&
-                  item.classification === "positive"
-                    ? "подходит"
-                    : "не подходит"}
+                  Проба {index + 1}: {classificationLabel(item)}
                 </header>
-                <GridPatternPreview rows={item.pattern as string[]} />
+                <GridPatternPreview rows={item.pattern} />
               </section>,
             ];
           })}
         </div>
       )}
     </figure>
-  );
-}
-
-
-function WiringLampRow({
-  label,
-  lamps,
-  current = false,
-}: {
-  label: string;
-  lamps: readonly number[];
-  current?: boolean;
-}) {
-  return (
-    <section
-      className={`machine-state${current ? " machine-state--current" : ""}`}
-    >
-      <span>{label}</span>
-      <ol className="machine-lamps" aria-label={`${label}: состояние ламп`}>
-        {lamps.map((lamp, index) => (
-          <li
-            className={lamp ? "is-on" : ""}
-            aria-label={`Лампа ${index + 1}: ${lamp ? "горит" : "не горит"}`}
-            key={index}
-          >
-            <i aria-hidden="true" />
-            <small>{index + 1}</small>
-          </li>
-        ))}
-      </ol>
-    </section>
   );
 }
 
@@ -2538,8 +2192,14 @@ function WiringPanelScene({
   return (
     <figure className="wiring-panel" aria-label="Панель со скрытой проводкой">
       <div className="machine-panel__states">
-        <WiringLampRow label="Сейчас" lamps={state.current} current />
-        {state.target && <WiringLampRow label="Цель" lamps={state.target} />}
+        <MachineStateDisplay
+          label="Сейчас"
+          state={{ lamps: state.current }}
+          current
+        />
+        {state.target && (
+          <MachineStateDisplay label="Цель" state={{ lamps: state.target }} />
+        )}
       </div>
 
       <div className="wiring-panel__buttons" role="group" aria-label="Кнопки панели">
@@ -2593,11 +2253,9 @@ function WiringPanelScene({
           ))}
         </ol>
       )}
-
     </figure>
   );
 }
-
 
 function FoldPunchScene({
   state,
@@ -2707,37 +2365,6 @@ function FoldPunchScene({
           </button>
         </section>
       </div>
-
-    </figure>
-  );
-}
-
-function DiceScene({
-  dice,
-}: {
-  dice: readonly ChessDie[];
-}) {
-  return (
-    <figure className="dice-scene" aria-label="Шахматные кубики">
-      <div className="dice-set">
-        {dice.map((die) => (
-          <section className="chess-die" key={die.id}>
-            <p>{die.label}</p>
-            <ol aria-label={`Грани: ${die.label}`}>
-              {die.faces.map((face, faceIndex) => (
-                <li
-                  title={DICE_FACE_NAMES[face]}
-                  aria-label={`Грань ${faceIndex + 1}: ${DICE_FACE_NAMES[face]}`}
-                  key={`${die.id}-${faceIndex}`}
-                >
-                  <span aria-hidden="true">{DICE_GLYPHS[face]}</span>
-                  <small>{DICE_FACE_NAMES[face]}</small>
-                </li>
-              ))}
-            </ol>
-          </section>
-        ))}
-      </div>
     </figure>
   );
 }
@@ -2747,13 +2374,13 @@ function DicePositionScene({
   die,
   sideToMove = "white",
 }: {
-  board: ChessBoard;
-  die: ChessDie;
+  board: ChessBoardState;
+  die: DiceDefinition;
   sideToMove?: "white" | "black";
 }) {
   return (
     <div className="dice-position-scene">
-      <Chessboard board={board} compact />
+      <Chessboard board={board} />
 
       <section className="position-die" aria-label="Кубик текущего хода">
         <p>Грани кубика</p>
@@ -2765,9 +2392,7 @@ function DicePositionScene({
               key={`${die.id}-${faceIndex}`}
             >
               <span aria-hidden="true">
-                {sideToMove === "black"
-                  ? BLACK_DICE_GLYPHS[face]
-                  : DICE_GLYPHS[face]}
+                {pieceGlyph(sideToMove === "black" ? "b" : "w", face)}
               </span>
               <small>{DICE_FACE_NAMES[face]}</small>
             </li>
@@ -2778,65 +2403,20 @@ function DicePositionScene({
   );
 }
 
-const COVERAGE_GLYPHS: Record<"K" | "Q" | "R" | "B" | "N", string> = {
-  K: "♔",
-  Q: "♕",
-  R: "♖",
-  B: "♗",
-  N: "♘",
-};
-
 function ChessCoverageScene({
   state,
-  canAct = false,
-  onToggle,
-  onReset,
-  onSubmit,
-}: {
-  state: ChessCoveragePublicState;
-  canAct?: boolean;
-  onToggle?: (candidateId: string) => void;
-  onReset?: () => void;
-  onSubmit?: () => void;
-}) {
-  if (state.variant === "custom_jump_placement") {
-    return (
-      <ChessPlacementScene
-        state={state}
-        canAct={canAct}
-        onAction={onToggle}
-        onReset={onReset}
-        onSubmit={onSubmit}
-      />
-    );
-  }
-  return (
-    <LegacyChessCoverageScene
-      state={state}
-      canAct={canAct}
-      onToggle={onToggle}
-      onReset={onReset}
-      onSubmit={onSubmit}
-    />
-  );
-}
-
-function ChessPlacementScene({
-  state,
-  canAct = false,
+  canAct,
   onAction,
   onReset,
   onSubmit,
 }: {
   state: ChessCoveragePublicState;
-  canAct?: boolean;
-  onAction?: (action: string) => void;
-  onReset?: () => void;
-  onSubmit?: () => void;
+  canAct: boolean;
+  onAction: (action: string) => void;
+  onReset: () => void;
+  onSubmit: () => void;
 }) {
-  const [activePiece, setActivePiece] = useState(
-    state.pieceTypes[0]?.id ?? "N",
-  );
+  const [activePiece, setActivePiece] = useState(state.pieceTypes[0].id);
   const targets = new Set(
     state.targets.map((point) => `${point.row}:${point.col}`),
   );
@@ -2875,7 +2455,7 @@ function ChessPlacementScene({
                 key={piece.id}
               >
                 <span className="coverage-piece-card__glyph" aria-hidden="true">
-                  {COVERAGE_GLYPHS[piece.id]}
+                  {pieceGlyph("w", piece.id)}
                 </span>
                 <span className="coverage-piece-card__copy">
                   <strong>{piece.label}</strong>
@@ -2894,7 +2474,7 @@ function ChessPlacementScene({
           <div className="coverage-move-rule" aria-live="polite">
             <MovePattern piece={activeDefinition} />
             <p>
-              <strong>{COVERAGE_GLYPHS[activeDefinition.id]} {activeDefinition.label}</strong>
+              <strong>{pieceGlyph("w", activeDefinition.id)} {activeDefinition.label}</strong>
               атакует только отмеченные клетки и перепрыгивает всё между ними.
               Стоимость: {activeDefinition.baseCost}, затем +
               {activeDefinition.repeatSurcharge} за каждую уже поставленную фигуру
@@ -2913,14 +2493,13 @@ function ChessPlacementScene({
             const isCovered = covered.has(key);
             const canPlace = Boolean(
               canAct &&
-              onAction &&
               activeDefinition &&
               !target &&
               !placement &&
               !placementLimitReached &&
               (state.pieceCounts[activeDefinition.id] ?? 0) < activeDefinition.limit,
             );
-            const canRemove = Boolean(canAct && onAction && placement);
+            const canRemove = canAct && Boolean(placement);
             return (
               <button
                 type="button"
@@ -2930,7 +2509,6 @@ function ChessPlacementScene({
                   (row + col) % 2 ? "is-dark" : "",
                   target ? "is-target" : "",
                   isCovered ? "is-covered" : "",
-                  placement ? "is-occupied" : "",
                 ].filter(Boolean).join(" ")}
                 disabled={!canPlace && !canRemove}
                 aria-label={
@@ -2940,9 +2518,9 @@ function ChessPlacementScene({
                 }
                 onClick={() => {
                   if (placement) {
-                    onAction?.(`remove:${placement.id}`);
+                    onAction(`remove:${placement.id}`);
                   } else if (canPlace && activeDefinition) {
-                    onAction?.(`place:${activeDefinition.id}:${row}:${col}`);
+                    onAction(`place:${activeDefinition.id}:${row}:${col}`);
                   }
                 }}
                 key={key}
@@ -2965,7 +2543,7 @@ function ChessPlacementScene({
                 {placement && (
                   <>
                     <span className="coverage-placement-board__piece" aria-hidden="true">
-                      {COVERAGE_GLYPHS[placement.piece]}
+                      {pieceGlyph("w", placement.piece)}
                     </span>
                     <b aria-hidden="true">{placement.cost}</b>
                   </>
@@ -2984,7 +2562,7 @@ function ChessPlacementScene({
           <div className="coverage-placement-actions">
             <button
               type="button"
-              disabled={!canAct || state.placements.length === 0 || !onReset}
+              disabled={!canAct || state.placements.length === 0}
               onClick={onReset}
             >
               Вернуть в начало
@@ -2992,7 +2570,7 @@ function ChessPlacementScene({
             <button
               type="button"
               className="is-primary"
-              disabled={!canAct || !state.allCovered || !onSubmit}
+              disabled={!canAct || !state.allCovered}
               onClick={onSubmit}
             >
               Зафиксировать расстановку
@@ -3004,11 +2582,7 @@ function ChessPlacementScene({
   );
 }
 
-function MovePattern({
-  piece,
-}: {
-  piece: ChessCoveragePublicState["pieceTypes"][number];
-}) {
+function MovePattern({ piece }: { piece: ChessCoveragePieceType }) {
   const attacked = new Set(
     piece.offsets.map((offset) => `${offset.row + 3}:${offset.col + 3}`),
   );
@@ -3028,162 +2602,6 @@ function MovePattern({
         );
       })}
     </span>
-  );
-}
-
-function LegacyChessCoverageScene({
-  state,
-  canAct = false,
-  onToggle,
-  onReset,
-  onSubmit,
-}: {
-  state: ChessCoveragePublicState;
-  canAct?: boolean;
-  onToggle?: (candidateId: string) => void;
-  onReset?: () => void;
-  onSubmit?: () => void;
-}) {
-  const targets = new Set(
-    state.targets.map((point) => `${point.row}:${point.col}`),
-  );
-  const covered = new Set(
-    state.coveredTargets.map((point) => `${point.row}:${point.col}`),
-  );
-  const candidates = new Map(
-    state.candidates.map((candidate) => [
-      `${candidate.row}:${candidate.col}`,
-      candidate,
-    ]),
-  );
-  const selected = new Set(state.selectedIds);
-  const usedPieces = Array.from(
-    new Set(state.candidates.map((candidate) => candidate.piece)),
-  );
-
-  return (
-    <figure className="coverage-scene" aria-label="Шахматное покрытие">
-      <div className="coverage-layout">
-        <div
-          className="coverage-board"
-          role="grid"
-          aria-label={`Доска ${state.boardSize} на ${state.boardSize}`}
-          style={{
-            gridTemplateColumns: `auto repeat(${state.boardSize}, 1fr)`,
-          }}
-        >
-          <span className="coverage-board__axis" aria-hidden="true" />
-          {Array.from({ length: state.boardSize }, (_, col) => (
-            <span
-              className="coverage-board__axis"
-              aria-hidden="true"
-              key={`col-${col}`}
-            >
-              {String.fromCharCode(65 + col)}
-            </span>
-          ))}
-          {Array.from({ length: state.boardSize }, (_, row) => (
-            <Fragment key={`coverage-row-${row}`}>
-              <span className="coverage-board__axis" aria-hidden="true">
-                {row + 1}
-              </span>
-              {Array.from({ length: state.boardSize }, (_, col) => {
-                const cellKey = `${row}:${col}`;
-                const candidate = candidates.get(cellKey);
-                const isTarget = targets.has(cellKey);
-                const isCovered = covered.has(cellKey);
-                const isSelected = candidate
-                  ? selected.has(candidate.id)
-                  : false;
-                return (
-                  <button
-                    type="button"
-                    className={[
-                      "coverage-board__cell",
-                      (row + col) % 2 ? "is-dark" : "",
-                      isTarget ? "is-target" : "",
-                      isCovered ? "is-covered" : "",
-                      isSelected ? "is-selected" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    disabled={!candidate || !canAct || !onToggle}
-                    aria-pressed={candidate ? isSelected : undefined}
-                    aria-label={
-                      candidate
-                        ? `${candidate.id}, ${candidate.pieceLabel}, стоимость ${candidate.weight}, клетка ${row + 1}${String.fromCharCode(65 + col)}`
-                        : `Клетка ${row + 1}${String.fromCharCode(65 + col)}${isTarget ? ", цель" : ""}`
-                    }
-                    onClick={() => candidate && onToggle?.(candidate.id)}
-                    key={cellKey}
-                  >
-                    {isTarget && (
-                      <span className="coverage-board__target" aria-hidden="true">
-                        {isCovered ? "●" : "○"}
-                      </span>
-                    )}
-                    {candidate && (
-                      <>
-                        <span className="coverage-board__piece" aria-hidden="true">
-                          {COVERAGE_GLYPHS[candidate.piece]}
-                        </span>
-                        <small>{candidate.id}</small>
-                        <b>{candidate.weight}</b>
-                      </>
-                    )}
-                  </button>
-                );
-              })}
-            </Fragment>
-          ))}
-        </div>
-
-        <aside className="coverage-summary">
-          <div>
-            <span>Покрыто</span>
-            <strong>
-              {state.coveredTargets.length} / {state.targets.length}
-            </strong>
-          </div>
-          <div>
-            <span>Стоимость</span>
-            <strong>{state.totalWeight}</strong>
-          </div>
-          <p>
-            ○ — цель, ● — уже покрытая цель. Число у фигуры — её стоимость.
-          </p>
-          <ul aria-label="Доступные типы фигур">
-            {usedPieces.map((piece) => {
-              const candidate = state.candidates.find(
-                (item) => item.piece === piece,
-              );
-              return (
-                <li key={piece}>
-                  <span aria-hidden="true">{COVERAGE_GLYPHS[piece]}</span>
-                  {candidate?.pieceLabel ?? piece}
-                </li>
-              );
-            })}
-          </ul>
-          <button
-            type="button"
-            className="coverage-summary__reset"
-            disabled={!canAct || state.selectedIds.length === 0 || !onReset}
-            onClick={onReset}
-          >
-            Вернуть в начало
-          </button>
-          <button
-            type="button"
-            className="coverage-summary__submit"
-            disabled={!canAct || !state.allCovered || !onSubmit}
-            onClick={onSubmit}
-          >
-            Зафиксировать расстановку
-          </button>
-        </aside>
-      </div>
-    </figure>
   );
 }
 
@@ -3229,14 +2647,14 @@ function MachineStateDisplay({
 
 function MachinePanel({
   state,
-  canAct = false,
+  canAct,
   onOp,
   onReset,
 }: {
   state: MachinePanelPublicState;
-  canAct?: boolean;
-  onOp?: (opId: string) => void;
-  onReset?: () => void;
+  canAct: boolean;
+  onOp: (opId: string) => void;
+  onReset: () => void;
 }) {
   const isLampPanel = state.subKind === "lamps_gf2";
   return (
@@ -3258,8 +2676,8 @@ function MachinePanel({
           <li key={operation.id}>
             <button
               type="button"
-              disabled={!canAct || !onOp}
-              onClick={() => onOp?.(operation.id)}
+              disabled={!canAct}
+              onClick={() => onOp(operation.id)}
             >
               <code>{operation.id}</code>
               <span>{operation.label}</span>
@@ -3272,25 +2690,24 @@ function MachinePanel({
         <button
           type="button"
           className="machine-panel__reset"
-          disabled={!canAct || !onReset}
+          disabled={!canAct}
           onClick={onReset}
         >
           Вернуть в начало
         </button>
       )}
-
     </figure>
   );
 }
 
 function LeaperBoardScene({
   state,
-  canAct = false,
+  canAct,
   onOp,
 }: {
   state: LeaperBoardPublicState;
-  canAct?: boolean;
-  onOp?: (opId: string) => void;
+  canAct: boolean;
+  onOp: (opId: string) => void;
 }) {
   const blocked = new Set(
     state.blocked.map((cell) => `${cell.row}:${cell.col}`),
@@ -3364,8 +2781,8 @@ function LeaperBoardScene({
           <li key={operation.id}>
             <button
               type="button"
-              disabled={!canAct || !onOp}
-              onClick={() => onOp?.(operation.id)}
+              disabled={!canAct}
+              onClick={() => onOp(operation.id)}
             >
               <code>{operation.id}</code>
               <span>{operation.label}</span>
@@ -3377,22 +2794,12 @@ function LeaperBoardScene({
   );
 }
 
-function Chessboard({
-  board,
-  compact = false,
-  goalSquare,
-}: {
-  board: ChessBoard;
-  compact?: boolean;
-  goalSquare?: string;
-}) {
+function Chessboard({ board }: { board: ChessBoardState }) {
   const rowCount = board.length;
   const colCount = Math.max(1, ...board.map((rank) => rank.length));
 
   return (
-    <div
-      className={`chess-position${compact ? " chess-position--compact" : ""}`}
-    >
+    <div className="chess-position chess-position--compact">
       <div
         className="chessboard"
         role="grid"
@@ -3408,21 +2815,12 @@ function Chessboard({
             const rankNumber = rowCount - rankIndex;
             const coordinate = `${FILES[fileIndex] ?? "?"}${rankNumber}`;
             const isDark = (rankIndex + fileIndex) % 2 === 1;
-            const isGoal = coordinate === goalSquare;
 
             return (
               <div
-                className={[
-                  "chess-square",
-                  isDark ? "chess-square--dark" : "",
-                  isGoal ? "chess-square--goal" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
+                className={`chess-square${isDark ? " chess-square--dark" : ""}`}
                 role="gridcell"
-                aria-label={`${coordinate}: ${piece ? PIECE_NAMES[piece] : "пусто"}${
-                  isGoal ? ", маяк" : ""
-                }`}
+                aria-label={`${coordinate}: ${piece ? PIECE_NAMES[piece] : "пусто"}`}
                 key={coordinate}
               >
                 {fileIndex === 0 && (
@@ -3445,11 +2843,6 @@ function Chessboard({
                     aria-hidden="true"
                   >
                     {PIECE_GLYPHS[piece]}
-                  </span>
-                )}
-                {isGoal && (
-                  <span className="chess-square__goal" aria-hidden="true">
-                    ✦
                   </span>
                 )}
               </div>

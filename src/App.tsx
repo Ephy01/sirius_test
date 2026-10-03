@@ -2,10 +2,11 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   api,
-  type ContestSummary as ApiContestSummary,
-  type ParticipantTask as ApiParticipantTask,
+  type ContestSummary,
+  type ParticipantTask,
+  type ParticipantTelemetryEvent,
+  type TaskInteractionInput,
   type TaskProgressEntry,
-  type TaskInteractionResponse as ApiTaskInteractionResponse,
 } from "./api";
 import {
   clearAccessSession,
@@ -25,7 +26,6 @@ import {
 import {
   ContestBuilder,
   type ContestDraftInput,
-  type ContestSummary as BuilderContestSummary,
   type GeneratedCodeRow,
   type ParticipantDraft,
 } from "./organizer/ContestBuilder";
@@ -33,11 +33,11 @@ import { ContestAccessPanel } from "./organizer/ContestAccessPanel";
 import {
   ParticipantTutorial,
   ParticipantWorkspace,
-  type ParticipantTask as WorkspaceParticipantTask,
-  type ParticipantTelemetryEvent,
   type TaskMoveTransitionResult,
   type TaskTransitionResult,
 } from "./participant";
+
+const ENVIRONMENT_LABEL = "Смешанный контент";
 
 type Authenticate = (code: string) => Promise<void>;
 
@@ -244,11 +244,11 @@ function OrganizerDashboard({
 }) {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [managedContest, setManagedContest] =
-    useState<ApiContestSummary | null>(null);
-  const [contests, setContests] = useState<ApiContestSummary[]>([]);
+    useState<ContestSummary | null>(null);
+  const [contests, setContests] = useState<ContestSummary[]>([]);
   const [notice, setNotice] = useState("");
   const [contestPendingDeletion, setContestPendingDeletion] =
-    useState<ApiContestSummary | null>(null);
+    useState<ContestSummary | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
@@ -284,26 +284,23 @@ function OrganizerDashboard({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [contestPendingDeletion, deleteBusy]);
 
-  async function createContest(
-    input: ContestDraftInput,
-  ): Promise<BuilderContestSummary> {
-    const created = await api.createContest(
+  function createContest(input: ContestDraftInput): Promise<ContestSummary> {
+    const { taskConfig } = input;
+    return api.createContest(
       {
         title: input.title,
         durationMinutes: input.durationMinutes,
-        environmentKey: input.environmentKey,
         taskConfig: {
-          adaptation_threshold: input.taskConfig.adaptationThreshold,
-          cohort_seed: input.taskConfig.cohortSeed,
-          debug_reveal_answers: input.taskConfig.debugRevealAnswers === true,
-          ...(input.taskConfig.ai
+          adaptation_threshold: taskConfig.adaptationThreshold,
+          cohort_seed: taskConfig.cohortSeed,
+          debug_reveal_answers: taskConfig.debugRevealAnswers === true,
+          ...(taskConfig.ai
             ? {
                 ai: {
-                  enabled: input.taskConfig.ai.enabled,
-                  mode: input.taskConfig.ai.mode,
-                  max_turns_per_attempt:
-                    input.taskConfig.ai.maxTurnsPerAttempt,
-                  max_turns_per_task: input.taskConfig.ai.maxTurnsPerTask,
+                  enabled: taskConfig.ai.enabled,
+                  mode: taskConfig.ai.mode,
+                  max_turns_per_attempt: taskConfig.ai.maxTurnsPerAttempt,
+                  max_turns_per_task: taskConfig.ai.maxTurnsPerTask,
                 },
               }
             : {}),
@@ -311,22 +308,21 @@ function OrganizerDashboard({
             mode: "adaptive",
             director_version: "director-v2",
             start_family:
-              input.taskConfig.families.find((family) => family.enabled)?.key ??
+              taskConfig.families.find((family) => family.enabled)?.key ??
               "geo_zendo",
           },
-          families: input.taskConfig.families.map((family) => ({
+          families: taskConfig.families.map((family) => ({
             family: family.key,
             skin: family.skin,
             enabled: family.enabled,
             weight: family.weight,
             initial_difficulty: family.initialDifficulty,
             max_difficulty: family.maxDifficulty,
-            locked_chapter: family.lockedChapter,
             sub_kinds: family.subKinds,
           })),
-          ...(input.taskConfig.scriptedTasks.length > 0
+          ...(taskConfig.scriptedTasks.length > 0
             ? {
-                scripted_tasks: input.taskConfig.scriptedTasks.map((task) => ({
+                scripted_tasks: taskConfig.scriptedTasks.map((task) => ({
                   family: task.family,
                   sub_kind: task.subKind,
                   position: task.position,
@@ -337,12 +333,6 @@ function OrganizerDashboard({
       },
       { token: session.token },
     );
-    return {
-      id: created.id,
-      title: created.title,
-      durationMinutes: created.durationMinutes,
-      status: created.status === "published" ? "published" : "draft",
-    };
   }
 
   async function addParticipants(
@@ -362,11 +352,9 @@ function OrganizerDashboard({
   }
 
   async function generateCodes(contestId: string): Promise<GeneratedCodeRow[]> {
-    const response = await api.generateCodes(
-      contestId,
-      {},
-      { token: session.token },
-    );
+    const response = await api.generateCodes(contestId, {
+      token: session.token,
+    });
     return response.codes.map((item) => ({
       enrollmentId: item.enrollmentId,
       externalRef: item.participantExternalRef ?? "—",
@@ -375,19 +363,12 @@ function OrganizerDashboard({
     }));
   }
 
-  async function publishContest(
-    contestId: string,
-  ): Promise<BuilderContestSummary> {
+  async function publishContest(contestId: string): Promise<ContestSummary> {
     const published = await api.publishContest(contestId, {
       token: session.token,
     });
     await refreshContests();
-    return {
-      id: published.id,
-      title: published.title,
-      durationMinutes: published.durationMinutes,
-      status: "published",
-    };
+    return published;
   }
 
   async function deleteContest() {
@@ -505,13 +486,7 @@ function OrganizerDashboard({
                       ? "Опубликован"
                       : "Черновик"}
                   </span>
-                  <span className="eyebrow">
-                    {contest.environmentKey === "mixed"
-                      ? "Смешанный контент"
-                      : contest.environmentKey === "geometry_world"
-                        ? "Геометрический мир"
-                        : "Шахматный мир"}
-                  </span>
+                  <span className="eyebrow">{ENVIRONMENT_LABEL}</span>
                 </div>
                 <h2>{contest.title}</h2>
                 <p>{contest.durationMinutes} минут · персональные коды</p>
@@ -645,15 +620,8 @@ function ParticipantWaitingScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showTutorial, setShowTutorial] = useState(false);
-  const attempt = session.attempt;
-  const worldName =
-    session.contest?.environmentKey === "mixed"
-      ? "Смешанный контент"
-      : session.contest?.environmentKey === "geometry_world"
-        ? "Геометрический мир"
-        : "Шахматный мир";
 
-  if (attempt) {
+  if (session.attempt) {
     return (
       <ParticipantContestScreen
         session={session}
@@ -715,7 +683,7 @@ function ParticipantWaitingScreen({
         <p className="eyebrow">
           Контест готов
         </p>
-        <h1>{session.contest?.title ?? worldName}</h1>
+        <h1>{session.contest?.title ?? ENVIRONMENT_LABEL}</h1>
         <p>
           После старта у вас будет {session.contest?.durationMinutes ?? 60} минут.
           Таймер запускается только по кнопке.
@@ -728,7 +696,7 @@ function ParticipantWaitingScreen({
           </div>
           <div>
             <dt>Среда</dt>
-            <dd>{worldName}</dd>
+            <dd>{ENVIRONMENT_LABEL}</dd>
           </div>
           <div>
             <dt>Длительность</dt>
@@ -799,7 +767,7 @@ function ParticipantContestScreen({
   session: AccessSession;
   onLogout: () => void;
 }) {
-  const [task, setTask] = useState<ApiParticipantTask | null>(null);
+  const [task, setTask] = useState<ParticipantTask | null>(null);
   const [taskProgress, setTaskProgress] = useState<TaskProgressEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -841,262 +809,11 @@ function ParticipantContestScreen({
     return () => controller.abort();
   }, [task?.id, task?.status, session.token]);
 
-  async function answerTask(answer: string): Promise<TaskTransitionResult> {
+  function requireActiveTask(): ParticipantTask {
     if (!task || task.status !== "active") {
       throw new Error("Текущая задача уже закрыта.");
     }
-    return runTaskAction(async () => {
-      const response = await api.answerTask(task.id, answer, {
-        token: session.token,
-      });
-      setTask(response.task);
-      if (response.task.status === "active") {
-        return {
-          ordinal: response.task.ordinal,
-          advanced: false,
-          message: response.message,
-        };
-      }
-      try {
-        const next = await api.getNextTask({ token: session.token });
-        setTask(next.task);
-        return { ordinal: next.task.ordinal, advanced: true };
-      } catch {
-        return {
-          ordinal: response.task.ordinal,
-          advanced: false,
-          message:
-            "Ответ зафиксирован, но следующая задача не открылась. Используйте /next.",
-        };
-      }
-    });
-  }
-
-  async function resolveCompletedOperation(
-    response: ApiTaskInteractionResponse,
-  ): Promise<TaskMoveTransitionResult> {
-    setTask(response.task);
-    if (!response.completed) {
-      return {
-        ordinal: response.task.ordinal,
-        advanced: false,
-        accepted: response.accepted,
-        completed: response.completed,
-        message: response.message,
-      };
-    }
-    try {
-      const next = await api.getNextTask({ token: session.token });
-      setTask(next.task);
-      return {
-        ordinal: next.task.ordinal,
-        advanced: true,
-        accepted: response.accepted,
-        completed: true,
-        message: response.message,
-      };
-    } catch {
-      return {
-        ordinal: response.task.ordinal,
-        advanced: false,
-        accepted: response.accepted,
-        completed: true,
-        message:
-          `${response.message} Следующая задача не открылась. ` +
-          "Используйте /next.",
-      };
-    }
-  }
-
-  async function probeTask(
-    probe: string,
-    clientActionId: string,
-  ): Promise<TaskMoveTransitionResult> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая задача уже закрыта.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.interactWithTask(
-        task.id,
-        {
-          actionType: "probe",
-          probe,
-          clientActionId,
-        },
-        { token: session.token },
-      );
-      setTask(response.task);
-      return {
-        ordinal: response.task.ordinal,
-        advanced: false,
-        accepted: response.accepted,
-        completed: response.completed,
-        message: response.message,
-      };
-    });
-  }
-
-  async function getAnswerTask(): Promise<{
-    answer: string;
-    commands: string[];
-    details: string[];
-  }> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая задача уже закрыта.");
-    }
-    return api.getParticipantDebugAnswer(task.id, { token: session.token });
-  }
-
-  async function sendAiMessage(message: string, clientActionId: string) {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая задача уже закрыта.");
-    }
-    return api.sendAiTurn(
-      task.id,
-      { clientActionId, message },
-      { token: session.token },
-    );
-  }
-
-  async function loadAiHistory() {
-    if (!task) {
-      throw new Error("Задача недоступна.");
-    }
-    return api.getAiTurns(task.id, { token: session.token });
-  }
-
-  async function hintTask(
-    clientActionId: string,
-  ): Promise<TaskMoveTransitionResult> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая задача уже закрыта.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.interactWithTask(
-        task.id,
-        {
-          actionType: "hint",
-          clientActionId,
-        },
-        { token: session.token },
-      );
-      setTask(response.task);
-      return {
-        ordinal: response.task.ordinal,
-        advanced: false,
-        accepted: response.accepted,
-        completed: response.completed,
-        message: response.message,
-      };
-    });
-  }
-
-  async function applyOperationTask(
-    opId: string,
-    clientActionId: string,
-  ): Promise<TaskMoveTransitionResult> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая машина уже закрыта.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.interactWithTask(
-        task.id,
-        {
-          actionType: "apply_op",
-          opId,
-          clientActionId,
-        },
-        { token: session.token },
-      );
-      return resolveCompletedOperation(response);
-    });
-  }
-
-  async function undoMachineTask(
-    clientActionId: string,
-  ): Promise<TaskMoveTransitionResult> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая машина уже закрыта.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.interactWithTask(
-        task.id,
-        {
-          actionType: "undo",
-          clientActionId,
-        },
-        { token: session.token },
-      );
-      setTask(response.task);
-      return {
-        ordinal: response.task.ordinal,
-        advanced: false,
-        accepted: response.accepted,
-        completed: response.completed,
-        message: response.message,
-      };
-    });
-  }
-
-  async function resetTask(
-    clientActionId: string,
-  ): Promise<TaskMoveTransitionResult> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая задача уже закрыта.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.interactWithTask(
-        task.id,
-        {
-          actionType: "reset",
-          clientActionId,
-        },
-        { token: session.token },
-      );
-      setTask(response.task);
-      return {
-        ordinal: response.task.ordinal,
-        advanced: false,
-        accepted: response.accepted,
-        completed: response.completed,
-        message: response.message,
-      };
-    });
-  }
-
-  async function skipTask(): Promise<TaskTransitionResult> {
-    if (!task || task.status !== "active") {
-      throw new Error("Текущая задача уже закрыта.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.skipTask(task.id, {
-        token: session.token,
-      });
-      setTask(response.task);
-      try {
-        const next = await api.getNextTask({ token: session.token });
-        setTask(next.task);
-        return { ordinal: next.task.ordinal, advanced: true };
-      } catch {
-        return {
-          ordinal: response.task.ordinal,
-          advanced: false,
-          message:
-            "Пропуск зафиксирован, но следующая задача не открылась. Используйте /next.",
-        };
-      }
-    });
-  }
-
-  async function nextTask(): Promise<TaskTransitionResult> {
-    if (!task || task.status === "active") {
-      throw new Error("Сначала завершите текущую задачу.");
-    }
-    return runTaskAction(async () => {
-      const response = await api.getNextTask({ token: session.token });
-      setTask(response.task);
-      return { ordinal: response.task.ordinal, advanced: true };
-    });
+    return task;
   }
 
   async function runTaskAction<T>(action: () => Promise<T>): Promise<T> {
@@ -1116,6 +833,116 @@ function ParticipantContestScreen({
     }
   }
 
+  async function openNextTask(
+    closedTask: ParticipantTask,
+    failureMessage: string,
+  ): Promise<TaskTransitionResult> {
+    try {
+      const next = await api.getNextTask({ token: session.token });
+      setTask(next.task);
+      return { ordinal: next.task.ordinal, advanced: true };
+    } catch {
+      return {
+        ordinal: closedTask.ordinal,
+        advanced: false,
+        message: failureMessage,
+      };
+    }
+  }
+
+  async function answerTask(answer: string): Promise<TaskTransitionResult> {
+    const activeTask = requireActiveTask();
+    return runTaskAction(async () => {
+      const response = await api.answerTask(activeTask.id, answer, {
+        token: session.token,
+      });
+      setTask(response.task);
+      if (response.task.status === "active") {
+        return {
+          ordinal: response.task.ordinal,
+          advanced: false,
+          message: response.message,
+        };
+      }
+      return openNextTask(
+        response.task,
+        "Ответ зафиксирован, но следующая задача не открылась. Используйте /next.",
+      );
+    });
+  }
+
+  async function skipTask(): Promise<TaskTransitionResult> {
+    const activeTask = requireActiveTask();
+    return runTaskAction(async () => {
+      const response = await api.skipTask(activeTask.id, {
+        token: session.token,
+      });
+      setTask(response.task);
+      return openNextTask(
+        response.task,
+        "Пропуск зафиксирован, но следующая задача не открылась. Используйте /next.",
+      );
+    });
+  }
+
+  async function nextTask(): Promise<TaskTransitionResult> {
+    if (!task || task.status === "active") {
+      throw new Error("Сначала завершите текущую задачу.");
+    }
+    return runTaskAction(async () => {
+      const response = await api.getNextTask({ token: session.token });
+      setTask(response.task);
+      return { ordinal: response.task.ordinal, advanced: true };
+    });
+  }
+
+  async function interact(
+    input: TaskInteractionInput,
+  ): Promise<TaskMoveTransitionResult> {
+    const activeTask = requireActiveTask();
+    return runTaskAction(async () => {
+      const response = await api.interactWithTask(activeTask.id, input, {
+        token: session.token,
+      });
+      setTask(response.task);
+      const result = {
+        ordinal: response.task.ordinal,
+        advanced: false,
+        accepted: response.accepted,
+        completed: response.completed,
+        message: response.message,
+      };
+      if (input.actionType !== "apply_op" || !response.completed) return result;
+
+      const transition = await openNextTask(
+        response.task,
+        `${response.message ?? "Задача завершена."} Следующая задача не открылась. Используйте /next.`,
+      );
+      return { ...result, ...transition };
+    });
+  }
+
+  async function getDebugAnswer() {
+    return api.getParticipantDebugAnswer(requireActiveTask().id, {
+      token: session.token,
+    });
+  }
+
+  async function sendAiMessage(message: string, clientActionId: string) {
+    return api.sendAiTurn(
+      requireActiveTask().id,
+      { clientActionId, message },
+      { token: session.token },
+    );
+  }
+
+  async function loadAiHistory() {
+    if (!task) {
+      throw new Error("Задача недоступна.");
+    }
+    return api.getAiTurns(task.id, { token: session.token });
+  }
+
   async function recordTelemetry(
     event: ParticipantTelemetryEvent,
   ): Promise<void> {
@@ -1123,99 +950,6 @@ function ParticipantContestScreen({
       token: session.token,
     });
   }
-
-  const workspaceTask: WorkspaceParticipantTask | null = task
-    ? {
-        id: task.id,
-        ordinal: task.ordinal,
-        family: task.family,
-        kind: task.publicState.kind,
-        difficulty: task.difficulty,
-        status: task.status,
-        prompt: task.publicState.prompt,
-        dice:
-          task.publicState.kind === "dice_chess_probability"
-            ? (task.publicState.dice as unknown as WorkspaceParticipantTask["dice"])
-            : task.publicState.kind === "dice_chess_position_probability" ||
-                task.publicState.kind === "dice_chess_board_inventory_probability"
-              ? ([task.publicState.die] as unknown as WorkspaceParticipantTask["dice"])
-              : undefined,
-        sampleSpaceSize:
-          task.publicState.kind === "dice_chess_probability" ||
-          task.publicState.kind === "dice_chess_board_inventory_probability" ||
-          task.publicState.kind === "dice_chess_position_probability"
-            ? task.publicState.sampleSpaceSize
-            : undefined,
-        eventDescription:
-          task.publicState.kind === "dice_chess_probability" ||
-          task.publicState.kind === "dice_chess_board_inventory_probability" ||
-          task.publicState.kind === "dice_chess_position_probability"
-            ? task.publicState.eventDescription
-            : undefined,
-        board:
-          task.publicState.kind === "dice_chess_board_inventory_probability" ||
-          task.publicState.kind === "dice_chess_position_probability"
-            ? (task.publicState.board as WorkspaceParticipantTask["board"])
-            : undefined,
-        sideToMove:
-          task.publicState.kind === "dice_chess_position_probability"
-            ? task.publicState.sideToMove
-            : undefined,
-        geometryScene:
-          task.publicState.kind === "geometry_atlas" ||
-          task.publicState.kind === "point_zendo"
-            ? task.publicState.scene
-            : undefined,
-        geometryContent:
-          task.publicState.kind === "geometry_atlas" ||
-          task.publicState.kind === "token_zendo" ||
-          task.publicState.kind === "point_zendo" ||
-          task.publicState.kind === "grid_zendo"
-            ? task.publicState.content
-            : undefined,
-        geometryInteraction:
-          task.publicState.kind === "geometry_atlas" ||
-          task.publicState.kind === "token_zendo" ||
-          task.publicState.kind === "point_zendo" ||
-          task.publicState.kind === "grid_zendo"
-            ? task.publicState.interaction
-            : undefined,
-        tokenCards:
-          task.publicState.kind === "token_zendo"
-            ? task.publicState.cards
-            : undefined,
-        gridCards:
-          task.publicState.kind === "grid_zendo"
-            ? task.publicState.cards
-            : undefined,
-        machinePanel:
-          task.publicState.kind === "machine_panel"
-            ? task.publicState
-            : undefined,
-        wiring:
-          task.publicState.kind === "hidden_wiring"
-            ? task.publicState
-            : undefined,
-        foldPunch:
-          task.publicState.kind === "fold_punch"
-            ? task.publicState
-            : undefined,
-        leaperBoard:
-          task.publicState.kind === "chess"
-            ? task.publicState
-            : undefined,
-        chessCoverage:
-          task.publicState.kind === "chess_coverage"
-            ? task.publicState
-            : undefined,
-        classicMath:
-          task.publicState.kind === "classic_math_free_response"
-            ? task.publicState
-            : undefined,
-        worldPhase: task.publicState.worldContext?.phase,
-        responseHint: task.publicState.responseHint,
-      }
-    : null;
 
   return (
     <div className="participant-page">
@@ -1225,25 +959,33 @@ function ParticipantContestScreen({
         meta={<span className="workspace-label">Контест идёт</span>}
       />
 
-      {workspaceTask ? (
+      {task ? (
         <ParticipantWorkspace
-          task={workspaceTask}
+          task={task}
           attemptId={session.attempt?.id}
           deadlineAt={session.attempt?.deadlineAt}
           taskProgress={taskProgress}
-          contestTitle={session.contest?.title ?? "Контест"}
-          participantName={session.participant?.displayName}
           busy={busy}
           error={error}
           onAnswer={answerTask}
           onSkip={skipTask}
           onNext={nextTask}
-          onProbe={probeTask}
-          onHint={hintTask}
-          onGetAnswer={getAnswerTask}
-          onApplyOperation={applyOperationTask}
-          onUndo={undoMachineTask}
-          onReset={resetTask}
+          onProbe={(probe, clientActionId) =>
+            interact({ actionType: "probe", probe, clientActionId })
+          }
+          onHint={(clientActionId) =>
+            interact({ actionType: "hint", clientActionId })
+          }
+          onGetAnswer={getDebugAnswer}
+          onApplyOperation={(opId, clientActionId) =>
+            interact({ actionType: "apply_op", opId, clientActionId })
+          }
+          onUndo={(clientActionId) =>
+            interact({ actionType: "undo", clientActionId })
+          }
+          onReset={(clientActionId) =>
+            interact({ actionType: "reset", clientActionId })
+          }
           onAiMessage={sendAiMessage}
           onLoadAiHistory={loadAiHistory}
           onTelemetry={recordTelemetry}
@@ -1259,7 +1001,7 @@ function ParticipantContestScreen({
           <h1>{loading ? "Создаём ваш вариант…" : "Не удалось открыть задачу"}</h1>
           <p>
             {loading
-              ? "Расстановка воспроизводимо создаётся по seed этой попытки."
+              ? "Задача воспроизводимо создаётся по seed этой попытки."
               : error}
           </p>
         </main>

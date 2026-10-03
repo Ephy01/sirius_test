@@ -1,12 +1,8 @@
 import type { ReactNode } from "react";
 
-type BrandProps = {
-  compact?: boolean;
-};
-
-export function Brand({ compact = false }: BrandProps) {
+export function Brand() {
   return (
-    <div className={`brand ${compact ? "brand--compact" : ""}`}>
+    <div className="brand">
       <span className="brand-logo-frame">
         <img
           className="brand-logo"
@@ -14,7 +10,7 @@ export function Brand({ compact = false }: BrandProps) {
           alt="Научно-технологический университет «Сириус»"
         />
       </span>
-      {!compact && <span className="brand-product">Gate</span>}
+      <span className="brand-product">Gate</span>
     </div>
   );
 }
@@ -40,18 +36,6 @@ export function PlusIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
     </svg>
-  );
-}
-
-export function OrbitGlyph({ small = false }: { small?: boolean }) {
-  return (
-    <span className={`orbit-glyph ${small ? "orbit-glyph--small" : ""}`} aria-hidden="true">
-      <i className="orbit-glyph__ring orbit-glyph__ring--one" />
-      <i className="orbit-glyph__ring orbit-glyph__ring--two" />
-      <i className="orbit-glyph__core" />
-      <i className="orbit-glyph__satellite orbit-glyph__satellite--one" />
-      <i className="orbit-glyph__satellite orbit-glyph__satellite--two" />
-    </span>
   );
 }
 

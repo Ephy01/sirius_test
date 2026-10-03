@@ -1,7 +1,11 @@
 import { FormEvent, useMemo, useState } from "react";
+import {
+  saveDownloadedFile,
+  type ClassicMathSubKind,
+  type ContestSummary,
+} from "../api";
 import "./contest-builder.css";
 
-export type EnvironmentKey = "mixed" | "chess_world" | "geometry_world";
 export type TaskFamilyKey =
   | "geo_zendo"
   | "token_zendo"
@@ -22,7 +26,6 @@ export type TaskFamilyConfig = {
   weight: number;
   initialDifficulty: number;
   maxDifficulty: number;
-  lockedChapter?: boolean;
   subKinds?: string[];
 };
 
@@ -44,18 +47,15 @@ export type ContestAiConfig = {
   maxTurnsPerTask: number;
 };
 
-export type ClassicMathTaskKey = "share_paradox" | "bar_seating";
-
 export type ScriptedTaskConfig = {
   family: "classic_math";
-  subKind: ClassicMathTaskKey;
+  subKind: ClassicMathSubKind;
   position: number;
 };
 
 export type ContestDraftInput = {
   title: string;
   durationMinutes: number;
-  environmentKey: EnvironmentKey;
   taskConfig: {
     adaptationThreshold: number;
     cohortSeed?: string;
@@ -64,13 +64,6 @@ export type ContestDraftInput = {
     families: TaskFamilyConfig[];
     scriptedTasks: ScriptedTaskConfig[];
   };
-};
-
-export type ContestSummary = {
-  id: string;
-  title: string;
-  status: "draft" | "published";
-  durationMinutes: number;
 };
 
 export type ParticipantDraft = {
@@ -156,7 +149,7 @@ const FAMILY_LABELS: Record<
 };
 
 const CLASSIC_MATH_TASKS: Record<
-  ClassicMathTaskKey,
+  ClassicMathSubKind,
   { title: string; description: string }
 > = {
   share_paradox: {
@@ -315,7 +308,7 @@ export function ContestBuilder({
   const [aiTurnsPerTask, setAiTurnsPerTask] = useState<NumericDraft>(5);
   const [classicMathEnabled, setClassicMathEnabled] = useState(false);
   const [classicMathTask, setClassicMathTask] =
-    useState<ClassicMathTaskKey>("share_paradox");
+    useState<ClassicMathSubKind>("share_paradox");
   const [classicMathPosition, setClassicMathPosition] =
     useState<NumericDraft>(1);
   const [families, setFamilies] =
@@ -457,7 +450,6 @@ export function ContestBuilder({
       const created = await onCreateContest({
         title: title.trim(),
         durationMinutes,
-        environmentKey: "mixed",
         taskConfig: {
           adaptationThreshold: 3,
           cohortSeed: cohortSeed.trim() || undefined,
@@ -562,15 +554,10 @@ export function ContestBuilder({
           .join(";"),
       )
       .join("\n");
-    const blob = new Blob([`\uFEFF${csv}`], {
-      type: "text/csv;charset=utf-8",
+    saveDownloadedFile({
+      blob: new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }),
+      filename: `${contest?.title || "contest"}-codes.csv`,
     });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${contest?.title || "contest"}-codes.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   return (
@@ -711,9 +698,9 @@ export function ContestBuilder({
               </div>
             </section>
           ) : (
-            <section aria-labelledby="builderWorldTitle">
+            <section aria-labelledby="builderFamiliesTitle">
               <span className="builder-section-label">02 · семейства</span>
-              <h2 id="builderWorldTitle">Контент траектории</h2>
+              <h2 id="builderFamiliesTitle">Контент траектории</h2>
               <article
                 className={`scripted-family${
                   classicMathEnabled ? " is-enabled" : ""
@@ -956,7 +943,6 @@ export function ContestBuilder({
             ))}
           </div>
           <button
-            className="text-action"
             type="button"
             onClick={() =>
               setParticipants((current) => [...current, newParticipant()])

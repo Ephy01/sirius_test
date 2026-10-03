@@ -1,17 +1,5 @@
 export {
   ParticipantWorkspace,
-  type ChessBoard,
-  type ChessBoardCell,
-  type ChessDie,
-  type ChessDiceSet,
-  type ChessPieceCode,
-  type ChessPieceKind,
-  type DiceFaces,
-  type DicePieceKind,
-  type ParticipantTask,
-  type ParticipantTelemetryEvent,
-  type ParticipantTelemetryEventType,
-  type ParticipantWorkspaceProps,
   type TaskMoveTransitionResult,
   type TaskTransitionResult,
 } from "./ParticipantWorkspace";

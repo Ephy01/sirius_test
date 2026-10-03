@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import {
   ApiError,
   api,
+  saveDownloadedFile,
   type ContestEnrollmentAccess,
   type ContestSummary,
-  type DownloadedFile,
 } from "../api";
 import "./contest-access-panel.css";
 
@@ -124,22 +124,6 @@ function actionError(caught: unknown, fallback: string) {
     : fallback;
 }
 
-function saveDownloadedFile(file: DownloadedFile) {
-  const url = URL.createObjectURL(file.blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = file.filename;
-  anchor.hidden = true;
-  document.body.append(anchor);
-
-  try {
-    anchor.click();
-  } finally {
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-  }
-}
-
 export function ContestAccessPanel({
   contest,
   token,
@@ -198,12 +182,9 @@ export function ContestAccessPanel({
     setError("");
     setNotice("");
     try {
-      const result = await api.rotateEnrollmentCode(
-        contest.id,
-        row.id,
-        {},
-        { token },
-      );
+      const result = await api.rotateEnrollmentCode(contest.id, row.id, {
+        token,
+      });
       setFreshCodes((current) => ({
         ...current,
         [row.id]: result.code,
@@ -224,11 +205,7 @@ export function ContestAccessPanel({
     setError("");
     setNotice("");
     try {
-      const result = await api.generateCodes(
-        contest.id,
-        { recoverOnly: true },
-        { token },
-      );
+      const result = await api.recoverCodes(contest.id, { token });
       if (!result.codes.length) {
         setNotice(
           result.skippedCount
