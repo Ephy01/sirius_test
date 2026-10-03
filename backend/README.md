@@ -32,7 +32,7 @@ cp .env.example .env
 | Модуль | Ответственность |
 |---|---|
 | `app/main.py` | фабрика приложения |
-| `app/api/` | маршруты: `health`, `access`, `contests`, `enrollments`, `participant`, `tasks`, `assistant` |
+| `app/api/` | маршруты: `health`, `access`, `contests`, `enrollments`, `participant`, `tasks`, `assistant`, `catalog`, `sandbox` |
 | `app/access_codes.py` | персональные коды |
 | `app/attempts.py` | попытки, их истечение и seed |
 | `app/contest_config.py` | чтение и проверка `task_config` |
@@ -40,7 +40,8 @@ cp .env.example .env
 | `app/task_flow.py` | создание, оценка и закрытие задачи |
 | `app/events.py` | журнал событий |
 | `app/telemetry.py` | текстовый экспорт журнала |
-| `app/tasks/` | семейства задач, реестр, director |
+| `app/tasks/` | семейства задач, реестр, director, загрузка модулей задач |
+| `sirius_gate/` | интерфейс платформы для авторов модулей и проверка модулей |
 | `app/ai/` | ассистент |
 | `app/models.py`, `app/schemas.py` | таблицы и схемы API |
 | `app/security.py`, `app/dependencies.py` | коды, токены и авторизация |
@@ -55,3 +56,8 @@ cp .env.example .env
 
 Контракт описан в `app/tasks/family.py`, порядок действий на клиенте — в
 разделе 23 документации.
+
+Семейство можно подключить и без правки платформы, как модуль в папке
+`TASK_MODULES_DIR`. Модуль проверяется командой
+`.venv/bin/python -m sirius_gate.check <папка модулей>`. Подробности в
+разделе 23.7 документации.
