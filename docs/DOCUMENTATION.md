@@ -1,10 +1,10 @@
 # Sirius Gate — полная техническая документация
 
-> Актуально для ветки `feature/content-v3`, базовая ревизия `35a219e`, 5 августа 2026 года.
+> Актуально для ветки `dev`, октябрь 2026 года.
 
 Этот документ описывает фактическое состояние работающего кода Sirius Gate: архитектуру, пользовательские сценарии, модель данных, генерацию задач, адаптацию, скоринг, ИИ-ассистента, телеметрию, API, локальный запуск и production-развёртывание.
 
-Источником истины считаются код, миграции и тесты. Корневой `README.md` и `backend/README.md` частично устарели: в них всё ещё встречаются Chess960, Penultima, `nim_like`, `geo_graph` и команды, которые не подключены к текущему runtime.
+Источником истины считаются код, миграции и тесты. Краткое введение и команды запуска находятся в корневом `README.md`.
 
 ## Содержание
 
@@ -84,13 +84,14 @@ Sirius Gate — экспериментальная платформа для п�
 - отдельные роли нескольких организаторов;
 - refresh tokens, восстановление пароля или обычные аккаунты;
 - frontend E2E- и component-тесты;
-- активные Chess960, Penultima, `nim_like` и `geo_graph`.
+- машинно-читаемая выгрузка журнала (JSON или CSV) и модуль анализа телеметрии;
+- выбор провайдера ИИ: поддержан только Yandex AI Studio.
 
 ### Термины статуса контента
 
-- **Активное семейство** — доступно в реестре, API, конструкторе и participant UI.
-- **Совместимость** — код умеет открыть или проверить ранее сохранённую версию, но новые задачи этой версии не создаются.
-- **Неподключённый эксперимент** — файл или прежняя идея не импортируется реестром и не является функцией платформы.
+- **Активное семейство** — зарегистрировано в `backend/app/tasks/registry.py`, принимается API и отображается клиентом.
+- **Ротационное семейство** — активное семейство, которое директор выбирает по весам. Конструктор предлагает десять таких семейств. `dice_chess` зарегистрировано и принимается API, но в конструктор не выведено.
+- **Скриптовое семейство** — выдаётся один раз на заданной позиции и в ротации не участвует (`classic_math`).
 
 ## 3. Архитектура системы
 
@@ -190,14 +191,20 @@ sirius_test/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              фабрика FastAPI-приложения
-│   │   ├── api.py               все REST-маршруты и runtime orchestration
+│   │   ├── api/                 REST-маршруты, по файлу на раздел API
+│   │   ├── access_codes.py      персональные коды
+│   │   ├── attempts.py          попытки и их истечение
+│   │   ├── contest_config.py    чтение и проверка task_config
+│   │   ├── routing.py           выбор следующей задачи и её seed
+│   │   ├── task_flow.py         создание, оценка и закрытие задачи
+│   │   ├── events.py            журнал событий попытки
 │   │   ├── models.py            SQLAlchemy-модель данных
 │   │   ├── schemas.py           Pydantic-схемы API
 │   │   ├── security.py          коды, HMAC и Bearer token
 │   │   ├── dependencies.py      auth-зависимости FastAPI
 │   │   ├── telemetry.py         формирование текстового экспорта
 │   │   ├── ai/                  контекст, prompt, provider и AI service
-│   │   └── environments/        генераторы, evaluator-ы и director
+│   │   └── tasks/               семейства задач, реестр и director
 │   ├── alembic/                 production-миграции
 │   ├── tests/                   backend test suite
 │   ├── Dockerfile               production API image
@@ -238,7 +245,7 @@ flowchart TD
 3. **Участники** — внешний ID и отображаемое имя.
 4. **Коды** — выпуск кодов, локальный CSV-экспорт и публикация.
 
-Новые контесты из UI всегда создаются как `mixed` с `director-v2`. Отдельного выбора старых `chess_world` и `geometry_world` в интерфейсе нет.
+Контесты создаются с `environment_key = "mixed"` и траекторией `director-v2`, других значений API не принимает. Поле `environment_key` сохранено в схеме базы и в ответах API ради контестов, созданных раньше.
 
 ### Сценарий участника
 
@@ -374,6 +381,17 @@ flowchart TD
 ## 8. Backend и API
 
 Backend — синхронный FastAPI-монолит. Все route handler-ы объявлены обычными `def`; FastAPI выполняет их в thread pool. Async ORM, message broker, фоновые workers и отдельный scheduler отсутствуют.
+
+Маршруты разложены по файлам пакета `backend/app/api/`: `health`, `access`, `contests`, `enrollments`, `participant`, `tasks`, `assistant`. Обработчики читают запрос, вызывают предметные модули и собирают ответ. Правила вынесены в модули рядом:
+
+| Модуль | Ответственность |
+|---|---|
+| `access_codes.py` | выпуск, восстановление, отзыв и истечение персональных кодов |
+| `attempts.py` | активная попытка, истечение по дедлайну, seed попытки, snapshot конфигурации |
+| `contest_config.py` | чтение и проверка `task_config` |
+| `routing.py` | выбор следующего семейства и сложности, seed задачи |
+| `task_flow.py` | поиск, создание, оценка и закрытие задачи |
+| `events.py` | запись событий в журнал попытки |
 
 ### 8.1. Запуск приложения
 
@@ -707,7 +725,9 @@ family + generator_version + seed + difficulty
 - `public_state` — условие и данные, безопасные для участника;
 - `private_state` — скрытое правило, эталон, witness, сертификат и runtime-состояние.
 
-Evaluator получает ответ и `private_state`, а затем возвращает оценку. Registry является единой точкой диспетчеризации генераторов, evaluator-ов и интеракций.
+Evaluator получает ответ и `private_state`, а затем возвращает оценку.
+
+Каждое семейство описано одной записью `TaskFamily` в своём модуле пакета `backend/app/tasks/` (переменная `FAMILY`). Запись содержит ключ, версию генератора, функции генерации и проверки, допустимые действия, эталонный ответ для debug-режима и отбор полей для ИИ. Реестр `registry.py` собирает словарь `FAMILIES` из списка модулей и остаётся единой точкой вызова генераторов, evaluator-ов и интеракций.
 
 Базовый seed задачи вычисляется как SHA-256 от:
 
@@ -722,31 +742,33 @@ Evaluator получает ответ и `private_state`, а затем возв
 | Семейство | Версия новых задач | Тип | Что проверяется |
 |---|---|---|---|
 | `chess_coverage` | `chess-coverage-v2` | интерактив | размещение фигур с кастомными ходами, нелинейной стоимостью и ограничениями ресурсов |
-| `geo_zendo` | `geometry-zendo-v2` в mixed | интерактив | индукция скрытого правила на графах |
-| `token_zendo` | `token-zendo-v1` | интерактив | закономерности чисел, цветов и порядка |
-| `point_zendo` | `point-zendo-v1` | интерактив | геометрические свойства конфигураций точек |
+| `geo_zendo` | `geometry-zendo-v3` | интерактив | индукция скрытого правила на графах |
+| `token_zendo` | `token-zendo-v2` | интерактив | закономерности чисел, цветов и порядка |
+| `point_zendo` | `point-zendo-v2` | интерактив | геометрические свойства конфигураций точек |
 | `grid_zendo` | `grid-zendo-v1` | интерактив | симметрия, связность, чётность и конструкции 5×5 |
 | `hidden_wiring` | `hidden-wiring-v1` | интерактив | эксперимент, линейность над GF(2), планирование |
 | `machine_reach` | `machine-reach-v1` | интерактив | достижимость, инварианты и поиск последовательности |
 | `fold_punch` | `fold-punch-v1` | ответ/UI | пространственное мышление и композиция отражений |
 | `geo_transform` | `geometry-atlas-v1` | ответ | преобразования группы D4 |
 | `geo_probability` | `geometry-atlas-v1` | ответ | точная комбинаторика на графах |
+| `dice_chess` | `dice-chess-world-v3` | ответ | точная вероятность события на доске с кубиком фигур |
 | `classic_math` | `classic-math-v1` | скриптовая вставка | развёрнутый вывод и наличие обоснования |
 
-Новые mixed-контесты содержат десять ротационных семейств. `classic_math` существует отдельно от ротации и может появиться ровно один раз на позиции 1–100.
+Конструктор предлагает десять ротационных семейств. `dice_chess` доступно только через API. `classic_math` существует отдельно от ротации и может появиться ровно один раз на позиции 1–100.
 
-### 12.3. Шахматное покрытие и совместимость
+### 12.3. Шахматное покрытие и Dice & Chess
 
-В новых контестах шахматное семейство использует доску 5×5–7×7. На ней
-показаны кандидаты-фигуры с индивидуальными положительными весами и целевые
-клетки. Участник выбирает подмножество фигур так, чтобы все цели оказались под
-боем, и минимизирует суммарный вес. Линии боя в этой абстракции не
-перекрываются другими фигурами. Сервер перебирает все подмножества кандидатов,
-поэтому оптимум проверяется точно; генератор принимает только экземпляры с
-единственным оптимальным решением. Выбор фигур и сброс расстановки сохраняются
-как идемпотентные интеракции.
+В шахматном покрытии на доске 8×8 отмечены целевые клетки. Участник выбирает
+тип фигуры в палитре и ставит фигуры на свободные клетки так, чтобы каждая цель
+оказалась под боем. Четыре типа фигур ходят по собственным наборам прыжков,
+которые показаны в палитре, промежуточные клетки на бой не влияют. Каждая
+следующая фигура одного типа стоит дороже предыдущей, число фигур ограничено.
+Генератор точным перебором находит минимальную стоимость покрытия, ответ
+`/answer done` засчитывается, если все цели покрыты и стоимость равна
+минимальной. Установка, снятие фигуры и сброс расстановки сохраняются как
+идемпотентные интеракции.
 
-Dice & Chess сохранён для ранее созданных контестов.
+Семейство `dice_chess` зарегистрировано в реестре, но в конструктор не выведено.
 
 Сложности 1–2:
 
@@ -885,19 +907,15 @@ Dice & Chess сохранён для ранее созданных контес�
 
 Текущий автоматический judge проверяет точный итог, наличие маркера `Обоснование:` и минимальный объём текста. Он **не проверяет математическую корректность самого доказательства**. Полный ответ сохраняется в лог для ручного анализа.
 
-### 12.11. Совместимость и неподключённый контент
+### 12.11. Удалённый контент
 
-Registry сохраняет поддержку исторических Dice & Chess версий:
+В октябре 2026 года из кода удалены режимы совместимости:
 
-- `dice-chess-mission-v2`;
-- `dice-chess-probability-v1`;
-- `dice-chess-position-probability-v1`.
+- среды `chess_world` и `geometry_world` со своими директорами `chess-world-director-v1` и `geometry-world-director-v1`;
+- версии генераторов `chess-coverage-v1`, `dice-chess-mission-v2`, `dice-chess-probability-v1`, `dice-chess-position-probability-v1`;
+- вариант `geo_zendo` на `geometry-atlas-v1`.
 
-Новые задачи этих версий не выбираются.
-
-В `geometry_world` `geo_zendo` продолжает использовать legacy `geometry-atlas-v1`, а не общий Zendo v2. Новые контесты из UI используют `mixed`, поэтому получают v2.
-
-Chess960, Penultima, `nim_like`, `geo_graph` и их команды не входят в активный registry. Наличие экспериментального файла в локальном рабочем дереве само по себе не делает семейство доступным через API.
+Задачи этих версий, уже сохранённые в базе, остаются в журнале и попадают в текстовый экспорт. Открыть или проверить такую задачу сервер больше не может, а контест с прежним `director_version` новых задач не выдаёт (ошибка `DIRECTOR_VERSION_NOT_AVAILABLE`). Последняя ревизия с удалённым кодом — `0dc08dd`.
 
 ## 13. Адаптивная траектория
 
@@ -958,9 +976,9 @@ UI организатора этот режим сейчас не предлаг
 ["cohort-attempt-v1", cohort_seed, attempt_number]
 ```
 
-В `mixed + director-v2` presentation skin и database IDs исключаются из seed-материала. Поэтому одинаковые cohort, конфигурация и история ответов дают одинаковый маршрут и контент.
+Presentation skin и database IDs исключаются из seed-материала. Поэтому одинаковые cohort, конфигурация и история ответов дают одинаковый маршрут и контент.
 
-Старые `chess-world-director-v1` и `geometry-world-director-v1` являются compatibility-обёртками, но их контекст после первой задачи может включать UUID предыдущих задач. Полная cross-participant воспроизводимость гарантируется прежде всего для текущего `mixed/director-v2`.
+Seed задачи на адаптивном маршруте зависит от хеша контекста директора (`routing._director_context_hash`). Набор ключей этого хеша является частью `director-v2`: его изменение меняет все последующие задачи.
 
 ## 14. Скоринг
 
@@ -1024,7 +1042,14 @@ Bearer API key, folder ID и model URI. В запросе выставляютс
 - `temperature=0.3`;
 - ограничение output tokens.
 
-В тестах используется `FakeAssistantProvider`. Прямые OpenAI, Anthropic, Groq или DeepSeek provider-ы в текущем коде не реализованы.
+В тестах используется `FakeAssistantProvider`. Других провайдеров в коде нет.
+
+Точки расширения для второго провайдера:
+
+- `backend/app/ai/provider.py` задаёт протокол `AssistantProvider` с единственным методом `generate(ProviderRequest) -> ProviderResult`. Сервис `ai/service.py` работает только с этим протоколом.
+- `provider_from_settings` в `backend/app/ai/yandex.py` выбирает провайдера при старте процесса. Провайдер один на процесс и хранится в `app.state.ai_provider`.
+- URI модели берётся из настройки `YANDEX_AI_MODEL_URI` и записывается в каждый `ai_turns.model_uri`, название провайдера — в `ai_turns.provider`.
+- Локальная модель с OpenAI-совместимым интерфейсом (Ollama, vLLM, llama.cpp) может использовать тот же формат запроса, что и `YandexAssistantProvider`.
 
 ### 15.2. Условия доступности
 
@@ -1101,19 +1126,30 @@ Canonical context ограничивается 24 000 символов и хеш
 
 Канонические данные хранятся в PostgreSQL. `.txt` не дописывается во время прохождения: он строится заново при скачивании из панели организатора. Это исключает повреждение одного файла при параллельных запросах.
 
-Server events включают:
+Каждое событие — строка таблицы `attempt_events` с типом, порядковым номером внутри попытки, серверным временем, необязательной ссылкой на задачу и JSON-полем `payload`.
 
-- старт и истечение попытки;
-- snapshot конфигурации;
-- генерацию задачи и решение директора;
-- показ публичного состояния;
-- probe, hint, operation, undo;
-- hash состояния до и после интеракции;
-- отправку и оценку ответа;
-- freeze после специальной ошибки;
-- пропуск;
-- debug reveal;
-- AI lifecycle и tripwire.
+| Событие | Когда записывается | Основные поля `payload` |
+|---|---|---|
+| `attempt_started` | старт попытки | `number`, `started_at`, `deadline_at`, `source`, `task_config_snapshot`, `task_config_hash` |
+| `attempt_expired` | первое обращение после дедлайна | `deadline_at` |
+| `task_generated` | выдача задачи | `ordinal`, `family`, `generator_version`, `difficulty`, `seed`, `public_state`, `configured_weight`, `family_route_version`. Для адаптивного маршрута ещё `director_version`, `director_phase`, `decision_reason`, `parent_task_id`, `director_context_hash`, `task_config_hash`. Для скриптовой задачи `scripted_position`, `scripted_sub_kind` |
+| `task_interaction_submitted` | любое пошаговое действие | `interaction_id`, `client_action_id`, `action_type`, `probe` или `op_id` |
+| `task_interaction_resolved` | результат действия | `accepted`, `completed`, `reason`, `director_signal`, `before_state_hash`, `after_state_hash` |
+| `zendo_probe` | принятая проба в Zendo и в скрытой проводке | `card_id`, `vs_size_before`, `vs_size_after`, `gain_bits_actual`, `gain_bits_best` |
+| `prompt_used` | принятая подсказка `/hint` | `family` и поля подсказки |
+| `answer_submitted` | отправка ответа | `answer` |
+| `answer_evaluated` | результат проверки | общие поля `correct`, `score`, `continuous_score`, `difficulty`, `family`, `generator_version`, `director_signal` и поля семейства |
+| `task_input_frozen` | заморозка ввода после ошибки | `seconds`, `until`, `reason` |
+| `task_skipped` | пропуск | те же общие поля, `skipped` |
+| `debug_answer_revealed` | команда `/get answer` | `family` |
+| `ai_turn_requested` | запрос к ассистенту | `aiTurnId`, `inputLength`, `contextHash`, `promptVersion` |
+| `ai_turn_completed` | ответ ассистента | `aiTurnId`, `model`, `latencyMs`, `inputTokens`, `outputTokens`, `finishReason` |
+| `ai_turn_failed` | ошибка провайдера | `aiTurnId`, `errorCode` |
+| `ai_message_flagged` | сработал crisis tripwire | `aiTurnId`, `category`, `inputLength` |
+
+В событии `zendo_probe` поле `vs_size_*` — число правил генератора, согласующихся с тем, что участник уже видел, `gain_bits_actual` — фактически полученная информация в битах, `gain_bits_best` — наибольшее ожидаемое значение среди доступных проб.
+
+Тексты сообщений участника и ответы ассистента хранятся в таблице `ai_turns`, пошаговые действия — в `task_interactions`.
 
 ### 16.2. Клиентские события
 
@@ -1177,6 +1213,8 @@ Frontend дополнительно отправляет:
 Рекурсивно редактируются seed, cohort seed, `private_state`, коды, токены, hashes и secrets. Имя, внешний ID, ответы и AI-диалог не анонимизируются.
 
 Ответ имеет `Cache-Control: private, no-store` и `X-Content-Type-Options: nosniff`.
+
+Экспорт предназначен для чтения человеком. Машинно-читаемой выгрузки нет: модуль анализа должен читать таблицы `attempts`, `task_instances`, `task_interactions`, `attempt_events` и `ai_turns` напрямую или получить для этого отдельный маршрут API.
 
 ### 16.6. AI-саммари
 
@@ -1300,7 +1338,7 @@ Backend хранит `task_config` как обычный JSON и валидир�
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -e '.[test]'
+.venv/bin/pip install -e '.[test,dev]'
 cp .env.example .env
 .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
@@ -1326,8 +1364,12 @@ Vite слушает `http://127.0.0.1:4173` и проксирует `/api` на 
 npm run check
 npm run build
 cd backend
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
 .venv/bin/python -m pytest
 ```
+
+Стиль backend-кода задаёт `ruff` (настройки в `backend/pyproject.toml`): одинарные кавычки, строка до 110 символов. Перед коммитом достаточно выполнить `.venv/bin/ruff format .` и `.venv/bin/ruff check --fix .`.
 
 Dev API документация:
 
@@ -1535,7 +1577,8 @@ Workflow запускается на каждый push и pull request.
 ### Backend job
 
 - Python 3.12;
-- editable install `.[test]`;
+- editable install `.[test,dev]`;
+- `ruff check` и `ruff format --check`;
 - pytest;
 - `alembic upgrade head`;
 - `alembic check`.
@@ -1613,7 +1656,6 @@ Backend suite покрывает:
 
 ### 22.3. Дополнительный технический долг
 
-- `geo_zendo@geometry-atlas-v1` имеет непокрытый hint edge case для legacy правила `has_isolated_point`; новые mixed-контесты используют v2 и не затронуты.
 - SQLite development не включает явный `PRAGMA foreign_keys=ON`, поэтому DB cascade/restrict слабее production PostgreSQL.
 - Python dependencies заданы диапазонами без lock/constraints; rebuild старого commit не полностью воспроизводим.
 - Deploy/update/rollback не имеют process lock и не должны запускаться параллельно.
@@ -1622,51 +1664,63 @@ Backend suite покрывает:
 - При выключенном AI обычное сообщение всё равно отправляет запрос и показывает ошибку; отдельного disabled-state в UI нет.
 - AI semaphore действует на worker, а не на весь deployment.
 - Активная задача при lazy expiry попытки может остаться `active` в истории.
+- В `machine_reach` доля недостижимых целей задаётся функцией `_is_reachable_seed`, но выбор варианта через `seed % len(sub_kinds)` делает её значение постоянным: все задачи получаются достижимыми. Исправление меняет генерацию и требует новой версии генератора.
+- В `chess_coverage` у слона в таблице прыжков `CUSTOM_PIECES` нет смещения `(-2, 2)`, набор несимметричен. Исправление также требует новой версии генератора.
 
 ## 23. Как добавить новое семейство задач
 
-### 23.1. Backend generator и evaluator
+### 23.1. Модуль семейства
 
-Создать модуль в `backend/app/environments/` с неизменяемыми идентификаторами:
+Создать модуль в `backend/app/tasks/` с неизменяемыми идентификаторами, генератором, evaluator-ом и записью `FAMILY`:
 
 ```python
-FAMILY_KEY = "new_family"
-GENERATOR_VERSION = "new-family-v1"
+from .family import State, TaskFamily
+
+FAMILY_KEY = 'new_family'
+GENERATOR_VERSION = 'new-family-v1'
+
+
+def _generate(seed: int, difficulty: int, context: State) -> tuple[State, State]:
+    ...  # (public_state, private_state), оба сериализуются в JSON
+
+
+def _evaluate(answer: str, private_state: State) -> State:
+    ...  # {'correct': bool, ...}
+
+
+FAMILY = TaskFamily(key=FAMILY_KEY, version=GENERATOR_VERSION, generate=_generate, evaluate=_evaluate)
 ```
 
-Генератор должен принимать `seed`, `difficulty`, при необходимости `context`, и возвращать сериализуемые JSON `public_state` и `private_state`.
+Генератор обязан быть детерминированным: одинаковые `seed`, `difficulty` и `context` дают одинаковый результат. В `context` приходят `skin` и `sub_kinds` из конфигурации контеста.
 
 Evaluator должен:
 
 - полностью проверять ответ сервером;
 - возвращать `correct`;
-- при необходимости возвращать `continuous_score`, `efficient`, `should_finalize`, `freeze_seconds` и feedback;
+- при необходимости возвращать `continuous_score`, `efficient`, `should_finalize`, `freeze_seconds` и `feedback`;
 - не зависеть от frontend;
 - быть детерминированным для сохранённого `private_state`.
 
-### 23.2. Registry
+Необязательные поля `TaskFamily`:
 
-В `backend/app/environments/registry.py`:
+| Поле | Назначение |
+|---|---|
+| `actions` | пошаговые действия: словарь `action_type -> функция(payload, public_state, private_state) -> Transition`. Допустимые типы действий: `probe`, `hint`, `apply_op`, `undo`, `reset` |
+| `probe_action` | действие, которое считается пробой и пишет событие `zendo_probe` при наличии `gain_bits_actual` в результате |
+| `aliases` | прежние написания ключа, принимаемые в `task_config` |
+| `sub_kinds` | варианты семейства, которые организатор может ограничить в конфигурации |
+| `scripted_only` | семейство выдаётся только как скриптовая задача |
+| `tracks_first_action` | сервер записывает время до первого действия в `private_state.interaction` |
+| `reference_answer`, `debug_details` | эталон и пояснения для команды `/get answer` |
+| `ai_context` | отбор полей `public_state`, которые увидит ИИ |
 
-1. импортировать constants/functions;
-2. добавить family в `IMPLEMENTED_FAMILIES`;
-3. при наличии интеракций — в `INTERACTIVE_FAMILIES`;
-4. добавить `GENERATOR_VERSIONS`;
-5. добавить dispatch генерации;
-6. добавить dispatch evaluator-а;
-7. добавить dispatch интеракции и hint при необходимости.
+Функция действия возвращает `Transition` с новыми состояниями, признаком принятия, причиной и сообщением участнику. Если действие завершает задачу, выставляется `completed=True` и `evaluation_state`.
+
+### 23.2. Регистрация
+
+Добавить модуль в кортеж `FAMILY_MODULES` в `backend/app/tasks/registry.py`. Больше ничего в backend менять не нужно: API, проверка конфигурации, директор, debug-ответ и контекст ИИ читают запись `FAMILY`.
 
 Нельзя менять смысл существующего `GENERATOR_VERSION`. Любое изменение семантики генерации или проверки требует новой версии.
-
-### 23.3. API routing
-
-В `backend/app/api.py`:
-
-- добавить aliases;
-- включить family в допустимую среду `WORLD_FAMILIES`;
-- описать допустимые `action_type`;
-- добавить debug representation;
-- при необходимости валидировать `sub_kinds` и config.
 
 ### 23.4. Frontend
 
@@ -1689,7 +1743,7 @@ Evaluator должен:
 
 ### 23.5. AI context
 
-Добавить family-specific whitelist в `backend/app/ai/context.py`. Нельзя передавать provider-у весь объект без явного отбора полей. Тест должен доказать отсутствие `private_state`, answer, witness и seed.
+Задать `ai_context` в записи `FAMILY`. Функция получает `public_state` и возвращает только те поля, которые можно показать модели. Без неё в контекст попадают лишь скалярные поля верхнего уровня. Тест должен доказать отсутствие `private_state`, answer, witness и seed.
 
 ### 23.6. Telemetry и тесты
 
@@ -1730,7 +1784,13 @@ Evaluator должен:
 | `backend/app/schemas.py` | Request/response validation |
 | `backend/app/security.py` | Code normalization, HMAC, Bearer token |
 | `backend/app/dependencies.py` | Auth и role dependencies |
-| `backend/app/api.py` | REST routes, attempts, routing и events |
+| `backend/app/api/*.py` | REST routes по разделам: health, access, contests, enrollments, participant, tasks, assistant |
+| `backend/app/access_codes.py` | Выпуск, восстановление и отзыв кодов |
+| `backend/app/attempts.py` | Активная попытка, истечение, seed и snapshot конфигурации |
+| `backend/app/contest_config.py` | Чтение и проверка `task_config` |
+| `backend/app/routing.py` | Маршрут попытки: семейство, сложность, seed задачи |
+| `backend/app/task_flow.py` | Создание, оценка и закрытие задачи |
+| `backend/app/events.py` | Запись событий и канонические хеши |
 | `backend/app/telemetry.py` | Redacted UTF-8 export и learning slope |
 | `backend/app/ai/provider.py` | Provider protocol и fake implementation |
 | `backend/app/ai/yandex.py` | Yandex Chat Completions client |
@@ -1739,20 +1799,20 @@ Evaluator должен:
 | `backend/app/ai/service.py` | Quotas, persistence, concurrency и provider call |
 | `backend/app/ai/report.py` | Markdown-саммари редактированного журнала |
 | `backend/app/ai/tripwire.py` | Crisis phrase detection |
-| `backend/app/environments/registry.py` | Content dispatch и task seed |
-| `backend/app/environments/director.py` | Shared adaptive director-v2 |
-| `backend/app/environments/core/rule_dsl.py` | DSL правил и graph features |
-| `backend/app/environments/core/rule_space.py` | Пространство graph rules |
-| `backend/app/environments/core/zendo_engine.py` | Общая генерация, probes, hints и Zendo scoring |
-| `backend/app/environments/zendo/*.py` | Token, point и grid universes |
-| `backend/app/environments/geometry_world/zendo_v2.py` | Graph Zendo v2 adapter |
-| `backend/app/environments/geometry_world/atlas.py` | Transform, probability и legacy Zendo |
-| `backend/app/environments/machines/machine_reach.py` | Четыре finite-state machine tasks и solvers |
-| `backend/app/environments/chess_world/chess_coverage.py` | Шахматное покрытие 8×8 с кастомными прыжками, возрастающей стоимостью и точным solver |
-| `backend/app/environments/wiring.py` | Hidden Wiring над GF(2) |
-| `backend/app/environments/spatial/fold_punch.py` | Folding/unfolding generator |
-| `backend/app/environments/chess_world/dice_chess_world.py` | Актуальная Dice & Chess trajectory |
-| `backend/app/environments/classic_math.py` | Две скриптовые free-response задачи |
+| `backend/app/tasks/family.py` | Контракт семейства: `TaskFamily` и `Transition` |
+| `backend/app/tasks/registry.py` | Список семейств, вызов генераторов и evaluator-ов, task seed |
+| `backend/app/tasks/director.py` | Адаптивный director-v2 |
+| `backend/app/tasks/zendo/rule_dsl.py` | DSL правил и graph features |
+| `backend/app/tasks/zendo/rule_space.py` | Пространство graph rules |
+| `backend/app/tasks/zendo/engine.py` | Общая генерация, probes, hints и Zendo scoring |
+| `backend/app/tasks/zendo/{graph,token,point,grid}.py` | Четыре семейства Zendo |
+| `backend/app/tasks/machine_reach.py` | Четыре finite-state machine tasks и solvers |
+| `backend/app/tasks/chess_coverage.py` | Шахматное покрытие 8×8 с кастомными прыжками, возрастающей стоимостью и точным solver |
+| `backend/app/tasks/hidden_wiring.py` | Hidden Wiring над GF(2) |
+| `backend/app/tasks/fold_punch.py` | Folding/unfolding generator |
+| `backend/app/tasks/geo_transform.py`, `geo_probability.py` | Преобразования D4 и вероятности на графах |
+| `backend/app/tasks/dice_chess/` | Dice & Chess |
+| `backend/app/tasks/classic_math.py` | Две скриптовые free-response задачи |
 | `backend/alembic/versions/20260804_0001_initial_schema.py` | Начальная production-схема |
 | `backend/docker-entrypoint.sh` | Alembic retry и Uvicorn |
 | `compose.yml` | Services, networks, health checks и volumes |
