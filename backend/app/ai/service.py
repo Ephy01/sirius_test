@@ -16,7 +16,7 @@ from ..events import append_task_event
 from ..models import AiTurn, AiTurnStatus, Attempt, AttemptEvent, TaskInstance, TaskInteraction, utc_now
 from .context import build_task_context
 from .prompt import bounded_context_text, build_system_prompt, prompt_version
-from .provider import AssistantProvider, ProviderError, ProviderMessage, ProviderRequest
+from .provider import AssistantProvider, ProviderError, ProviderMessage, ProviderRequest, ProviderResult
 from .tripwire import (
     CRISIS_RESPONSE,
     TRIPWIRE_CONTEXT_HASH,
@@ -176,92 +176,99 @@ def _lock_attempt_for_event(session: Session, attempt_id: str) -> None:
         raise RuntimeError('AI turn attempt no longer exists')
 
 
-def run_ai_turn(
-    session: Session,
-    *,
-    settings: Settings,
-    provider: AssistantProvider | None,
-    attempt: Attempt,
-    task: TaskInstance,
-    client_action_id: str,
-    message: str,
-) -> tuple[AiTurn, AiRemaining]:
-    if provider is None or not settings.ai_enabled:
-        raise api_error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, 'AI_NOT_CONFIGURED', 'Ассистент временно недоступен.'
-        )
-    config = attempt_ai_config(session, attempt)
-    if not config.enabled:
-        raise api_error(status.HTTP_403_FORBIDDEN, 'AI_DISABLED', 'ИИ-ассистент отключён для этого контеста.')
+PROVIDER_FAILURES = {
+    'AI_PROVIDER_TIMEOUT': (status.HTTP_504_GATEWAY_TIMEOUT, 'Ассистент не успел ответить.'),
+    'AI_PROVIDER_UNAVAILABLE': (status.HTTP_503_SERVICE_UNAVAILABLE, 'Не удалось связаться с ассистентом.'),
+}
 
+
+def _clean_message(message: str, config: AiConfig) -> str:
     stripped = message.strip()
     if not stripped:
         raise api_error(status.HTTP_400_BAD_REQUEST, 'AI_MESSAGE_EMPTY', 'Введите сообщение.')
     if len(stripped) > config.max_input_characters:
         raise api_error(status.HTTP_400_BAD_REQUEST, 'AI_MESSAGE_TOO_LONG', 'Сообщение слишком длинное.')
+    return stripped
+
+
+def _replayed_turn(
+    session: Session, attempt: Attempt, task: TaskInstance, client_action_id: str, message: str
+) -> AiTurn | None:
+    """The stored turn when the client repeats a request it has already sent."""
 
     existing = session.scalar(
         select(AiTurn).where(AiTurn.attempt_id == attempt.id, AiTurn.client_action_id == client_action_id)
     )
-    if existing is not None:
-        if existing.task_instance_id != task.id or existing.user_message != stripped:
-            raise api_error(
-                status.HTTP_409_CONFLICT,
-                'AI_TURN_ID_REUSED',
-                ('Этот идентификатор сообщения уже использован с другими данными.'),
-            )
-        remaining = remaining_turns(session, config=config, attempt_id=attempt.id, task_id=task.id)
-        return existing, remaining
+    if existing is not None and (existing.task_instance_id != task.id or existing.user_message != message):
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            'AI_TURN_ID_REUSED',
+            'Этот идентификатор сообщения уже использован с другими данными.',
+        )
+    return existing
 
-    category = crisis_category(stripped)
-    if category is not None:
-        turn = AiTurn(
-            attempt_id=attempt.id,
-            task_instance_id=task.id,
-            sequence=_next_turn_sequence(session, task.id),
-            client_action_id=client_action_id,
-            status=AiTurnStatus.COMPLETED,
-            user_message=stripped,
-            assistant_message=CRISIS_RESPONSE,
-            provider=TRIPWIRE_PROVIDER,
-            model_uri=TRIPWIRE_PROVIDER,
-            prompt_version=TRIPWIRE_PROMPT_VERSION,
-            public_context_hash=TRIPWIRE_CONTEXT_HASH,
-            latency_ms=0,
-            completed_at=utc_now(),
-        )
-        session.add(turn)
-        session.flush()
-        append_task_event(
-            session,
-            task,
-            'ai_message_flagged',
-            {'aiTurnId': turn.id, 'category': category, 'inputLength': len(stripped)},
-        )
-        session.commit()
-        session.refresh(turn)
-        remaining = remaining_turns(session, config=config, attempt_id=attempt.id, task_id=task.id)
-        return turn, remaining
+
+def _crisis_turn(
+    session: Session, attempt: Attempt, task: TaskInstance, client_action_id: str, message: str, category: str
+) -> AiTurn:
+    """Answer a crisis message with the fixed support text, without calling the model."""
+
+    turn = AiTurn(
+        attempt_id=attempt.id,
+        task_instance_id=task.id,
+        sequence=_next_turn_sequence(session, task.id),
+        client_action_id=client_action_id,
+        status=AiTurnStatus.COMPLETED,
+        user_message=message,
+        assistant_message=CRISIS_RESPONSE,
+        provider=TRIPWIRE_PROVIDER,
+        model_uri=TRIPWIRE_PROVIDER,
+        prompt_version=TRIPWIRE_PROMPT_VERSION,
+        public_context_hash=TRIPWIRE_CONTEXT_HASH,
+        latency_ms=0,
+        completed_at=utc_now(),
+    )
+    session.add(turn)
+    session.flush()
+    append_task_event(
+        session,
+        task,
+        'ai_message_flagged',
+        {'aiTurnId': turn.id, 'category': category, 'inputLength': len(message)},
+    )
+    session.commit()
+    session.refresh(turn)
+    return turn
+
+
+def _release_stale_pending(session: Session, attempt: Attempt) -> None:
+    """Allow one request at a time; a pending turn abandoned by a crashed request is failed."""
 
     pending = session.scalar(
         select(AiTurn).where(AiTurn.attempt_id == attempt.id, AiTurn.status == AiTurnStatus.PENDING)
     )
-    if pending is not None:
-        stale_before = utc_now() - timedelta(seconds=PENDING_STALE_SECONDS)
-        created_at = pending.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
-        if created_at > stale_before:
-            raise api_error(status.HTTP_409_CONFLICT, 'AI_TURN_IN_PROGRESS', 'Дождитесь предыдущего ответа.')
-        pending.status = AiTurnStatus.FAILED
-        pending.error_code = 'AI_TURN_ORPHANED'
-        pending.completed_at = utc_now()
+    if pending is None:
+        return
+    created_at = pending.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    if created_at > utc_now() - timedelta(seconds=PENDING_STALE_SECONDS):
+        raise api_error(status.HTTP_409_CONFLICT, 'AI_TURN_IN_PROGRESS', 'Дождитесь предыдущего ответа.')
+    pending.status = AiTurnStatus.FAILED
+    pending.error_code = 'AI_TURN_ORPHANED'
+    pending.completed_at = utc_now()
 
-    remaining = remaining_turns(session, config=config, attempt_id=attempt.id, task_id=task.id)
-    if remaining.task <= 0 or remaining.attempt <= 0:
-        raise api_error(
-            status.HTTP_429_TOO_MANY_REQUESTS, 'AI_TURN_LIMIT_REACHED', 'Лимит обращений исчерпан.'
-        )
+
+def _open_turn(
+    session: Session,
+    settings: Settings,
+    config: AiConfig,
+    attempt: Attempt,
+    task: TaskInstance,
+    client_action_id: str,
+    message: str,
+) -> tuple[AiTurn, ProviderRequest]:
+    """Store the pending turn and build the request the model will receive."""
 
     interactions = session.scalars(
         select(TaskInteraction)
@@ -278,7 +285,7 @@ def run_ai_turn(
         sequence=_next_turn_sequence(session, task.id),
         client_action_id=client_action_id,
         status=AiTurnStatus.PENDING,
-        user_message=stripped,
+        user_message=message,
         provider='yandex',
         model_uri=model_uri,
         prompt_version=prompt_version(config.mode),
@@ -292,48 +299,63 @@ def run_ai_turn(
         'ai_turn_requested',
         {
             'aiTurnId': turn.id,
-            'inputLength': len(stripped),
+            'inputLength': len(message),
             'contextHash': context.sha256,
             'promptVersion': turn.prompt_version,
         },
     )
     session.commit()
-
     request = ProviderRequest(
         model_uri=model_uri,
         system_prompt=build_system_prompt(config.mode),
         context_text=bounded_context_text(context.canonical_json),
         history=history,
-        user_message=stripped,
+        user_message=message,
         max_tokens=config.max_output_tokens,
     )
+    return turn, request
 
+
+def _fail_turn(session: Session, attempt: Attempt, task: TaskInstance, turn: AiTurn, error_code: str) -> None:
+    _lock_attempt_for_event(session, attempt.id)
+    turn.status = AiTurnStatus.FAILED
+    turn.error_code = error_code
+    turn.completed_at = utc_now()
+    append_task_event(session, task, 'ai_turn_failed', {'aiTurnId': turn.id, 'errorCode': error_code})
+    session.commit()
+
+
+def _call_provider(
+    session: Session,
+    settings: Settings,
+    provider: AssistantProvider,
+    attempt: Attempt,
+    task: TaskInstance,
+    turn: AiTurn,
+    request: ProviderRequest,
+) -> ProviderResult:
     semaphore = _provider_semaphore(settings)
     if not semaphore.acquire(timeout=QUEUE_WAIT_SECONDS):
-        _finish_turn_failed(session, attempt, task, turn, 'AI_BUSY')
+        _fail_turn(session, attempt, task, turn, 'AI_BUSY')
         raise api_error(
             status.HTTP_429_TOO_MANY_REQUESTS,
             'AI_BUSY',
             'Ассистент занят, попробуйте через несколько секунд.',
         )
     try:
-        result = provider.generate(request)
+        return provider.generate(request)
     except ProviderError as error:
+        failure = error
+    finally:
         semaphore.release()
-        _finish_turn_failed(session, attempt, task, turn, error.code)
-        http_status = (
-            status.HTTP_504_GATEWAY_TIMEOUT
-            if error.code == 'AI_PROVIDER_TIMEOUT'
-            else status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-        messages = {
-            'AI_PROVIDER_TIMEOUT': 'Ассистент не успел ответить.',
-            'AI_PROVIDER_UNAVAILABLE': 'Не удалось связаться с ассистентом.',
-        }
-        raise api_error(http_status, error.code, messages[error.code]) from error
-    else:
-        semaphore.release()
+    _fail_turn(session, attempt, task, turn, failure.code)
+    http_status, text = PROVIDER_FAILURES[failure.code]
+    raise api_error(http_status, failure.code, text) from failure
 
+
+def _complete_turn(
+    session: Session, attempt: Attempt, task: TaskInstance, turn: AiTurn, result: ProviderResult
+) -> None:
     _lock_attempt_for_event(session, attempt.id)
     turn.status = AiTurnStatus.COMPLETED
     turn.assistant_message = _strip_markdown(result.text)
@@ -353,7 +375,7 @@ def run_ai_turn(
         {
             'aiTurnId': turn.id,
             'taskId': task.id,
-            'model': result.model_version or model_uri,
+            'model': result.model_version or turn.model_uri,
             'latencyMs': result.latency_ms,
             'inputTokens': result.input_tokens,
             'outputTokens': result.output_tokens,
@@ -362,16 +384,44 @@ def run_ai_turn(
     )
     session.commit()
     session.refresh(turn)
-    remaining = remaining_turns(session, config=config, attempt_id=attempt.id, task_id=task.id)
-    return turn, remaining
 
 
-def _finish_turn_failed(
-    session: Session, attempt: Attempt, task: TaskInstance, turn: AiTurn, error_code: str
-) -> None:
-    _lock_attempt_for_event(session, attempt.id)
-    turn.status = AiTurnStatus.FAILED
-    turn.error_code = error_code
-    turn.completed_at = utc_now()
-    append_task_event(session, task, 'ai_turn_failed', {'aiTurnId': turn.id, 'errorCode': error_code})
-    session.commit()
+def run_ai_turn(
+    session: Session,
+    *,
+    settings: Settings,
+    provider: AssistantProvider | None,
+    attempt: Attempt,
+    task: TaskInstance,
+    client_action_id: str,
+    message: str,
+) -> tuple[AiTurn, AiRemaining]:
+    if provider is None or not settings.ai_enabled:
+        raise api_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, 'AI_NOT_CONFIGURED', 'Ассистент временно недоступен.'
+        )
+    config = attempt_ai_config(session, attempt)
+    if not config.enabled:
+        raise api_error(status.HTTP_403_FORBIDDEN, 'AI_DISABLED', 'ИИ-ассистент отключён для этого контеста.')
+    message = _clean_message(message, config)
+
+    def remaining() -> AiRemaining:
+        return remaining_turns(session, config=config, attempt_id=attempt.id, task_id=task.id)
+
+    replayed = _replayed_turn(session, attempt, task, client_action_id, message)
+    if replayed is not None:
+        return replayed, remaining()
+    category = crisis_category(message)
+    if category is not None:
+        return _crisis_turn(session, attempt, task, client_action_id, message, category), remaining()
+
+    _release_stale_pending(session, attempt)
+    left = remaining()
+    if left.task <= 0 or left.attempt <= 0:
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS, 'AI_TURN_LIMIT_REACHED', 'Лимит обращений исчерпан.'
+        )
+    turn, request = _open_turn(session, settings, config, attempt, task, client_action_id, message)
+    result = _call_provider(session, settings, provider, attempt, task, turn, request)
+    _complete_turn(session, attempt, task, turn, result)
+    return turn, remaining()
