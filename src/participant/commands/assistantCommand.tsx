@@ -7,10 +7,12 @@ export function assistantMessage(run: CommandRun) {
   if (!run.onAiMessage) {
     run.appendEntry(
       "system",
-      <>
-        Чтобы сохранить решение, начните сообщение с{" "}
-        <code>/answer</code>.
-      </>,
+      run.assistantOffReply ?? (
+        <>
+          Чтобы сохранить решение, начните сообщение с{" "}
+          <code>/answer</code>.
+        </>
+      ),
     );
     return;
   }

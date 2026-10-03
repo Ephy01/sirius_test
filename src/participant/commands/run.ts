@@ -37,6 +37,8 @@ export type TaskCommandHandlers = {
   onUndo?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
   onReset?: (clientActionId: string) => Promise<TaskMoveTransitionResult>;
   onAiMessage?: (message: string, clientActionId: string) => Promise<AiTurn>;
+  /** Reply to a line that is not a command when no assistant is connected. */
+  assistantOffReply?: ReactNode;
 };
 
 export type CommandContext = TaskCommandHandlers & {

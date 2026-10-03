@@ -27,6 +27,8 @@ type ParticipantWorkspaceProps = TaskCommandHandlers & {
   busy?: boolean;
   error?: string;
   tutorialMode?: boolean;
+  /** Shown in the console header instead of the countdown: the task runs outside an attempt. */
+  modeLabel?: string;
   onLoadAiHistory?: () => Promise<AiTurnHistory>;
   onTelemetry?: (
     event: ParticipantTelemetryEvent,
@@ -63,6 +65,7 @@ export function ParticipantWorkspace({
   busy = false,
   error = "",
   tutorialMode = false,
+  modeLabel = tutorialMode ? "Демонстрационный режим" : undefined,
   onAnswer,
   onSkip,
   onNext,
@@ -73,6 +76,7 @@ export function ParticipantWorkspace({
   onUndo,
   onReset,
   onAiMessage,
+  assistantOffReply,
   onLoadAiHistory,
   onTelemetry,
 }: ParticipantWorkspaceProps) {
@@ -229,6 +233,7 @@ export function ParticipantWorkspace({
       onUndo,
       onReset,
       onAiMessage,
+      assistantOffReply,
     });
   }
 
@@ -328,8 +333,8 @@ export function ParticipantWorkspace({
 
       <aside className="participant-console" aria-label="Чат и команды">
         <header className="participant-console__header" style={{ justifyContent: "flex-end", gap: "8px" }}>
-          {tutorialMode ? (
-            <strong>Демонстрационный режим</strong>
+          {modeLabel ? (
+            <strong>{modeLabel}</strong>
           ) : (
             <>
               <strong>До завершения:</strong>
