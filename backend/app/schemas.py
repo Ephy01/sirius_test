@@ -445,3 +445,36 @@ class AiTurnHistoryItem(ApiModel):
 class AiTurnHistoryResponse(ApiModel):
     turns: list[AiTurnHistoryItem]
     remaining: AiTurnRemaining
+
+
+class TaskVariantResponse(ApiModel):
+    key: str
+    title: str
+    description: str
+
+
+class TaskFamilyResponse(ApiModel):
+    key: str
+    title: str
+    description: str
+    version: str
+    source: Literal['builtin', 'module']
+    module: str | None
+    listed: bool
+    scripted_only: bool
+    interactive: bool
+    default_weight: int
+    default_skin: str | None
+    min_difficulty: int
+    max_difficulty: int
+    variants: list[TaskVariantResponse]
+
+
+class TaskModuleProblemResponse(ApiModel):
+    module: str
+    error: str
+
+
+class TaskFamilyCatalogResponse(ApiModel):
+    items: list[TaskFamilyResponse]
+    problems: list[TaskModuleProblemResponse]
