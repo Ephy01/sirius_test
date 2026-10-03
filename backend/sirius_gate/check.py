@@ -4,7 +4,8 @@
 
 For every family and difficulty it generates tasks for many seeds and verifies
 that generation is reproducible, that the reference answer is accepted (playing
-the reference commands first) and that an empty answer is not.
+the reference commands first) and that an empty answer is not. A level with few
+distinct tasks or with one answer that fits most of them gets a remark.
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ DIFFICULTIES = range(1, 6)
 ACTION_OF_COMMAND = {'/op': 'apply_op', '/test': 'probe', '/hint': 'hint', '/undo': 'undo', '/reset': 'reset'}
 PAYLOAD_KEY = {'apply_op': 'op_id', 'probe': 'probe'}
 WRONG_ANSWERS = ('', 'не знаю')
+FEW_TASKS_SHARE = 0.5
+GUESSABLE_SHARE = 0.5
 
 
 @dataclass
@@ -34,6 +37,7 @@ class LevelReport:
     reference_accepted: int | None = None
     top_answer_share: float | None = None
     problems: list[str] = field(default_factory=list)
+    remarks: list[str] = field(default_factory=list)
 
 
 def _reference_verdict(family: TaskFamily, public_state: dict, private_state: dict) -> dict:
@@ -89,6 +93,15 @@ def _check_task(
     return answer if not commands else None
 
 
+def _remarks(report: LevelReport) -> list[str]:
+    remarks = []
+    if report.distinct < report.generated * FEW_TASKS_SHARE:
+        remarks.append(f'разных задач мало: {report.distinct} из {report.generated}')
+    if report.top_answer_share is not None and report.top_answer_share > GUESSABLE_SHARE:
+        remarks.append(f'один ответ подходит к {report.top_answer_share:.0%} задач, его можно угадать')
+    return remarks
+
+
 def check_level(family: TaskFamily, difficulty: int, seeds: int, context: dict | None = None) -> LevelReport:
     report = LevelReport(difficulty=difficulty)
     tasks: set[str] = set()
@@ -108,6 +121,7 @@ def check_level(family: TaskFamily, difficulty: int, seeds: int, context: dict |
     report.distinct = len(tasks)
     if answers:
         report.top_answer_share = answers.most_common(1)[0][1] / sum(answers.values())
+    report.remarks = _remarks(report)
     return report
 
 
@@ -130,6 +144,7 @@ def render(family: TaskFamily, levels: list[LevelReport], seeds: int) -> str:
             f'  {share:^18}  {level.slowest_seconds * 1000:>7.0f} мс'
         )
         lines.extend(f'      ошибка: {problem}' for problem in level.problems)
+        lines.extend(f'      замечание: {remark}' for remark in level.remarks)
     return '\n'.join(lines)
 
 
@@ -140,7 +155,7 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument('--seeds', type=int, default=40, help='сколько вариантов создать на каждой сложности')
     options = parser.parse_args(arguments)
 
-    failed = False
+    failed = remarked = False
     for module in load_task_modules(options.directory):
         if options.module and module.name != options.module:
             continue
@@ -151,8 +166,9 @@ def main(arguments: list[str] | None = None) -> int:
         for key in module.families:
             levels = check_family(FAMILIES[key], options.seeds)
             failed = failed or any(level.problems for level in levels)
+            remarked = remarked or any(level.remarks for level in levels)
             print(render(FAMILIES[key], levels, options.seeds), end='\n\n')
-    print('Есть ошибки.' if failed else 'Ошибок нет.')
+    print('Есть ошибки.' if failed else 'Ошибок нет, есть замечания.' if remarked else 'Ошибок нет.')
     return 1 if failed else 0
 
 

@@ -29,6 +29,17 @@ def test_check_accepts_a_sound_module_and_reports_how_guessable_it_is(tmp_path, 
     assert all(level.distinct == 7 and level.top_answer_share == 2 / 14 for level in levels)
 
 
+def test_check_remarks_on_a_module_with_one_task_and_one_answer(tmp_path, capsys):
+    _write(tmp_path, WITH_REFERENCE.replace('seed % 7 + difficulty', '5'))
+
+    assert check.main([str(tmp_path), '--seeds', '10']) == 0
+
+    output = capsys.readouterr().out
+    assert 'замечание: разных задач мало: 1 из 10' in output
+    assert 'замечание: один ответ подходит к 100% задач, его можно угадать' in output
+    assert 'Ошибок нет, есть замечания.' in output
+
+
 def test_check_reports_a_reference_answer_that_is_not_accepted(tmp_path, capsys):
     _write(tmp_path, WITH_REFERENCE.replace('(str(private_state["answer"]), [])', '("0", [])'))
 
