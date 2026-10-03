@@ -55,6 +55,9 @@ SELECTION_ATTEMPTS = 160
 # по ожидаемому выигрышу само по себе не смотрит на истинность загаданного
 # правила, поэтому у редких правил весь топ-12 оказывался одного знака.
 PROBE_OUTCOME_QUOTA = 4
+ANSWER_RESPONSE_HINT = (
+    'Ответьте восемью значениями в порядке целей (1 — подходит, 0 — нет): /answer 1 0 1 0 1 0 1 0.'
+)
 
 
 class ZendoUniverse(Protocol):
@@ -173,6 +176,10 @@ def get_universe_space(universe: ZendoUniverse) -> UniverseSpace:
     return cached
 
 
+def _numbered(prefix: str, objects: Sequence[Any]) -> list[tuple[str, Any]]:
+    return [(f'{prefix}{index:02d}', obj) for index, obj in enumerate(objects, start=1)]
+
+
 @dataclass(frozen=True)
 class ZendoMaterial:
     """Everything a family needs to assemble one Zendo task."""
@@ -185,6 +192,18 @@ class ZendoMaterial:
     targets: list[Any]
     target_answers: list[bool]
     version_space: int
+
+    @property
+    def example_cards(self) -> list[tuple[str, Any]]:
+        return _numbered('E', self.examples)
+
+    @property
+    def probe_cards(self) -> list[tuple[str, Any]]:
+        return _numbered('P', self.probes)
+
+    @property
+    def target_cards(self) -> list[tuple[str, Any]]:
+        return _numbered('T', self.targets)
 
 
 def _target_truth(*, object_mask: int, rule_index: int) -> bool:
@@ -251,6 +270,121 @@ def _near_miss_targets(
     return selected
 
 
+@dataclass(frozen=True)
+class _MaterialSelector:
+    """Selection parameters of one generator call and the steps of a single selection attempt."""
+
+    pool: list[Any]
+    pool_masks: list[int]
+    rules: Sequence[Rule]
+    atoms: Sequence[Atom]
+    all_rules_mask: int
+    mutations: Callable[[Any], tuple[Any, ...]]
+    object_key: Callable[[Any], Hashable]
+    probe_card_count: int
+    probe_outcome_quota: int
+    version_space_bounds: tuple[int, int]
+
+    def split_pool(self, rule_index: int) -> tuple[list[int], list[int]]:
+        """Pool indices of the objects that satisfy the rule and of those that do not."""
+
+        positives = [
+            index
+            for index, mask in enumerate(self.pool_masks)
+            if _target_truth(object_mask=mask, rule_index=rule_index)
+        ]
+        negatives = [
+            index
+            for index, mask in enumerate(self.pool_masks)
+            if not _target_truth(object_mask=mask, rule_index=rule_index)
+        ]
+        return positives, negatives
+
+    def probe_cards(
+        self, rng: random.Random, rule_index: int, version_space: int, forbidden: set[Hashable]
+    ) -> list[tuple[Any, int]]:
+        """The most informative unused objects with a quota of each outcome, in shuffled order."""
+
+        remaining = [
+            (obj, truth_mask)
+            for obj, truth_mask in zip(self.pool, self.pool_masks, strict=True)
+            if self.object_key(obj) not in forbidden
+        ]
+        ranked = sorted(
+            remaining, key=lambda item: (-information_gain(version_space, item[1]), self.object_key(item[0]))
+        )
+        positive_ranked = [
+            item for item in ranked if _target_truth(object_mask=item[1], rule_index=rule_index)
+        ]
+        negative_ranked = [
+            item for item in ranked if not _target_truth(object_mask=item[1], rule_index=rule_index)
+        ]
+        quota = min(self.probe_outcome_quota, len(positive_ranked), len(negative_ranked))
+        chosen_keys = {
+            self.object_key(obj) for obj, _mask in [*positive_ranked[:quota], *negative_ranked[:quota]]
+        }
+        for obj, _mask in ranked:
+            if len(chosen_keys) >= self.probe_card_count:
+                break
+            chosen_keys.add(self.object_key(obj))
+        selected_probes = [item for item in ranked if self.object_key(item[0]) in chosen_keys][
+            : self.probe_card_count
+        ]
+        # Порядок карточек перемешивается: по рангу выигрыша квота исходов
+        # ложится в хвост, и первые пробы участника оказывались одного
+        # знака. Перемешивание заодно не даёт позиции карточки подсказывать
+        # её исход.
+        # The shuffle draws from the generator even if the caller then discards the attempt
+        # for having too few cards. Moving it changes every generated task.
+        rng.shuffle(selected_probes)
+        return selected_probes
+
+    def attempt(
+        self, rng: random.Random, rule_index: int, positives: list[int], negatives: list[int]
+    ) -> ZendoMaterial | None:
+        """Draw examples, then build the near-miss exam and the probes around them."""
+
+        selected_indices = [
+            *rng.sample(positives, EXAMPLE_POSITIVE_COUNT),
+            *rng.sample(negatives, EXAMPLE_NEGATIVE_COUNT),
+        ]
+        example_observations = [(self.pool_masks[index], index in positives) for index in selected_indices]
+        version_space = _version_space_after_examples(
+            all_rules_mask=self.all_rules_mask, examples=example_observations
+        )
+        lower_bound, upper_bound = self.version_space_bounds
+        if not lower_bound <= version_space.bit_count() <= upper_bound:
+            return None
+        examples = [self.pool[index] for index in selected_indices]
+        example_labels = [index in positives for index in selected_indices]
+        forbidden = {self.object_key(obj) for obj in examples}
+        targets = _near_miss_targets(
+            rng=rng,
+            rule=self.rules[rule_index],
+            atoms=self.atoms,
+            mutations=self.mutations,
+            object_key=self.object_key,
+            positive_examples=[obj for obj, label in zip(examples, example_labels, strict=True) if label],
+            forbidden=forbidden,
+        )
+        if targets is None:
+            return None
+        forbidden.update(self.object_key(obj) for obj in targets)
+        selected_probes = self.probe_cards(rng, rule_index, version_space, forbidden)
+        if len(selected_probes) != self.probe_card_count:
+            return None
+        return ZendoMaterial(
+            rule_index=rule_index,
+            examples=examples,
+            example_labels=example_labels,
+            probes=[obj for obj, _mask in selected_probes],
+            probe_masks=[mask for _obj, mask in selected_probes],
+            targets=targets,
+            target_answers=[evaluate_rule(self.rules[rule_index], obj, self.atoms) for obj in targets],
+            version_space=version_space,
+        )
+
+
 def select_material(
     *,
     rng: random.Random,
@@ -270,101 +404,169 @@ def select_material(
 ) -> ZendoMaterial:
     """Pick a rule, minimal example pairs, probes and a near-miss exam.
 
-    The sequence of RNG consumption is part of every family's generator
-    version: reordering the calls below is a breaking change.
+    The sequence of RNG consumption, here and in ``_MaterialSelector``, is
+    part of every family's generator version: reordering the calls is a
+    breaking change.
     """
 
-    pool = list(pool)
-    pool_masks = list(pool_masks)
+    lower_bound, upper_bound = version_space_bounds
+    selector = _MaterialSelector(
+        pool=list(pool),
+        pool_masks=list(pool_masks),
+        rules=rules,
+        atoms=atoms,
+        all_rules_mask=all_rules_mask,
+        mutations=mutations,
+        object_key=object_key,
+        probe_card_count=probe_card_count,
+        probe_outcome_quota=probe_outcome_quota,
+        version_space_bounds=(lower_bound, upper_bound),
+    )
     candidate_rules = list(difficulty_rule_indices)
     rng.shuffle(candidate_rules)
-    lower_bound, upper_bound = version_space_bounds
-
     for rule_index in candidate_rules:
-        positives = [
-            index
-            for index, mask in enumerate(pool_masks)
-            if _target_truth(object_mask=mask, rule_index=rule_index)
-        ]
-        negatives = [
-            index
-            for index, mask in enumerate(pool_masks)
-            if not _target_truth(object_mask=mask, rule_index=rule_index)
-        ]
+        positives, negatives = selector.split_pool(rule_index)
         if len(positives) < EXAMPLE_POSITIVE_COUNT or len(negatives) < EXAMPLE_NEGATIVE_COUNT:
             continue
         for _ in range(selection_attempts):
-            selected_indices = [
-                *rng.sample(positives, EXAMPLE_POSITIVE_COUNT),
-                *rng.sample(negatives, EXAMPLE_NEGATIVE_COUNT),
-            ]
-            example_observations = [(pool_masks[index], index in positives) for index in selected_indices]
-            version_space = _version_space_after_examples(
-                all_rules_mask=all_rules_mask, examples=example_observations
-            )
-            if not lower_bound <= version_space.bit_count() <= upper_bound:
-                continue
-            examples = [pool[index] for index in selected_indices]
-            example_labels = [index in positives for index in selected_indices]
-            forbidden = {object_key(obj) for obj in examples}
-            targets = _near_miss_targets(
-                rng=rng,
-                rule=rules[rule_index],
-                atoms=atoms,
-                mutations=mutations,
-                object_key=object_key,
-                positive_examples=[obj for obj, label in zip(examples, example_labels, strict=True) if label],
-                forbidden=forbidden,
-            )
-            if targets is None:
-                continue
-            forbidden.update(object_key(obj) for obj in targets)
-            remaining = [
-                (obj, truth_mask)
-                for obj, truth_mask in zip(pool, pool_masks, strict=True)
-                if object_key(obj) not in forbidden
-            ]
-            ranked = sorted(
-                remaining, key=lambda item: (-information_gain(version_space, item[1]), object_key(item[0]))
-            )
-            positive_ranked = [
-                item for item in ranked if _target_truth(object_mask=item[1], rule_index=rule_index)
-            ]
-            negative_ranked = [
-                item for item in ranked if not _target_truth(object_mask=item[1], rule_index=rule_index)
-            ]
-            quota = min(probe_outcome_quota, len(positive_ranked), len(negative_ranked))
-            chosen_keys = {
-                object_key(obj) for obj, _mask in [*positive_ranked[:quota], *negative_ranked[:quota]]
-            }
-            for obj, _mask in ranked:
-                if len(chosen_keys) >= probe_card_count:
-                    break
-                chosen_keys.add(object_key(obj))
-            selected_probes = [item for item in ranked if object_key(item[0]) in chosen_keys][
-                :probe_card_count
-            ]
-            # Порядок карточек перемешивается: по рангу выигрыша квота исходов
-            # ложится в хвост, и первые пробы участника оказывались одного
-            # знака. Перемешивание заодно не даёт позиции карточки подсказывать
-            # её исход.
-            rng.shuffle(selected_probes)
-            probes = [obj for obj, _mask in selected_probes]
-            probe_masks = [mask for _obj, mask in selected_probes]
-            if len(probes) != probe_card_count:
-                continue
-            target_answers = [evaluate_rule(rules[rule_index], obj, atoms) for obj in targets]
-            return ZendoMaterial(
-                rule_index=rule_index,
-                examples=examples,
-                example_labels=example_labels,
-                probes=probes,
-                probe_masks=probe_masks,
-                targets=targets,
-                target_answers=target_answers,
-                version_space=version_space,
-            )
+            material = selector.attempt(rng, rule_index, positives, negatives)
+            if material is not None:
+                return material
     raise RuntimeError(f'Unable to select Zendo material at difficulty {difficulty}')
+
+
+def universe_material(
+    rng: random.Random, difficulty: int, universe: ZendoUniverse
+) -> tuple[UniverseSpace, ZendoMaterial]:
+    """Material selected from the cached rule space of ``universe``."""
+
+    space = get_universe_space(universe)
+    material = select_material(
+        rng=rng,
+        difficulty=difficulty,
+        pool=space.population,
+        pool_masks=space.object_masks,
+        rules=space.rules,
+        atoms=space.atoms,
+        all_rules_mask=space.all_rules_mask,
+        difficulty_rule_indices=space.indices_for_difficulty(difficulty),
+        mutations=universe.mutations,
+        object_key=universe.object_key,
+    )
+    return space, material
+
+
+def public_content(material: ZendoMaterial, *, probe_cards: bool = True) -> State:
+    """Labelled examples, the probe cards of a family that deals them, and the targets of the exam."""
+
+    content: State = {
+        'examples': [
+            {'card_id': card_id, 'classification': 'positive' if label else 'negative'}
+            for (card_id, _obj), label in zip(material.example_cards, material.example_labels, strict=True)
+        ]
+    }
+    if probe_cards:
+        content['probe_cards'] = [
+            {'card_id': card_id, 'used': False} for card_id, _obj in material.probe_cards
+        ]
+    content['targets'] = [
+        {'card_id': card_id, 'position': index}
+        for index, (card_id, _obj) in enumerate(material.target_cards, start=1)
+    ]
+    content['probe_budget'] = PROBE_BUDGET
+    content['probes_remaining'] = PROBE_BUDGET
+    content['probe_observations'] = []
+    return content
+
+
+def card_probes(material: ZendoMaterial, serialize: Callable[[Any], Any]) -> State:
+    """Private record of dealt probe cards: their content, rule masks and the cards already used."""
+
+    return {
+        'probe_cards': {card_id: serialize(obj) for card_id, obj in material.probe_cards},
+        'probe_truth_masks': {
+            card_id: truth_mask
+            for (card_id, _obj), truth_mask in zip(material.probe_cards, material.probe_masks, strict=True)
+        },
+        'used_probe_card_ids': [],
+    }
+
+
+def private_state(material: ZendoMaterial, *, identity: State, probes: State, **extra: Any) -> State:
+    """Hidden rule, version space, probe record and exam answers in the order every family stores them."""
+
+    return {
+        **identity,
+        'rule_index': material.rule_index,
+        'version_space': material.version_space,
+        'version_space_after_examples': material.version_space,
+        **probes,
+        'probe_budget': PROBE_BUDGET,
+        'probes_remaining': PROBE_BUDGET,
+        'target_card_ids': [card_id for card_id, _obj in material.target_cards],
+        'target_answers': material.target_answers,
+        **extra,
+    }
+
+
+def _probe_refusal(private_state: State, card_id: str) -> tuple[str, str] | None:
+    probe_cards = private_state.get('probe_cards')
+    probe_truth_masks = private_state.get('probe_truth_masks')
+    used = [str(value) for value in private_state.get('used_probe_card_ids', [])]
+    if (
+        not isinstance(probe_cards, dict)
+        or not isinstance(probe_truth_masks, dict)
+        or card_id not in probe_cards
+        or card_id not in probe_truth_masks
+    ):
+        return 'unknown_probe_card', 'Такой карточки нет среди доступных для проверки.'
+    if card_id in used:
+        return 'probe_already_used', 'Эта карточка уже была проверена.'
+    if int(private_state.get('probes_remaining') or 0) <= 0:
+        return 'probe_budget_exhausted', 'Лимит проверок исчерпан.'
+    return None
+
+
+def _consume_probe(private_state: State, card_id: str, all_rules_mask: int) -> tuple[bool, State]:
+    """Filter the version space by the probe; returns its outcome and the ΔH telemetry."""
+
+    probe_cards = private_state['probe_cards']
+    probe_truth_masks = private_state['probe_truth_masks']
+    used = [str(value) for value in private_state.get('used_probe_card_ids', [])]
+    rule_index = int(private_state['rule_index'])
+    before = int(private_state['version_space'])
+    available_ids = [candidate_id for candidate_id in sorted(probe_cards) if candidate_id not in used]
+    candidate_masks = [int(probe_truth_masks[candidate_id]) for candidate_id in available_ids]
+    best = pick_probe_by_entropy(
+        candidates=[probe_cards[candidate_id] for candidate_id in available_ids],
+        rules=(),
+        version_space=before,
+        candidate_truth_masks=candidate_masks,
+    )
+    object_mask = int(probe_truth_masks[card_id])
+    outcome = _target_truth(object_mask=object_mask, rule_index=rule_index)
+    after = filter_version_space(before, object_mask, outcome, all_rules_mask=all_rules_mask)
+    telemetry = {
+        'vs_size_before': before.bit_count(),
+        'vs_size_after': after.bit_count(),
+        'gain_bits_actual': actual_information_gain(before, after),
+        'gain_bits_best': best.gain_bits if best is not None else 0.0,
+    }
+    private_state['version_space'] = after
+    private_state['used_probe_card_ids'] = [*used, card_id]
+    private_state['probes_remaining'] = int(private_state['probes_remaining']) - 1
+    return outcome, telemetry
+
+
+def _show_probe(content: State, card_id: str, outcome: bool) -> None:
+    content['probes_remaining'] = int(content['probes_remaining']) - 1
+    for item in content['probe_cards']:
+        if item['card_id'] == card_id:
+            item['used'] = True
+            break
+    content['probe_observations'].append(
+        {'card_id': card_id, 'classification': 'positive' if outcome else 'negative'}
+    )
 
 
 def transition_zendo_probe(
@@ -375,68 +577,11 @@ def transition_zendo_probe(
     next_public = deepcopy(public_state)
     next_private = deepcopy(private_state)
     normalized = card_id.strip().upper()
-    probe_cards = next_private.get('probe_cards')
-    probe_truth_masks = next_private.get('probe_truth_masks')
-    used = [str(value) for value in next_private.get('used_probe_card_ids', [])]
-    if (
-        not isinstance(probe_cards, dict)
-        or not isinstance(probe_truth_masks, dict)
-        or normalized not in probe_cards
-        or normalized not in probe_truth_masks
-    ):
-        return Transition(
-            next_public,
-            next_private,
-            False,
-            'unknown_probe_card',
-            'Такой карточки нет среди доступных для проверки.',
-            normalized,
-        )
-    if normalized in used:
-        return Transition(
-            next_public,
-            next_private,
-            False,
-            'probe_already_used',
-            'Эта карточка уже была проверена.',
-            normalized,
-        )
-    if int(next_private.get('probes_remaining') or 0) <= 0:
-        return Transition(
-            next_public, next_private, False, 'probe_budget_exhausted', 'Лимит проверок исчерпан.', normalized
-        )
-
-    rule_index = int(next_private['rule_index'])
-    before = int(next_private['version_space'])
-    available_ids = [candidate_id for candidate_id in sorted(probe_cards) if candidate_id not in used]
-    candidate_masks = [int(probe_truth_masks[candidate_id]) for candidate_id in available_ids]
-    best = pick_probe_by_entropy(
-        candidates=[probe_cards[candidate_id] for candidate_id in available_ids],
-        rules=(),
-        version_space=before,
-        candidate_truth_masks=candidate_masks,
-    )
-    object_mask = int(probe_truth_masks[normalized])
-    outcome = _target_truth(object_mask=object_mask, rule_index=rule_index)
-    after = filter_version_space(before, object_mask, outcome, all_rules_mask=all_rules_mask)
-    telemetry = {
-        'vs_size_before': before.bit_count(),
-        'vs_size_after': after.bit_count(),
-        'gain_bits_actual': actual_information_gain(before, after),
-        'gain_bits_best': best.gain_bits if best is not None else 0.0,
-    }
-    next_private['version_space'] = after
-    next_private['used_probe_card_ids'] = [*used, normalized]
-    next_private['probes_remaining'] = int(next_private['probes_remaining']) - 1
-    content = next_public['content']
-    content['probes_remaining'] = int(content['probes_remaining']) - 1
-    for item in content['probe_cards']:
-        if item['card_id'] == normalized:
-            item['used'] = True
-            break
-    content['probe_observations'].append(
-        {'card_id': normalized, 'classification': 'positive' if outcome else 'negative'}
-    )
+    refusal = _probe_refusal(next_private, normalized)
+    if refusal is not None:
+        return Transition(next_public, next_private, False, *refusal, normalized)
+    outcome, telemetry = _consume_probe(next_private, normalized, all_rules_mask)
+    _show_probe(next_public['content'], normalized, outcome)
     return Transition(
         public_state=next_public,
         private_state=next_private,

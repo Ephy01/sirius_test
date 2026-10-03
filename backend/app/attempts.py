@@ -13,7 +13,17 @@ from sqlalchemy.orm import Session
 
 from .dependencies import api_error
 from .events import append_event
-from .models import Attempt, AttemptEvent, AttemptStatus, Contest, Enrollment, as_utc, utc_now
+from .models import (
+    Attempt,
+    AttemptEvent,
+    AttemptGrant,
+    AttemptGrantStatus,
+    AttemptStatus,
+    Contest,
+    Enrollment,
+    as_utc,
+    utc_now,
+)
 from .schemas import ClientTelemetryRequest
 
 CLIENT_TELEMETRY_GRACE_PERIOD = timedelta(minutes=5)
@@ -171,3 +181,12 @@ def attempt_task_config(session: Session, attempt: Attempt, contest: Contest) ->
     payload = started.payload if started is not None and isinstance(started.payload, dict) else {}
     snapshot = payload.get('task_config_snapshot')
     return snapshot if isinstance(snapshot, dict) else task_config_of(contest)
+
+
+def pending_grant(session: Session, enrollment_id: str, *, lock: bool = False) -> AttemptGrant | None:
+    """The organizer's unused permission for one more attempt, if there is one."""
+
+    statement = select(AttemptGrant).where(
+        AttemptGrant.enrollment_id == enrollment_id, AttemptGrant.status == AttemptGrantStatus.PENDING
+    )
+    return session.scalar(statement.with_for_update() if lock else statement)

@@ -24,7 +24,7 @@ from ..task_flow import get_active_task_or_error, get_task_or_error
 router = APIRouter(prefix='/participant/tasks/{task_id}/ai')
 
 
-def remaining_response(remaining: AiRemaining) -> AiTurnRemaining:
+def _remaining_response(remaining: AiRemaining) -> AiTurnRemaining:
     return AiTurnRemaining(task=remaining.task, attempt=remaining.attempt)
 
 
@@ -56,7 +56,7 @@ def create_ai_turn(
         usage=AiTurnUsage(
             input_tokens=turn.input_tokens, output_tokens=turn.output_tokens, total_tokens=turn.total_tokens
         ),
-        remaining=remaining_response(remaining),
+        remaining=_remaining_response(remaining),
     )
 
 
@@ -89,5 +89,5 @@ def list_ai_turns(
             )
             for turn in turns
         ],
-        remaining=remaining_response(remaining),
+        remaining=_remaining_response(remaining),
     )

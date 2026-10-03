@@ -156,6 +156,117 @@ def _decision(
     )
 
 
+def _needs_remediation(active: dict[str, FamilySettings], latest: CompletedTask | None) -> bool:
+    return (
+        latest is not None
+        and len(active) == 1
+        and latest.evidence == -1
+        and not latest.skipped
+        and latest.phase != DirectorPhase.REMEDIATION
+    )
+
+
+def _uncalibrated_family(
+    seed: int, active: dict[str, FamilySettings], history: Sequence[CompletedTask]
+) -> FamilySettings | None:
+    completed = {task.family for task in history}
+    missing = [settings for family, settings in active.items() if family not in completed]
+    if not missing:
+        return None
+    return min(
+        missing,
+        key=lambda item: (
+            _stable_rank(
+                seed=seed,
+                phase=DirectorPhase.CALIBRATION,
+                family=item.family,
+                turn=0,
+                version=DIRECTOR_VERSION,
+            ),
+            item.family,
+        ),
+    )
+
+
+def _rotation_candidates(
+    active: dict[str, FamilySettings],
+    counts: dict[str, int],
+    avoided_family: str | None,
+    min_family_exposures: int | None,
+) -> tuple[list[str], bool]:
+    """Families allowed next and whether the exposure quota narrowed them."""
+
+    candidates = [family for family in active if family != avoided_family]
+    if min_family_exposures is None or min_family_exposures <= 0:
+        return candidates, False
+    under_quota = [family for family in candidates if counts[family] < min_family_exposures]
+    if under_quota and len(under_quota) < len(candidates):
+        return under_quota, True
+    return candidates, False
+
+
+def _most_indebted_family(
+    seed: int, active: dict[str, FamilySettings], counts: dict[str, int], candidates: list[str]
+) -> str:
+    total_completed = sum(counts.values())
+    total_weight = sum(settings.weight for settings in active.values())
+    debt_numerators = {
+        family: (total_completed + 1) * settings.weight - counts[family] * total_weight
+        for family, settings in active.items()
+    }
+    return min(
+        candidates,
+        key=lambda family: (
+            -debt_numerators[family],
+            _stable_rank(
+                seed=seed,
+                phase=DirectorPhase.ROTATION,
+                family=family,
+                turn=total_completed,
+                version=DIRECTOR_VERSION,
+            ),
+            family,
+        ),
+    )
+
+
+def _rotation_reason(latest: CompletedTask | None, avoid_latest_family: bool, quota_applied: bool) -> str:
+    capped_remediation = (
+        latest is not None and latest.evidence == -1 and latest.phase == DirectorPhase.REMEDIATION
+    )
+    if latest is not None and latest.skipped and avoid_latest_family:
+        return 'skipped_task_diversity_rotation'
+    if latest is not None and latest.evidence == -1 and avoid_latest_family and not capped_remediation:
+        return 'failed_task_diversity_rotation'
+    if capped_remediation:
+        return 'remediation_cap_weighted_rotation'
+    if quota_applied:
+        return 'soft_exposure_quota'
+    return 'weighted_coverage_debt'
+
+
+def _rotation_decision(
+    seed: int,
+    active: dict[str, FamilySettings],
+    history: Sequence[CompletedTask],
+    latest: CompletedTask | None,
+    min_family_exposures: int | None,
+) -> DirectorDecision:
+    counts = {family: len(_history_for_family(history, family)) for family in active}
+    avoid_latest_family = latest is not None and len(active) > 1
+    candidates, quota_applied = _rotation_candidates(
+        active, counts, latest.family if avoid_latest_family else None, min_family_exposures
+    )
+    selected_family = _most_indebted_family(seed, active, counts, candidates)
+    return _decision(
+        settings=active[selected_family],
+        history=history,
+        phase=DirectorPhase.ROTATION,
+        reason=_rotation_reason(latest, avoid_latest_family, quota_applied),
+        parent_task_id=_latest_parent(history, selected_family),
+    )
+
+
 def decide_next_task(
     *,
     seed: int,
@@ -195,14 +306,7 @@ def decide_next_task(
             reason='configured_start_family',
             parent_task_id=None,
         )
-
-    if (
-        latest is not None
-        and len(active) == 1
-        and latest.evidence == -1
-        and not latest.skipped
-        and latest.phase != DirectorPhase.REMEDIATION
-    ):
+    if _needs_remediation(active, latest):
         return _decision(
             settings=active[latest.family],
             history=relevant_history,
@@ -210,87 +314,13 @@ def decide_next_task(
             reason='failed_or_skipped_task_remediation',
             parent_task_id=latest.task_id,
         )
-
-    completed_families = {task.family for task in relevant_history}
-    missing_families = [settings for family, settings in active.items() if family not in completed_families]
-    if missing_families:
-        selected = min(
-            missing_families,
-            key=lambda item: (
-                _stable_rank(
-                    seed=seed,
-                    phase=DirectorPhase.CALIBRATION,
-                    family=item.family,
-                    turn=0,
-                    version=DIRECTOR_VERSION,
-                ),
-                item.family,
-            ),
-        )
+    uncalibrated = _uncalibrated_family(seed, active, relevant_history)
+    if uncalibrated is not None:
         return _decision(
-            settings=selected,
+            settings=uncalibrated,
             history=relevant_history,
             phase=DirectorPhase.CALIBRATION,
             reason='seeded_family_calibration',
             parent_task_id=None,
         )
-
-    counts = {family: len(_history_for_family(relevant_history, family)) for family in active}
-    total_completed = sum(counts.values())
-    total_weight = sum(settings.weight for settings in active.values())
-
-    debt_numerators = {
-        family: (total_completed + 1) * settings.weight - counts[family] * total_weight
-        for family, settings in active.items()
-    }
-    capped_remediation = (
-        latest is not None and latest.evidence == -1 and latest.phase == DirectorPhase.REMEDIATION
-    )
-    avoid_latest_family = latest is not None and len(active) > 1
-    route_candidates = [
-        family
-        for family in active
-        if not (avoid_latest_family and latest is not None and family == latest.family)
-    ]
-    quota_applied = False
-    if min_family_exposures is not None and min_family_exposures > 0:
-        under_quota = [family for family in route_candidates if counts[family] < min_family_exposures]
-        if under_quota and len(under_quota) < len(route_candidates):
-            route_candidates = under_quota
-            quota_applied = True
-    selected_family = min(
-        route_candidates,
-        key=lambda family: (
-            -debt_numerators[family],
-            _stable_rank(
-                seed=seed,
-                phase=DirectorPhase.ROTATION,
-                family=family,
-                turn=total_completed,
-                version=DIRECTOR_VERSION,
-            ),
-            family,
-        ),
-    )
-    return _decision(
-        settings=active[selected_family],
-        history=relevant_history,
-        phase=DirectorPhase.ROTATION,
-        reason=(
-            'skipped_task_diversity_rotation'
-            if latest is not None and latest.skipped and avoid_latest_family
-            else 'failed_task_diversity_rotation'
-            if (
-                latest is not None
-                and latest.evidence == -1
-                and avoid_latest_family
-                and not capped_remediation
-            )
-            else 'remediation_cap_weighted_rotation'
-            if capped_remediation
-            else 'soft_exposure_quota'
-            if quota_applied
-            else 'weighted_coverage_debt'
-        ),
-        parent_task_id=_latest_parent(relevant_history, selected_family),
-    )
+    return _rotation_decision(seed, active, relevant_history, latest, min_family_exposures)

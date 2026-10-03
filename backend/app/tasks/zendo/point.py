@@ -15,11 +15,13 @@ from collections.abc import Hashable
 from typing import Any
 
 from .engine import (
-    PROBE_BUDGET,
-    get_universe_space,
+    ANSWER_RESPONSE_HINT,
+    card_probes,
+    private_state,
+    public_content,
     rule_hint_category,
     scene_context,
-    select_material,
+    universe_material,
     zendo_family,
 )
 from .rule_dsl import Atom, Rule, enumerate_rules
@@ -35,6 +37,12 @@ MIN_POINTS = 5
 MAX_POINTS = 8
 POPULATION_SIZE = 1200
 _POPULATION_SEED = 0x9017_2026
+PROMPT = (
+    'Загадано некоторое свойство для наборов точек. Для некоторых '
+    'наборов это свойство выполняется, для некоторых — нет. '
+    'Твоя задача — раскрыть это свойство и классифицировать восемь '
+    'целевых наборов по порядку. Доступно 5 подсказок.'
+)
 
 PointConfig = tuple[tuple[int, int], ...]
 
@@ -397,77 +405,30 @@ def _scene(cards: list[tuple[str, PointConfig]]) -> dict[str, Any]:
 def generate_point_zendo_task(*, seed: int, difficulty: int) -> tuple[dict[str, Any], dict[str, Any]]:
     if isinstance(difficulty, bool) or not 1 <= difficulty <= 5:
         raise ValueError('point_zendo difficulty must be from 1 to 5')
-    rng = random.Random(seed)
-    space = get_universe_space(_UNIVERSE)
-    material = select_material(
-        rng=rng,
-        difficulty=difficulty,
-        pool=space.population,
-        pool_masks=space.object_masks,
-        rules=space.rules,
-        atoms=space.atoms,
-        all_rules_mask=space.all_rules_mask,
-        difficulty_rule_indices=space.indices_for_difficulty(difficulty),
-        mutations=point_mutations,
-        object_key=point_key,
-    )
-
-    example_cards = [(f'E{index:02d}', config) for index, config in enumerate(material.examples, start=1)]
-    probe_cards = [(f'P{index:02d}', config) for index, config in enumerate(material.probes, start=1)]
-    target_cards = [(f'T{index:02d}', config) for index, config in enumerate(material.targets, start=1)]
-    all_cards = [*example_cards, *probe_cards, *target_cards]
+    space, material = universe_material(random.Random(seed), difficulty, _UNIVERSE)
     public = {
         'kind': PUBLIC_KIND,
         'family': FAMILY_KEY,
         'variant': 'classify_hidden_point_rule',
-        'prompt': (
-            'Загадано некоторое свойство для наборов точек. Для некоторых '
-            'наборов это свойство выполняется, для некоторых — нет. '
-            'Твоя задача — раскрыть это свойство и классифицировать восемь '
-            'целевых наборов по порядку. Доступно 5 подсказок.'
-        ),
-        'scene': _scene(all_cards),
-        'content': {
-            'examples': [
-                {'card_id': card_id, 'classification': 'positive' if label else 'negative'}
-                for (card_id, _config), label in zip(example_cards, material.example_labels, strict=True)
-            ],
-            'probe_cards': [{'card_id': card_id, 'used': False} for card_id, _config in probe_cards],
-            'targets': [
-                {'card_id': card_id, 'position': index}
-                for index, (card_id, _config) in enumerate(target_cards, start=1)
-            ],
-            'probe_budget': PROBE_BUDGET,
-            'probes_remaining': PROBE_BUDGET,
-            'probe_observations': [],
-        },
+        'prompt': PROMPT,
+        'scene': _scene([*material.example_cards, *material.probe_cards, *material.target_cards]),
+        'content': public_content(material),
         'interaction': {'mode': 'probe_then_answer', 'commands': ['/test <card_id>', '/answer <да/нет ...>']},
-        'response_hint': (
-            'Ответьте восемью значениями в порядке целей (1 — подходит, 0 — нет): /answer 1 0 1 0 1 0 1 0.'
-        ),
+        'response_hint': ANSWER_RESPONSE_HINT,
         'dsl_version': DSL_VERSION,
     }
-    private = {
-        'family': FAMILY_KEY,
-        'generator_version': GENERATOR_VERSION,
-        'difficulty': difficulty,
-        'dsl_version': DSL_VERSION,
-        'universe_version': UNIVERSE_VERSION,
-        'rule_index': material.rule_index,
-        'version_space': material.version_space,
-        'version_space_after_examples': material.version_space,
-        'probe_cards': {card_id: serialize_points(config) for card_id, config in probe_cards},
-        'probe_truth_masks': {
-            card_id: truth_mask
-            for (card_id, _config), truth_mask in zip(probe_cards, material.probe_masks, strict=True)
+    private = private_state(
+        material,
+        identity={
+            'family': FAMILY_KEY,
+            'generator_version': GENERATOR_VERSION,
+            'difficulty': difficulty,
+            'dsl_version': DSL_VERSION,
+            'universe_version': UNIVERSE_VERSION,
         },
-        'used_probe_card_ids': [],
-        'probe_budget': PROBE_BUDGET,
-        'probes_remaining': PROBE_BUDGET,
-        'target_card_ids': [card_id for card_id, _config in target_cards],
-        'target_answers': material.target_answers,
-        'hint_category': rule_hint_category(space.rules[material.rule_index], ATOM_HINT_CATEGORIES),
-    }
+        probes=card_probes(material, serialize_points),
+        hint_category=rule_hint_category(space.rules[material.rule_index], ATOM_HINT_CATEGORIES),
+    )
     return public, private
 
 

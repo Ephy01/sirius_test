@@ -10,13 +10,15 @@ from typing import Any
 
 from ..family import State, Transition, required_text
 from .engine import (
-    PROBE_BUDGET,
+    ANSWER_RESPONSE_HINT,
     card_visibility,
     classification_label,
     get_universe_space,
+    private_state,
     probe_limits,
+    public_content,
     rule_hint_category,
-    select_material,
+    universe_material,
     zendo_family,
 )
 from .rule_dsl import (
@@ -41,6 +43,10 @@ MIN_FILLED = 4
 MAX_FILLED = 13
 POPULATION_SIZE = 640
 _POPULATION_SEED = 0x6B1D_2026
+PROMPT = (
+    '\nНа листочках нарисованы узоры по некоторым правилам. Твоя задача - восстановить эти правила '
+    'и классифицировать узоры. Для тестирования гипотез можно нарисовать свой узор.\n'
+)
 
 GridPattern = int
 
@@ -398,74 +404,35 @@ _UNIVERSE = GridUniverse()
 def generate_grid_zendo_task(*, seed: int, difficulty: int) -> tuple[dict[str, Any], dict[str, Any]]:
     if isinstance(difficulty, bool) or not 1 <= difficulty <= 5:
         raise ValueError('grid_zendo difficulty must be from 1 to 5')
-    rng = random.Random(seed)
-    space = get_universe_space(_UNIVERSE)
-    material = select_material(
-        rng=rng,
-        difficulty=difficulty,
-        pool=space.population,
-        pool_masks=space.object_masks,
-        rules=space.rules,
-        atoms=space.atoms,
-        all_rules_mask=space.all_rules_mask,
-        difficulty_rule_indices=space.indices_for_difficulty(difficulty),
-        mutations=grid_mutations,
-        object_key=grid_key,
-    )
-
-    example_cards = [(f'E{index:02d}', pattern) for index, pattern in enumerate(material.examples, start=1)]
-    target_cards = [(f'T{index:02d}', pattern) for index, pattern in enumerate(material.targets, start=1)]
+    space, material = universe_material(random.Random(seed), difficulty, _UNIVERSE)
+    cards = [*material.example_cards, *material.target_cards]
     public = {
         'kind': PUBLIC_KIND,
         'family': FAMILY_KEY,
         'variant': 'classify_hidden_grid_rule',
-        'prompt': (
-            """
-На листочках нарисованы узоры по некоторым правилам. Твоя задача - восстановить эти правила и классифицировать узоры. Для тестирования гипотез можно нарисовать свой узор.
-"""
-        ),
-        'cards': {
-            card_id: serialize_pattern(pattern) for card_id, pattern in [*example_cards, *target_cards]
-        },
+        'prompt': PROMPT,
+        'cards': {card_id: serialize_pattern(pattern) for card_id, pattern in cards},
         'grid_size': GRID_SIZE,
-        'content': {
-            'examples': [
-                {'card_id': card_id, 'classification': 'positive' if label else 'negative'}
-                for (card_id, _pattern), label in zip(example_cards, material.example_labels, strict=True)
-            ],
-            'targets': [
-                {'card_id': card_id, 'position': index}
-                for index, (card_id, _pattern) in enumerate(target_cards, start=1)
-            ],
-            'probe_budget': PROBE_BUDGET,
-            'probes_remaining': PROBE_BUDGET,
-            'probe_observations': [],
-        },
+        'content': public_content(material, probe_cards=False),
         'interaction': {
             'mode': 'draw_probe_then_answer',
             'commands': ['/test <узор из 25 нулей и единиц>', '/answer <да/нет ...>'],
         },
-        'response_hint': (
-            'Ответьте восемью значениями в порядке целей (1 — подходит, 0 — нет): /answer 1 0 1 0 1 0 1 0.'
-        ),
+        'response_hint': ANSWER_RESPONSE_HINT,
         'dsl_version': DSL_VERSION,
     }
-    private = {
-        'family': FAMILY_KEY,
-        'generator_version': GENERATOR_VERSION,
-        'difficulty': difficulty,
-        'dsl_version': DSL_VERSION,
-        'universe_version': UNIVERSE_VERSION,
-        'rule_index': material.rule_index,
-        'version_space': material.version_space,
-        'version_space_after_examples': material.version_space,
-        'used_probe_patterns': [],
-        'probe_budget': PROBE_BUDGET,
-        'probes_remaining': PROBE_BUDGET,
-        'target_card_ids': [card_id for card_id, _pattern in target_cards],
-        'target_answers': material.target_answers,
-        'hint_category': rule_hint_category(space.rules[material.rule_index], ATOM_HINT_CATEGORIES),
-    }
+    private = private_state(
+        material,
+        identity={
+            'family': FAMILY_KEY,
+            'generator_version': GENERATOR_VERSION,
+            'difficulty': difficulty,
+            'dsl_version': DSL_VERSION,
+            'universe_version': UNIVERSE_VERSION,
+        },
+        probes={'used_probe_patterns': []},
+        hint_category=rule_hint_category(space.rules[material.rule_index], ATOM_HINT_CATEGORIES),
+    )
     return public, private
 
 

@@ -1,12 +1,19 @@
 import hashlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..attempts import active_attempt, attempt_seed, require_active_attempt, task_config_of, telemetry_attempt
+from ..attempts import (
+    active_attempt,
+    attempt_seed,
+    pending_grant,
+    require_active_attempt,
+    task_config_of,
+    telemetry_attempt,
+)
 from ..dependencies import ParticipantEnrollmentDependency, SessionDependency, api_error
 from ..events import append_event, canonical_hash, canonical_json
 from ..models import (
@@ -15,6 +22,7 @@ from ..models import (
     AttemptGrantStatus,
     AttemptStatus,
     ClientTelemetryReceipt,
+    Contest,
     ContestStatus,
     TaskInstance,
     as_utc,
@@ -50,7 +58,7 @@ def participant_context(
     )
 
 
-def receipt_of(session: Session, attempt_id: str, client_event_id: str) -> ClientTelemetryReceipt | None:
+def _receipt_of(session: Session, attempt_id: str, client_event_id: str) -> ClientTelemetryReceipt | None:
     return session.scalar(
         select(ClientTelemetryReceipt).where(
             ClientTelemetryReceipt.attempt_id == attempt_id,
@@ -59,7 +67,7 @@ def receipt_of(session: Session, attempt_id: str, client_event_id: str) -> Clien
     )
 
 
-def receipt_count(session: Session, attempt_id: str, *conditions) -> int:
+def _receipt_count(session: Session, attempt_id: str, *conditions) -> int:
     return int(
         session.scalar(
             select(func.count(ClientTelemetryReceipt.id)).where(
@@ -70,12 +78,54 @@ def receipt_count(session: Session, attempt_id: str, *conditions) -> int:
     )
 
 
-def event_id_reused():
+def _event_id_reused():
     return api_error(
         status.HTTP_409_CONFLICT,
         'TELEMETRY_EVENT_ID_REUSED',
         'Этот идентификатор события уже использован с другими данными.',
     )
+
+
+def _client_event_payload(payload: ClientTelemetryRequest) -> dict:
+    return {
+        'client_event_id': payload.client_event_id,
+        'client_session_id': payload.client_session_id,
+        'client_timestamp': as_utc(payload.client_timestamp).isoformat()
+        if payload.client_timestamp is not None
+        else None,
+        'client_elapsed_ms': payload.client_elapsed_ms,
+        'payload': payload.payload,
+    }
+
+
+def _event_fingerprint(event_type: str, task_id: str | None, event_payload: dict) -> str:
+    return hashlib.sha256(
+        canonical_json(
+            {'event_type': event_type, 'task_instance_id': task_id, 'payload': event_payload}
+        ).encode('utf-8')
+    ).hexdigest()
+
+
+def _admission_time(session: Session, attempt_id: str) -> datetime:
+    """Moment a new client event is accepted, once it fits the per-attempt and per-minute limits."""
+
+    if _receipt_count(session, attempt_id) >= MAX_CLIENT_EVENTS_PER_ATTEMPT:
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            'TELEMETRY_EVENT_LIMIT_REACHED',
+            'Для этой попытки достигнут предел клиентских событий.',
+        )
+    received_at = utc_now()
+    recent = _receipt_count(
+        session, attempt_id, ClientTelemetryReceipt.created_at >= received_at - timedelta(minutes=1)
+    )
+    if recent >= MAX_CLIENT_EVENTS_PER_MINUTE:
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            'TELEMETRY_RATE_LIMITED',
+            'Слишком много событий телеметрии. Повторите попытку позже.',
+        )
+    return received_at
 
 
 @router.post('/telemetry', status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
@@ -86,45 +136,16 @@ def record_client_telemetry(
     task_id = None
     if payload.task_id is not None:
         task_id = get_task_or_error(session, attempt, payload.task_id).id
-
-    event_payload = {
-        'client_event_id': payload.client_event_id,
-        'client_session_id': payload.client_session_id,
-        'client_timestamp': as_utc(payload.client_timestamp).isoformat()
-        if payload.client_timestamp is not None
-        else None,
-        'client_elapsed_ms': payload.client_elapsed_ms,
-        'payload': payload.payload,
-    }
-    fingerprint = hashlib.sha256(
-        canonical_json(
-            {'event_type': payload.event_type, 'task_instance_id': task_id, 'payload': event_payload}
-        ).encode('utf-8')
-    ).hexdigest()
+    event_payload = _client_event_payload(payload)
+    fingerprint = _event_fingerprint(payload.event_type, task_id, event_payload)
     delivered = Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    existing = receipt_of(session, attempt.id, payload.client_event_id)
+    existing = _receipt_of(session, attempt.id, payload.client_event_id)
     if existing is not None:
         if existing.fingerprint != fingerprint:
-            raise event_id_reused()
+            raise _event_id_reused()
         return delivered
-    if receipt_count(session, attempt.id) >= MAX_CLIENT_EVENTS_PER_ATTEMPT:
-        raise api_error(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            'TELEMETRY_EVENT_LIMIT_REACHED',
-            'Для этой попытки достигнут предел клиентских событий.',
-        )
-    received_at = utc_now()
-    recent = receipt_count(
-        session, attempt.id, ClientTelemetryReceipt.created_at >= received_at - timedelta(minutes=1)
-    )
-    if recent >= MAX_CLIENT_EVENTS_PER_MINUTE:
-        raise api_error(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            'TELEMETRY_RATE_LIMITED',
-            'Слишком много событий телеметрии. Повторите попытку позже.',
-        )
-
+    received_at = _admission_time(session, attempt.id)
     session.add(
         ClientTelemetryReceipt(
             attempt_id=attempt.id,
@@ -144,12 +165,49 @@ def record_client_telemetry(
         session.commit()
     except IntegrityError:
         session.rollback()
-        raced = receipt_of(session, attempt.id, payload.client_event_id)
+        raced = _receipt_of(session, attempt.id, payload.client_event_id)
         if raced is None:
             raise
         if raced.fingerprint != fingerprint:
-            raise event_id_reused() from None
+            raise _event_id_reused() from None
     return delivered
+
+
+def _required_grant(session: Session, enrollment_id: str) -> AttemptGrant:
+    """The organizer's permission for a repeated attempt, locked until it is consumed."""
+
+    grant = pending_grant(session, enrollment_id, lock=True)
+    if grant is None:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            'ATTEMPT_NOT_AVAILABLE',
+            'Для новой попытки требуется разрешение организатора.',
+        )
+    return grant
+
+
+def _consume_grant(grant: AttemptGrant, attempt: Attempt, consumed_at: datetime) -> None:
+    grant.status = AttemptGrantStatus.CONSUMED
+    grant.pending_slot = None
+    grant.consumed_at = consumed_at
+    grant.consumed_attempt_id = attempt.id
+
+
+def _log_attempt_started(session: Session, attempt: Attempt, contest: Contest, source: str) -> None:
+    task_config = task_config_of(contest)
+    append_event(
+        session,
+        attempt_id=attempt.id,
+        event_type='attempt_started',
+        payload={
+            'number': attempt.number,
+            'started_at': attempt.started_at.isoformat(),
+            'deadline_at': attempt.deadline_at.isoformat(),
+            'source': source,
+            'task_config_snapshot': task_config,
+            'task_config_hash': canonical_hash(task_config),
+        },
+    )
 
 
 @router.post('/attempts/start', response_model=AttemptStartResponse)
@@ -166,22 +224,7 @@ def start_attempt(
     previous_number = session.scalar(
         select(func.max(Attempt.number)).where(Attempt.enrollment_id == enrollment.id)
     )
-    grant = None
-    if previous_number is not None:
-        grant = session.scalar(
-            select(AttemptGrant)
-            .where(
-                AttemptGrant.enrollment_id == enrollment.id, AttemptGrant.status == AttemptGrantStatus.PENDING
-            )
-            .with_for_update()
-        )
-        if grant is None:
-            raise api_error(
-                status.HTTP_409_CONFLICT,
-                'ATTEMPT_NOT_AVAILABLE',
-                'Для новой попытки требуется разрешение организатора.',
-            )
-
+    grant = _required_grant(session, enrollment.id) if previous_number is not None else None
     started_at = utc_now()
     number = (previous_number or 0) + 1
     attempt = Attempt(
@@ -197,23 +240,9 @@ def start_attempt(
     try:
         session.flush()
         if grant is not None:
-            grant.status = AttemptGrantStatus.CONSUMED
-            grant.pending_slot = None
-            grant.consumed_at = started_at
-            grant.consumed_attempt_id = attempt.id
-        task_config = task_config_of(contest)
-        append_event(
-            session,
-            attempt_id=attempt.id,
-            event_type='attempt_started',
-            payload={
-                'number': attempt.number,
-                'started_at': attempt.started_at.isoformat(),
-                'deadline_at': attempt.deadline_at.isoformat(),
-                'source': 'organizer_grant' if grant is not None else 'initial_attempt',
-                'task_config_snapshot': task_config,
-                'task_config_hash': canonical_hash(task_config),
-            },
+            _consume_grant(grant, attempt, started_at)
+        _log_attempt_started(
+            session, attempt, contest, 'organizer_grant' if grant is not None else 'initial_attempt'
         )
         session.commit()
     except IntegrityError:

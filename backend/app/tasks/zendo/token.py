@@ -15,12 +15,14 @@ from typing import Any
 
 from ..family import State
 from .engine import (
-    PROBE_BUDGET,
+    ANSWER_RESPONSE_HINT,
+    card_probes,
     card_visibility,
-    get_universe_space,
+    private_state,
     probe_limits,
+    public_content,
     rule_hint_category,
-    select_material,
+    universe_material,
     zendo_family,
 )
 from .rule_dsl import Atom, Rule, enumerate_rules
@@ -38,6 +40,11 @@ MIN_LENGTH = 3
 MAX_LENGTH = 7
 POPULATION_SIZE = 1200
 _POPULATION_SEED = 0x70CE_2026
+PROMPT = (
+    'Загадано некоторое свойство для набора фишек. Для '
+    'некоторых полок это свойство выполняется, для некоторых — нет. '
+    'Твоя задача — раскрыть это свойство. Доступно 5 подсказок.'
+)
 
 TokenSequence = tuple[tuple[int, str], ...]
 
@@ -221,78 +228,31 @@ _UNIVERSE = TokenUniverse()
 def generate_token_zendo_task(*, seed: int, difficulty: int) -> tuple[dict[str, Any], dict[str, Any]]:
     if isinstance(difficulty, bool) or not 1 <= difficulty <= 5:
         raise ValueError('token_zendo difficulty must be from 1 to 5')
-    rng = random.Random(seed)
-    space = get_universe_space(_UNIVERSE)
-    material = select_material(
-        rng=rng,
-        difficulty=difficulty,
-        pool=space.population,
-        pool_masks=space.object_masks,
-        rules=space.rules,
-        atoms=space.atoms,
-        all_rules_mask=space.all_rules_mask,
-        difficulty_rule_indices=space.indices_for_difficulty(difficulty),
-        mutations=token_mutations,
-        object_key=token_key,
-    )
-
-    example_cards = [(f'E{index:02d}', sequence) for index, sequence in enumerate(material.examples, start=1)]
-    probe_cards = [(f'P{index:02d}', sequence) for index, sequence in enumerate(material.probes, start=1)]
-    target_cards = [(f'T{index:02d}', sequence) for index, sequence in enumerate(material.targets, start=1)]
+    space, material = universe_material(random.Random(seed), difficulty, _UNIVERSE)
+    cards = [*material.example_cards, *material.probe_cards, *material.target_cards]
     public = {
         'kind': PUBLIC_KIND,
         'family': FAMILY_KEY,
         'variant': 'classify_hidden_token_rule',
-        'prompt': (
-            'Загадано некоторое свойство для набора фишек. Для '
-            'некоторых полок это свойство выполняется, для некоторых — нет. '
-            'Твоя задача — раскрыть это свойство. Доступно 5 подсказок.'
-        ),
-        'cards': {
-            card_id: serialize_tokens(sequence)
-            for card_id, sequence in [*example_cards, *probe_cards, *target_cards]
-        },
-        'content': {
-            'examples': [
-                {'card_id': card_id, 'classification': 'positive' if label else 'negative'}
-                for (card_id, _sequence), label in zip(example_cards, material.example_labels, strict=True)
-            ],
-            'probe_cards': [{'card_id': card_id, 'used': False} for card_id, _sequence in probe_cards],
-            'targets': [
-                {'card_id': card_id, 'position': index}
-                for index, (card_id, _sequence) in enumerate(target_cards, start=1)
-            ],
-            'probe_budget': PROBE_BUDGET,
-            'probes_remaining': PROBE_BUDGET,
-            'probe_observations': [],
-        },
+        'prompt': PROMPT,
+        'cards': {card_id: serialize_tokens(sequence) for card_id, sequence in cards},
+        'content': public_content(material),
         'interaction': {'mode': 'probe_then_answer', 'commands': ['/test <card_id>', '/answer <да/нет ...>']},
-        'response_hint': (
-            'Ответьте восемью значениями в порядке целей (1 — подходит, 0 — нет): /answer 1 0 1 0 1 0 1 0.'
-        ),
+        'response_hint': ANSWER_RESPONSE_HINT,
         'dsl_version': DSL_VERSION,
     }
-    private = {
-        'family': FAMILY_KEY,
-        'generator_version': GENERATOR_VERSION,
-        'difficulty': difficulty,
-        'dsl_version': DSL_VERSION,
-        'universe_version': UNIVERSE_VERSION,
-        'rule_index': material.rule_index,
-        'version_space': material.version_space,
-        'version_space_after_examples': material.version_space,
-        'probe_cards': {card_id: serialize_tokens(sequence) for card_id, sequence in probe_cards},
-        'probe_truth_masks': {
-            card_id: truth_mask
-            for (card_id, _sequence), truth_mask in zip(probe_cards, material.probe_masks, strict=True)
+    private = private_state(
+        material,
+        identity={
+            'family': FAMILY_KEY,
+            'generator_version': GENERATOR_VERSION,
+            'difficulty': difficulty,
+            'dsl_version': DSL_VERSION,
+            'universe_version': UNIVERSE_VERSION,
         },
-        'used_probe_card_ids': [],
-        'probe_budget': PROBE_BUDGET,
-        'probes_remaining': PROBE_BUDGET,
-        'target_card_ids': [card_id for card_id, _sequence in target_cards],
-        'target_answers': material.target_answers,
-        'hint_category': rule_hint_category(space.rules[material.rule_index], ATOM_HINT_CATEGORIES),
-    }
+        probes=card_probes(material, serialize_tokens),
+        hint_category=rule_hint_category(space.rules[material.rule_index], ATOM_HINT_CATEGORIES),
+    )
     return public, private
 
 

@@ -9,6 +9,8 @@ mathematical validity) of the participant's reasoning.
 from __future__ import annotations
 
 import re
+from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 from .family import State, TaskFamily
@@ -77,23 +79,26 @@ def _selected_sub_kind(context: dict[str, Any] | None) -> str:
     raise ValueError('classic_math sub_kind is not supported')
 
 
-def generate_classic_math_task(
-    *, seed: int, difficulty: int, context: dict[str, Any] | None = None
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Return one of the two versioned fixed tasks selected by contest config."""
+RESPONSE_HINT = (
+    'Отправьте шаблон одной строкой. Итог до маркера '
+    '«Обоснование:» проверяется точно; объяснение обязательно.'
+)
 
-    del seed
-    if isinstance(difficulty, bool) or difficulty < 1:
-        raise ValueError('classic_math difficulty must be positive')
-    sub_kind = _selected_sub_kind(context)
 
-    if sub_kind == SHARE_PARADOX:
-        title = 'Доли и объединение данных'
-        submission_template = (
-            '/answer Сравнения: <месяц 1>; <месяц 2>; <вместе> '
-            'Обоснование: <не менее одного полного предложения>'
-        )
-        prompt = (
+@dataclass(frozen=True)
+class _Statement:
+    """Versioned wording of one fixed task."""
+
+    title: str
+    prompt: str
+    submission_template: str
+    public_extra: dict[str, Any]
+
+
+STATEMENTS = {
+    SHARE_PARADOX: _Statement(
+        title='Доли и объединение данных',
+        prompt=(
             'Два программиста, Егор и Вася, сравнили долю '
             'закрытых задач '
             'за два месяца.\n\n'
@@ -113,8 +118,12 @@ def generate_classic_math_task(
             'Отправьте ответ одной строкой: «/answer Сравнения: '
             '<месяц 1>; <месяц 2>; <вместе> Обоснование: '
             '<ваше объяснение>».'
-        )
-        public_extra: dict[str, Any] = {
+        ),
+        submission_template=(
+            '/answer Сравнения: <месяц 1>; <месяц 2>; <вместе> '
+            'Обоснование: <не менее одного полного предложения>'
+        ),
+        public_extra={
             'table': {
                 'columns': ['Период', 'Егор', 'Вася'],
                 'rows': [
@@ -123,14 +132,11 @@ def generate_classic_math_task(
                     ['Два месяца вместе', '11 из 20', '12 из 20'],
                 ],
             }
-        }
-    else:
-        title = 'Рассадка вдоль стойки'
-        submission_template = (
-            '/answer Ответ: первое место <номер>; максимум <число> '
-            'Обоснование: <не менее одного полного предложения>'
-        )
-        prompt = (
+        },
+    ),
+    BAR_SEATING: _Statement(
+        title='Рассадка вдоль стойки',
+        prompt=(
             'Вдоль прямой барной стойки расположены 25 мест, '
             'пронумерованных от 1 до 25. Бармен назначает место '
             'первому '
@@ -151,23 +157,37 @@ def generate_classic_math_task(
             'Отправьте ответ одной строкой: «/answer Ответ: первое место '
             '<номер>; максимум <число> Обоснование: '
             '<ваше доказательство>».'
-        )
-        public_extra = {'seat_count': 25}
+        ),
+        submission_template=(
+            '/answer Ответ: первое место <номер>; максимум <число> '
+            'Обоснование: <не менее одного полного предложения>'
+        ),
+        public_extra={'seat_count': 25},
+    ),
+}
 
+
+def generate_classic_math_task(
+    *, seed: int, difficulty: int, context: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return one of the two versioned fixed tasks selected by contest config."""
+
+    del seed
+    if isinstance(difficulty, bool) or difficulty < 1:
+        raise ValueError('classic_math difficulty must be positive')
+    sub_kind = _selected_sub_kind(context)
+    statement = STATEMENTS[sub_kind]
     public = {
         'kind': PUBLIC_KIND,
         'family': FAMILY_KEY,
         'sub_kind': sub_kind,
-        'title': title,
-        'prompt': prompt,
-        'response_hint': (
-            'Отправьте шаблон одной строкой. Итог до маркера '
-            '«Обоснование:» проверяется точно; объяснение обязательно.'
-        ),
-        'submission_template': submission_template,
+        'title': statement.title,
+        'prompt': statement.prompt,
+        'response_hint': RESPONSE_HINT,
+        'submission_template': statement.submission_template,
         'answer_format': 'free_response',
         'scripted': True,
-        **public_extra,
+        **deepcopy(statement.public_extra),
     }
     private = {
         'family': FAMILY_KEY,

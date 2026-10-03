@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..access_codes import expire_code_if_needed, latest_code, new_code_values, recover_plaintext, revoke
 from ..ai import ProviderError, generate_telemetry_markdown
-from ..attempts import active_attempt, expire_stale_attempts
+from ..attempts import active_attempt, expire_stale_attempts, pending_grant
 from ..dependencies import (
     AiProviderDependency,
     OrganizerDependency,
@@ -48,7 +48,7 @@ router = APIRouter(prefix='/contests/{contest_id}')
 NO_STORE = 'private, no-store'
 
 
-def get_enrollment_or_404(session: Session, contest_id: str, enrollment_id: str) -> Enrollment:
+def _get_enrollment_or_404(session: Session, contest_id: str, enrollment_id: str) -> Enrollment:
     enrollment = session.scalar(
         select(Enrollment)
         .options(joinedload(Enrollment.participant))
@@ -61,7 +61,7 @@ def get_enrollment_or_404(session: Session, contest_id: str, enrollment_id: str)
     return enrollment
 
 
-def enrollments_with_codes(session: Session, contest_id: str) -> list[Enrollment]:
+def _enrollments_with_codes(session: Session, contest_id: str) -> list[Enrollment]:
     return list(
         session.scalars(
             select(Enrollment)
@@ -74,7 +74,7 @@ def enrollments_with_codes(session: Session, contest_id: str) -> list[Enrollment
     )
 
 
-def code_response(enrollment: Enrollment, code: AccessCode, plaintext: str) -> GeneratedCodeResponse:
+def _code_response(enrollment: Enrollment, code: AccessCode, plaintext: str) -> GeneratedCodeResponse:
     return GeneratedCodeResponse(
         enrollment_id=enrollment.id,
         participant=enrollment.participant,
@@ -85,7 +85,7 @@ def code_response(enrollment: Enrollment, code: AccessCode, plaintext: str) -> G
     )
 
 
-def issue_code(session: Session, settings, enrollment: Enrollment, expires_at) -> tuple[AccessCode, str]:
+def _issue_code(session: Session, settings, enrollment: Enrollment, expires_at) -> tuple[AccessCode, str]:
     code_id, plaintext, lookup_hash = new_code_values(session, settings)
     code = AccessCode(
         id=code_id,
@@ -190,7 +190,7 @@ def list_enrollments(
     return OrganizerEnrollmentListResponse(items=items)
 
 
-def enrollment_telemetry(session: Session, contest: Contest, enrollment: Enrollment) -> str:
+def _enrollment_telemetry(session: Session, contest: Contest, enrollment: Enrollment) -> str:
     by_number = (
         select(Attempt).where(Attempt.enrollment_id == enrollment.id).order_by(Attempt.number, Attempt.id)
     )
@@ -201,7 +201,7 @@ def enrollment_telemetry(session: Session, contest: Contest, enrollment: Enrollm
     return format_enrollment_telemetry(contest=contest, enrollment=enrollment, attempts=list(attempts))
 
 
-def attachment(
+def _attachment(
     content: str, media_type: str, enrollment: Enrollment, prefix: str, extension: str
 ) -> Response:
     """File download named after the participant, with an ASCII fallback name."""
@@ -230,9 +230,9 @@ def download_enrollment_telemetry(
     contest_id: str, enrollment_id: str, session: SessionDependency, _organizer: OrganizerDependency
 ) -> Response:
     contest = get_contest_or_404(session, contest_id)
-    enrollment = get_enrollment_or_404(session, contest_id, enrollment_id)
-    content = enrollment_telemetry(session, contest, enrollment)
-    return attachment(content, 'text/plain; charset=utf-8', enrollment, 'sirius-telemetry', 'txt')
+    enrollment = _get_enrollment_or_404(session, contest_id, enrollment_id)
+    content = _enrollment_telemetry(session, contest, enrollment)
+    return _attachment(content, 'text/plain; charset=utf-8', enrollment, 'sirius-telemetry', 'txt')
 
 
 @router.get('/enrollments/{enrollment_id}/telemetry/summary', response_class=Response)
@@ -251,13 +251,13 @@ def download_enrollment_telemetry_summary(
             'AI-анализ журналов не настроен на сервере.',
         )
     contest = get_contest_or_404(session, contest_id)
-    enrollment = get_enrollment_or_404(session, contest_id, enrollment_id)
+    enrollment = _get_enrollment_or_404(session, contest_id, enrollment_id)
     participant = enrollment.participant
     try:
         content = generate_telemetry_markdown(
             settings=settings,
             provider=ai_provider,
-            telemetry=enrollment_telemetry(session, contest, enrollment),
+            telemetry=_enrollment_telemetry(session, contest, enrollment),
             contest_title=contest.title,
             participant_label=participant.display_name.strip()
             or participant.external_ref.strip()
@@ -270,7 +270,7 @@ def download_enrollment_telemetry_summary(
             error.code,
             'Не удалось подготовить AI-саммари. Повторите попытку позже.',
         ) from error
-    return attachment(content, 'text/markdown; charset=utf-8', enrollment, 'sirius-summary', 'md')
+    return _attachment(content, 'text/markdown; charset=utf-8', enrollment, 'sirius-summary', 'md')
 
 
 @router.post('/codes/recover', response_model=CodeGenerationResponse)
@@ -287,7 +287,7 @@ def recover_codes(
     recovered: list[GeneratedCodeResponse] = []
     unavailable_count = 0
     status_changed = False
-    for enrollment in enrollments_with_codes(session, contest_id):
+    for enrollment in _enrollments_with_codes(session, contest_id):
         for code in enrollment.access_codes:
             status_changed = expire_code_if_needed(code, now) or status_changed
         code = latest_code(
@@ -297,7 +297,7 @@ def recover_codes(
         if code is None or plaintext is None:
             unavailable_count += 1
             continue
-        recovered.append(code_response(enrollment, code, plaintext))
+        recovered.append(_code_response(enrollment, code, plaintext))
     if status_changed:
         session.commit()
     return CodeGenerationResponse(items=recovered, generated_count=0, skipped_count=unavailable_count)
@@ -318,7 +318,7 @@ def generate_codes(
     generated: list[GeneratedCodeResponse] = []
     generated_count = 0
     skipped_count = 0
-    for enrollment in enrollments_with_codes(session, contest_id):
+    for enrollment in _enrollments_with_codes(session, contest_id):
         active_codes = [
             code
             for code in enrollment.access_codes
@@ -328,15 +328,15 @@ def generate_codes(
             code = latest_code(active_codes)
             plaintext = recover_plaintext(code, settings)
             if plaintext is not None:
-                generated.append(code_response(enrollment, code, plaintext))
+                generated.append(_code_response(enrollment, code, plaintext))
             skipped_count += 1
             continue
         for code in active_codes:
             revoke(code, now)
-        code, plaintext = issue_code(session, settings, enrollment, payload.expires_at)
+        code, plaintext = _issue_code(session, settings, enrollment, payload.expires_at)
         session.flush()
         generated_count += 1
-        generated.append(code_response(enrollment, code, plaintext))
+        generated.append(_code_response(enrollment, code, plaintext))
     try:
         session.commit()
     except IntegrityError as error:
@@ -361,7 +361,7 @@ def rotate_enrollment_code(
 ) -> GeneratedCodeResponse:
     response.headers['Cache-Control'] = NO_STORE
     get_contest_or_404(session, contest_id)
-    enrollment = get_enrollment_or_404(session, contest_id, enrollment_id)
+    enrollment = _get_enrollment_or_404(session, contest_id, enrollment_id)
     now = utc_now()
     active_codes = session.scalars(
         select(AccessCode)
@@ -371,7 +371,7 @@ def rotate_enrollment_code(
     for code in active_codes:
         if not expire_code_if_needed(code, now):
             revoke(code, now)
-    code, plaintext = issue_code(session, settings, enrollment, payload.expires_at)
+    code, plaintext = _issue_code(session, settings, enrollment, payload.expires_at)
     try:
         session.commit()
     except IntegrityError as error:
@@ -380,14 +380,7 @@ def rotate_enrollment_code(
             status.HTTP_409_CONFLICT, 'CODE_ROTATION_CONFLICT', 'Не удалось заменить код; повторите операцию.'
         ) from error
     session.refresh(code)
-    return code_response(enrollment, code, plaintext)
-
-
-def pending_grant(session: Session, enrollment_id: str, *, lock: bool = False) -> AttemptGrant | None:
-    statement = select(AttemptGrant).where(
-        AttemptGrant.enrollment_id == enrollment_id, AttemptGrant.status == AttemptGrantStatus.PENDING
-    )
-    return session.scalar(statement.with_for_update() if lock else statement)
+    return _code_response(enrollment, code, plaintext)
 
 
 @router.post('/enrollments/{enrollment_id}/attempts/grant', response_model=AttemptGrantResponse)
@@ -395,7 +388,7 @@ def grant_next_attempt(
     contest_id: str, enrollment_id: str, session: SessionDependency, _organizer: OrganizerDependency
 ) -> AttemptGrantResponse:
     get_contest_or_404(session, contest_id)
-    enrollment = get_enrollment_or_404(session, contest_id, enrollment_id)
+    enrollment = _get_enrollment_or_404(session, contest_id, enrollment_id)
     if active_attempt(session, enrollment.id, lock=True) is not None:
         raise api_error(
             status.HTTP_409_CONFLICT,

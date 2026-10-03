@@ -3,7 +3,17 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from .models import AiTurn, AiTurnStatus, Attempt, Contest, Enrollment, TaskInstance, as_utc, utc_now
+from .models import (
+    AiTurn,
+    AiTurnStatus,
+    Attempt,
+    AttemptEvent,
+    Contest,
+    Enrollment,
+    TaskInstance,
+    as_utc,
+    utc_now,
+)
 from .tasks import FAMILIES
 
 TELEMETRY_FORMAT_VERSION = '1'
@@ -191,11 +201,8 @@ def _ai_transcript_lines(attempt: Attempt, tasks: list[TaskInstance]) -> list[st
     return lines
 
 
-def _attempt_lines(attempt: Attempt) -> list[str]:
-    tasks = sorted(attempt.tasks, key=lambda task: (task.ordinal, task.id))
-    events = sorted(attempt.events, key=lambda event: (event.sequence, event.id))
-    tasks_by_id = {task.id: task for task in tasks}
-    lines = [
+def _attempt_header_lines(attempt: Attempt, task_count: int, event_count: int) -> list[str]:
+    return [
         f'=== ATTEMPT number={attempt.number} ===',
         f'attempt_id: {attempt.id}',
         f'status: {attempt.status.value}',
@@ -203,72 +210,96 @@ def _attempt_lines(attempt: Attempt) -> list[str]:
         f'deadline_at_utc: {_utc_text(attempt.deadline_at)}',
         f'finished_at_utc: {_utc_text(attempt.finished_at)}',
         f'duration: {_duration_text(attempt.started_at, attempt.finished_at)}',
-        f'task_count: {len(tasks)}',
-        f'event_count: {len(events)}',
-        '',
+        f'task_count: {task_count}',
+        f'event_count: {event_count}',
     ]
-    if tasks:
-        for task in tasks:
-            lines.extend(_task_lines(task))
-            lines.append('')
-    else:
-        lines.extend(['--- NO TASKS ---', ''])
 
-    lines.append('--- LEARNING SLOPES ---')
+
+def _task_section_lines(tasks: list[TaskInstance]) -> list[str]:
+    if not tasks:
+        return ['--- NO TASKS ---', '']
+    lines: list[str] = []
+    for task in tasks:
+        lines.extend(_task_lines(task))
+        lines.append('')
+    return lines
+
+
+def _learning_slope_lines(tasks: list[TaskInstance]) -> list[str]:
     slopes = _learning_slopes(tasks)
-    if slopes:
-        for family, slope in slopes:
-            lines.append(
-                f'learning_slope {_family_text(family)}: ' + ('null' if slope is None else f'{slope:+.4f}')
-            )
-    else:
-        lines.append('(no scored tasks)')
-    lines.append('')
+    if not slopes:
+        return ['--- LEARNING SLOPES ---', '(no scored tasks)']
+    return [
+        '--- LEARNING SLOPES ---',
+        *(
+            f'learning_slope {_family_text(family)}: ' + ('null' if slope is None else f'{slope:+.4f}')
+            for family, slope in slopes
+        ),
+    ]
 
-    lines.extend(_ai_transcript_lines(attempt, tasks))
-    lines.append('')
 
-    lines.append('--- EVENT TIMELINE ---')
+def _event_line(
+    attempt: Attempt, event: AttemptEvent, task: TaskInstance | None, previous_timestamp: datetime | None
+) -> str:
+    event_payload = event.payload if isinstance(event.payload, dict) else {}
+    client_payload = event_payload.get('payload')
+    if not isinstance(client_payload, dict):
+        client_payload = {}
+    client_timestamp = event_payload.get('client_timestamp')
+    client_elapsed_ms = event_payload.get('client_elapsed_ms')
+    client_sequence = client_payload.get('client_sequence')
+    delta_previous = 0 if previous_timestamp is None else _elapsed_ms(event.created_at, previous_timestamp)
+    task_elapsed = f'{_elapsed_ms(event.created_at, task.created_at)}ms' if task is not None else '-'
+    return ' | '.join(
+        (
+            f'seq={event.sequence:06d}',
+            f'utc={_utc_text(event.created_at)}',
+            f't+attempt={_elapsed_ms(event.created_at, attempt.started_at)}ms',
+            f'delta_previous={delta_previous}ms',
+            f'client_utc={_header_text(client_timestamp) if client_timestamp else "-"}',
+            (
+                f'client_t+session={client_elapsed_ms}ms'
+                if isinstance(client_elapsed_ms, int)
+                else 'client_t+session=-'
+            ),
+            (f'client_seq={client_sequence}' if isinstance(client_sequence, int) else 'client_seq=-'),
+            f'task_ordinal={task.ordinal if task is not None else "-"}',
+            f'task_id={event.task_instance_id or "-"}',
+            f't+task={task_elapsed}',
+            f'type={_header_text(event.event_type)}',
+            f'payload={_payload_text(event.payload)}',
+        )
+    )
+
+
+def _event_timeline_lines(
+    attempt: Attempt, events: list[AttemptEvent], tasks: list[TaskInstance]
+) -> list[str]:
+    tasks_by_id = {task.id: task for task in tasks}
+    lines = ['--- EVENT TIMELINE ---']
     previous_timestamp: datetime | None = None
     for event in events:
-        event_payload = event.payload if isinstance(event.payload, dict) else {}
-        client_payload = event_payload.get('payload')
-        if not isinstance(client_payload, dict):
-            client_payload = {}
-        client_timestamp = event_payload.get('client_timestamp')
-        client_elapsed_ms = event_payload.get('client_elapsed_ms')
-        client_sequence = client_payload.get('client_sequence')
         task = tasks_by_id.get(event.task_instance_id) if event.task_instance_id is not None else None
-        delta_previous = (
-            0 if previous_timestamp is None else _elapsed_ms(event.created_at, previous_timestamp)
-        )
-        task_elapsed = f'{_elapsed_ms(event.created_at, task.created_at)}ms' if task is not None else '-'
-        lines.append(
-            ' | '.join(
-                (
-                    f'seq={event.sequence:06d}',
-                    f'utc={_utc_text(event.created_at)}',
-                    f't+attempt={_elapsed_ms(event.created_at, attempt.started_at)}ms',
-                    f'delta_previous={delta_previous}ms',
-                    f'client_utc={_header_text(client_timestamp) if client_timestamp else "-"}',
-                    (
-                        f'client_t+session={client_elapsed_ms}ms'
-                        if isinstance(client_elapsed_ms, int)
-                        else 'client_t+session=-'
-                    ),
-                    (f'client_seq={client_sequence}' if isinstance(client_sequence, int) else 'client_seq=-'),
-                    f'task_ordinal={task.ordinal if task is not None else "-"}',
-                    f'task_id={event.task_instance_id or "-"}',
-                    f't+task={task_elapsed}',
-                    f'type={_header_text(event.event_type)}',
-                    f'payload={_payload_text(event.payload)}',
-                )
-            )
-        )
+        lines.append(_event_line(attempt, event, task, previous_timestamp))
         previous_timestamp = event.created_at
     if not events:
         lines.append('(no events)')
     return lines
+
+
+def _attempt_lines(attempt: Attempt) -> list[str]:
+    tasks = sorted(attempt.tasks, key=lambda task: (task.ordinal, task.id))
+    events = sorted(attempt.events, key=lambda event: (event.sequence, event.id))
+    return [
+        *_attempt_header_lines(attempt, len(tasks), len(events)),
+        '',
+        *_task_section_lines(tasks),
+        *_learning_slope_lines(tasks),
+        '',
+        *_ai_transcript_lines(attempt, tasks),
+        '',
+        *_event_timeline_lines(attempt, events, tasks),
+    ]
 
 
 def format_enrollment_telemetry(

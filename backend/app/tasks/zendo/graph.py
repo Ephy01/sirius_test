@@ -11,8 +11,11 @@ from ..family import State, TaskFamily, Transition, required_text
 from ..graphs import public_state as scene_public_state
 from ..graphs import scene
 from .engine import (
-    PROBE_BUDGET,
+    ANSWER_RESPONSE_HINT,
+    card_probes,
     evaluate_zendo_answer,
+    private_state,
+    public_content,
     reference_answer,
     rule_details,
     rule_hint_category,
@@ -28,6 +31,12 @@ from .rule_space import DEFAULT_DSL_VERSION, get_rule_space
 
 FAMILY_KEY = 'geo_zendo'
 GENERATOR_VERSION = 'geometry-zendo-v3'
+PROMPT = (
+    'Загадано некоторое свойство для конструкций. Для некоторых '
+    'конструкций это свойство выполняется, для некоторых — нет. '
+    'Твоя задача — раскрыть это свойство и классифицировать восемь '
+    'целевых конструкций по порядку. Доступно 5 подсказок.'
+)
 
 GRAPH_ATOM_DESCRIPTIONS = {
     'vertex_count_even': 'чётное число вершин',
@@ -83,66 +92,28 @@ def generate_geo_zendo_task(*, seed: int, difficulty: int) -> tuple[dict[str, An
         mutations=graph_mutations,
         object_key=graph_key,
     )
-
-    example_cards = [(f'E{index:02d}', graph) for index, graph in enumerate(material.examples, start=1)]
-    probe_cards = [(f'P{index:02d}', graph) for index, graph in enumerate(material.probes, start=1)]
-    target_cards = [(f'T{index:02d}', graph) for index, graph in enumerate(material.targets, start=1)]
+    cards = [*material.example_cards, *material.probe_cards, *material.target_cards]
     public = scene_public_state(
         family=FAMILY_KEY,
         variant='classify_hidden_geometric_rule_v2',
-        prompt=(
-            'Загадано некоторое свойство для конструкций. Для некоторых '
-            'конструкций это свойство выполняется, для некоторых — нет. '
-            'Твоя задача — раскрыть это свойство и классифицировать восемь '
-            'целевых конструкций по порядку. Доступно 5 подсказок.'
-        ),
-        scene=scene(
-            graphs=[
-                *[(card_id, graph, 'violet') for card_id, graph in example_cards],
-                *[(card_id, graph, 'violet') for card_id, graph in probe_cards],
-                *[(card_id, graph, 'violet') for card_id, graph in target_cards],
-            ]
-        ),
-        content={
-            'examples': [
-                {'card_id': card_id, 'classification': 'positive' if label else 'negative'}
-                for (card_id, _graph), label in zip(example_cards, material.example_labels, strict=True)
-            ],
-            'probe_cards': [{'card_id': card_id, 'used': False} for card_id, _graph in probe_cards],
-            'targets': [
-                {'card_id': card_id, 'position': index}
-                for index, (card_id, _graph) in enumerate(target_cards, start=1)
-            ],
-            'probe_budget': PROBE_BUDGET,
-            'probes_remaining': PROBE_BUDGET,
-            'probe_observations': [],
-        },
+        prompt=PROMPT,
+        scene=scene(graphs=[(card_id, graph, 'violet') for card_id, graph in cards]),
+        content=public_content(material),
         mode='probe_then_answer',
         commands=['/test <card_id>', '/answer <да/нет ...>'],
-        response_hint=(
-            'Ответьте восемью значениями в порядке целей (1 — подходит, 0 — нет): /answer 1 0 1 0 1 0 1 0.'
-        ),
+        response_hint=ANSWER_RESPONSE_HINT,
     )
     public['dsl_version'] = DEFAULT_DSL_VERSION
-    private = {
-        'family': FAMILY_KEY,
-        'generator_version': GENERATOR_VERSION,
-        'difficulty': difficulty,
-        'dsl_version': DEFAULT_DSL_VERSION,
-        'rule_index': material.rule_index,
-        'version_space': material.version_space,
-        'version_space_after_examples': material.version_space,
-        'probe_cards': {card_id: serialize_graph(graph) for card_id, graph in probe_cards},
-        'probe_truth_masks': {
-            card_id: truth_mask
-            for (card_id, _graph), truth_mask in zip(probe_cards, material.probe_masks, strict=True)
+    private = private_state(
+        material,
+        identity={
+            'family': FAMILY_KEY,
+            'generator_version': GENERATOR_VERSION,
+            'difficulty': difficulty,
+            'dsl_version': DEFAULT_DSL_VERSION,
         },
-        'used_probe_card_ids': [],
-        'probe_budget': PROBE_BUDGET,
-        'probes_remaining': PROBE_BUDGET,
-        'target_card_ids': [card_id for card_id, _graph in target_cards],
-        'target_answers': material.target_answers,
-    }
+        probes=card_probes(material, serialize_graph),
+    )
     return public, private
 
 

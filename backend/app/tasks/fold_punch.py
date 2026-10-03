@@ -29,6 +29,15 @@ GENERATOR_VERSION = 'fold-punch-v1'
 PUBLIC_KIND = 'fold_punch'
 
 SHEET_SIZE = 8
+GENERATION_ATTEMPTS = 256
+PROMPT = (
+    'Лист 8×8 сложили в показанном порядке и пробили дырки в '
+    'сложенном состоянии. Отметьте все клетки развёрнутого '
+    'листа, в которых окажутся дырки.'
+)
+RESPONSE_HINT = (
+    'Кликните клетки на сетке или перечислите их: /answer 2,3 5,8 (строка,столбец от левого верхнего угла).'
+)
 
 VERTICAL_RIGHT_ONTO_LEFT = ('vertical', 'right_onto_left')
 VERTICAL_LEFT_ONTO_RIGHT = ('vertical', 'left_onto_right')
@@ -140,74 +149,81 @@ def unfold_holes(folds: list[tuple[str, str]], holes: set[Cell]) -> set[Cell]:
     return unfolded
 
 
+def _random_folds(rng: random.Random, fold_count: int, use_diagonal: bool) -> list[tuple[str, str]] | None:
+    """Folds in half, optionally closed by a diagonal fold, which needs the sheet to stay square."""
+
+    folds: list[tuple[str, str]] = []
+    width = SHEET_SIZE
+    height = SHEET_SIZE
+    for _ in range(fold_count - (1 if use_diagonal else 0)):
+        options: list[tuple[str, str]] = []
+        if width >= 2:
+            options.extend((VERTICAL_RIGHT_ONTO_LEFT, VERTICAL_LEFT_ONTO_RIGHT))
+        if height >= 2:
+            options.extend((HORIZONTAL_TOP_ONTO_BOTTOM, HORIZONTAL_BOTTOM_ONTO_TOP))
+        fold = rng.choice(options)
+        folds.append(fold)
+        if fold[0] == 'vertical':
+            width //= 2
+        else:
+            height //= 2
+    if not use_diagonal:
+        return folds
+    if width != height:
+        return None
+    return [*folds, DIAGONAL_MAIN]
+
+
+def _punch(
+    rng: random.Random, folds: list[tuple[str, str]], hole_count: int
+) -> tuple[dict[str, Any], list[Cell], set[Cell]] | None:
+    """The folded sheet with its holes, the holes themselves and the cells they open when unfolded."""
+
+    stacks, folded_width, folded_height, triangle = _forward_fold_stacks(folds)
+    available = sorted(stacks)
+    if len(available) < hole_count:
+        return None
+    holes = sorted(rng.sample(available, hole_count))
+    expected: set[Cell] = set()
+    for hole in holes:
+        expected.update(stacks[hole])
+    if unfold_holes(folds, set(holes)) != expected:
+        raise RuntimeError('fold_punch checker diverged from the forward simulation')
+    if len(expected) < 2:
+        return None
+    folded = {
+        'width': folded_width,
+        'height': folded_height,
+        'triangle': triangle,
+        'holes': [[row, column] for row, column in holes],
+    }
+    return folded, holes, expected
+
+
 def generate_fold_punch_task(*, seed: int, difficulty: int) -> tuple[dict[str, Any], dict[str, Any]]:
     if isinstance(difficulty, bool) or not 1 <= difficulty <= 5:
         raise ValueError('fold_punch difficulty must be from 1 to 5')
     rng = random.Random(seed)
     fold_count = 2 if difficulty <= 2 else 3
     hole_count = 1 if difficulty == 1 else 2
-    use_diagonal = difficulty >= 4
-
-    for _ in range(256):
-        folds: list[tuple[str, str]] = []
-        width = SHEET_SIZE
-        height = SHEET_SIZE
-        planar_folds = fold_count - (1 if use_diagonal else 0)
-        for _ in range(planar_folds):
-            options: list[tuple[str, str]] = []
-            if width >= 2:
-                options.extend((VERTICAL_RIGHT_ONTO_LEFT, VERTICAL_LEFT_ONTO_RIGHT))
-            if height >= 2:
-                options.extend((HORIZONTAL_TOP_ONTO_BOTTOM, HORIZONTAL_BOTTOM_ONTO_TOP))
-            fold = rng.choice(options)
-            folds.append(fold)
-            if fold[0] == 'vertical':
-                width //= 2
-            else:
-                height //= 2
-        if use_diagonal:
-            if width != height:
-                continue
-            folds.append(DIAGONAL_MAIN)
-
-        stacks, folded_width, folded_height, triangle = _forward_fold_stacks(folds)
-        available = sorted(stacks)
-        if len(available) < hole_count:
+    for _ in range(GENERATION_ATTEMPTS):
+        folds = _random_folds(rng, fold_count, use_diagonal=difficulty >= 4)
+        punched = _punch(rng, folds, hole_count) if folds is not None else None
+        if punched is None:
             continue
-        holes = sorted(rng.sample(available, hole_count))
-        expected: set[Cell] = set()
-        for hole in holes:
-            expected.update(stacks[hole])
-        checker = unfold_holes(folds, set(holes))
-        if checker != expected:
-            raise RuntimeError('fold_punch checker diverged from the forward simulation')
-        if len(expected) < 2:
-            continue
-
+        folded, holes, expected = punched
         public = {
             'kind': PUBLIC_KIND,
             'family': FAMILY_KEY,
             'variant': 'unfold_holes',
-            'prompt': (
-                'Лист 8×8 сложили в показанном порядке и пробили дырки в '
-                'сложенном состоянии. Отметьте все клетки развёрнутого '
-                'листа, в которых окажутся дырки.'
-            ),
+            'prompt': PROMPT,
             'sheet_size': SHEET_SIZE,
             'folds': [
                 {'axis': axis, 'direction': direction, 'label': f'Сложить {FOLD_LABELS[(axis, direction)]}'}
                 for axis, direction in folds
             ],
-            'folded': {
-                'width': folded_width,
-                'height': folded_height,
-                'triangle': triangle,
-                'holes': [[row, column] for row, column in holes],
-            },
-            'response_hint': (
-                'Кликните клетки на сетке или перечислите их: '
-                '/answer 2,3 5,8 (строка,столбец от левого верхнего угла).'
-            ),
+            'folded': folded,
+            'response_hint': RESPONSE_HINT,
         }
         private = {
             'family': FAMILY_KEY,

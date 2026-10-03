@@ -34,7 +34,7 @@ router = APIRouter(prefix='/participant/tasks/{task_id}')
 NO_REFERENCE_ANSWER = 'Эталонный ответ для этого семейства недоступен.'
 
 
-def stored_interaction(session: Session, task_id: str, client_action_id: str) -> TaskInteraction | None:
+def _stored_interaction(session: Session, task_id: str, client_action_id: str) -> TaskInteraction | None:
     return session.scalar(
         select(TaskInteraction).where(
             TaskInteraction.task_instance_id == task_id, TaskInteraction.client_action_id == client_action_id
@@ -42,7 +42,7 @@ def stored_interaction(session: Session, task_id: str, client_action_id: str) ->
     )
 
 
-def replayed_response(
+def _replayed_response(
     task: TaskInstance, interaction: TaskInteraction, action_type: str, request: dict
 ) -> TaskInteractionResponse:
     """Answer a repeated request with the stored outcome of the first one."""
@@ -63,7 +63,7 @@ def replayed_response(
     )
 
 
-def action_request(payload: TaskInteractionRequest) -> dict:
+def _action_request(payload: TaskInteractionRequest) -> dict:
     """The part of an interaction request that identifies the action."""
 
     if payload.action_type == 'probe':
@@ -73,7 +73,7 @@ def action_request(payload: TaskInteractionRequest) -> dict:
     return {}
 
 
-def require_action(task: TaskInstance, action: str) -> TaskFamily:
+def _require_action(task: TaskInstance, action: str) -> TaskFamily:
     if task.status != TaskStatus.ACTIVE:
         raise api_error(status.HTTP_409_CONFLICT, 'TASK_ALREADY_CLOSED', 'Эта задача уже завершена.')
     require_input_available(task)
@@ -93,7 +93,7 @@ def require_action(task: TaskInstance, action: str) -> TaskFamily:
     return family
 
 
-def apply_transition(task: TaskInstance, transition: Transition) -> str | None:
+def _apply_transition(task: TaskInstance, transition: Transition) -> str | None:
     """Store the new task state; returns the director signal if the action closed the task."""
 
     task.public_state = transition.public_state
@@ -106,7 +106,7 @@ def apply_transition(task: TaskInstance, transition: Transition) -> str | None:
     return evaluation['director_signal']
 
 
-def record_interaction(
+def _record_interaction(
     session: Session,
     task: TaskInstance,
     client_action_id: str,
@@ -136,7 +136,7 @@ def record_interaction(
     return interaction
 
 
-def log_interaction(
+def _log_interaction(
     session: Session,
     task: TaskInstance,
     family: TaskFamily,
@@ -187,12 +187,12 @@ def interact_with_task(
 ) -> TaskInteractionResponse:
     attempt = require_active_attempt(session, enrollment)
     task = get_task_or_error(session, attempt, task_id, lock=True)
-    action, request = payload.action_type, action_request(payload)
-    existing = stored_interaction(session, task.id, payload.client_action_id)
+    action, request = payload.action_type, _action_request(payload)
+    existing = _stored_interaction(session, task.id, payload.client_action_id)
     if existing is not None:
-        return replayed_response(task, existing, action, request)
+        return _replayed_response(task, existing, action, request)
 
-    family = require_action(task, action)
+    family = _require_action(task, action)
     hash_before = task_state_hash(task)
     transition = interact_task(
         family=task.family,
@@ -206,18 +206,18 @@ def interact_with_task(
         public_state=task.public_state,
         private_state=task.private_state,
     )
-    signal = apply_transition(task, transition)
-    interaction = record_interaction(session, task, payload.client_action_id, action, request, transition)
-    log_interaction(session, task, family, interaction, transition, signal, hash_before)
+    signal = _apply_transition(task, transition)
+    interaction = _record_interaction(session, task, payload.client_action_id, action, request, transition)
+    _log_interaction(session, task, family, interaction, transition, signal, hash_before)
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
-        existing = stored_interaction(session, task_id, payload.client_action_id)
+        existing = _stored_interaction(session, task_id, payload.client_action_id)
         stored_task = session.get(TaskInstance, task_id)
         if existing is None or stored_task is None:
             raise
-        return replayed_response(stored_task, existing, action, request)
+        return _replayed_response(stored_task, existing, action, request)
     session.refresh(task)
     return TaskInteractionResponse(
         task=task,
@@ -253,6 +253,54 @@ def get_debug_answer(
     return DebugAnswerResponse(family=task.family, answer=answer, commands=commands, details=details)
 
 
+def _track_first_action(task: TaskInstance) -> None:
+    """Store how long the participant took before the first action, for families that measure it."""
+
+    family = FAMILIES.get(task.family)
+    if family is None or not family.tracks_first_action:
+        return
+    private_state = dict(private_state_of(task))
+    interaction = dict(private_state.get('interaction') or {})
+    if interaction.get('first_action_latency_ms') is not None:
+        return
+    interaction['first_action_latency_ms'] = first_action_latency_ms(task)
+    private_state['interaction'] = interaction
+    task.private_state = private_state
+
+
+def _evaluate_answer(task: TaskInstance, answer: str) -> dict:
+    evaluation = scored_evaluation(
+        task,
+        dict(
+            evaluate_task(
+                family=task.family,
+                generator_version=task.generator_version,
+                answer=answer,
+                private_state=task.private_state,
+            )
+        ),
+    )
+    evaluation['director_signal'] = director_signal(evaluation)
+    return evaluation
+
+
+def _freeze_input(session: Session, task: TaskInstance, evaluation: dict) -> None:
+    """Block further input for the time a non-final answer asks for, if it asks at all."""
+
+    seconds = evaluation.get('freeze_seconds')
+    if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds <= 0:
+        return
+    frozen_until = (utc_now() + timedelta(seconds=seconds)).isoformat()
+    task.private_state = {**private_state_of(task), 'input_frozen_until': frozen_until}
+    evaluation['input_frozen_until'] = frozen_until
+    append_task_event(
+        session,
+        task,
+        'task_input_frozen',
+        {'seconds': seconds, 'until': frozen_until, 'reason': evaluation.get('reason')},
+    )
+
+
 @router.post('/answer', response_model=TaskActionResponse)
 def answer_task(
     task_id: str,
@@ -272,41 +320,11 @@ def answer_task(
         )
     require_input_available(task)
 
-    family = FAMILIES.get(task.family)
-    if family is not None and family.tracks_first_action:
-        private_state = dict(private_state_of(task))
-        interaction = dict(private_state.get('interaction') or {})
-        if interaction.get('first_action_latency_ms') is None:
-            interaction['first_action_latency_ms'] = first_action_latency_ms(task)
-            private_state['interaction'] = interaction
-            task.private_state = private_state
-
-    evaluation = scored_evaluation(
-        task,
-        dict(
-            evaluate_task(
-                family=task.family,
-                generator_version=task.generator_version,
-                answer=payload.answer,
-                private_state=task.private_state,
-            )
-        ),
-    )
-    evaluation['director_signal'] = director_signal(evaluation)
-
+    _track_first_action(task)
+    evaluation = _evaluate_answer(task, payload.answer)
     append_task_event(session, task, 'answer_submitted', {'answer': payload.answer})
     if evaluation.get('should_finalize') is False:
-        seconds = evaluation.get('freeze_seconds')
-        if isinstance(seconds, int) and not isinstance(seconds, bool) and seconds > 0:
-            frozen_until = (utc_now() + timedelta(seconds=seconds)).isoformat()
-            task.private_state = {**private_state_of(task), 'input_frozen_until': frozen_until}
-            evaluation['input_frozen_until'] = frozen_until
-            append_task_event(
-                session,
-                task,
-                'task_input_frozen',
-                {'seconds': seconds, 'until': frozen_until, 'reason': evaluation.get('reason')},
-            )
+        _freeze_input(session, task, evaluation)
         message = str(evaluation.get('feedback') or 'Ответ пока не завершает задачу.')
     else:
         close_task(task, TaskStatus.ANSWERED, evaluation, answer=payload.answer)

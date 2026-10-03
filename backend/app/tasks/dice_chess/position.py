@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from collections import Counter
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
 
@@ -112,19 +113,72 @@ def _build_die(
     return tuple(faces), favorable_face_count
 
 
-def _fallback_task_inputs() -> tuple[
-    chess.Board, str, dict[str, int], tuple[str, ...], tuple[str, ...], tuple[str, ...], int
-]:
+@dataclass(frozen=True)
+class _Scenario:
+    """A position, the event asked about and the die it is rolled with."""
+
+    board: chess.Board
+    event_type: str
+    qualifying_move_counts: dict[str, int]
+    eligible: tuple[str, ...]
+    ineligible: tuple[str, ...]
+    faces: tuple[str, ...]
+    favorable_face_count: int
+    plies_from_start: int
+    position_source: str
+
+
+def _random_scenario(
+    rng: random.Random, difficulty: int, allowed_events: tuple[str, ...]
+) -> _Scenario | None:
+    position = _random_position(rng, difficulty)
+    if position is None:
+        return None
+    board, plies_from_start = position
+    options = _nontrivial_event_options(board, allowed_events)
+    if not options:
+        return None
+    event_type, counts, eligible, ineligible = rng.choice(options)
+    faces, favorable_face_count = _build_die(rng, eligible, ineligible)
+    return _Scenario(
+        board=board,
+        event_type=event_type,
+        qualifying_move_counts=counts,
+        eligible=eligible,
+        ineligible=ineligible,
+        faces=faces,
+        favorable_face_count=favorable_face_count,
+        plies_from_start=plies_from_start,
+        position_source='random_legal_playout',
+    )
+
+
+def _fallback_scenario() -> _Scenario:
     board = chess.Board()
     board.castling_rights = chess.BB_EMPTY
     board.ep_square = None
     board.clear_stack()
     event_type = 'legal_move'
-    counts = _qualifying_move_counts(board, event_type)
-    eligible = ('N', 'P')
-    ineligible = ('K', 'Q', 'R', 'B')
-    faces = ('P', 'Q', 'N', 'R', 'B', 'K')
-    return board, event_type, counts, eligible, ineligible, faces, 2
+    return _Scenario(
+        board=board,
+        event_type=event_type,
+        qualifying_move_counts=_qualifying_move_counts(board, event_type),
+        eligible=('N', 'P'),
+        ineligible=('K', 'Q', 'R', 'B'),
+        faces=('P', 'Q', 'N', 'R', 'B', 'K'),
+        favorable_face_count=2,
+        plies_from_start=0,
+        position_source='deterministic_fallback',
+    )
+
+
+def _scenario(rng: random.Random, difficulty: int) -> _Scenario:
+    allowed_events = _allowed_event_types(difficulty)
+    for _ in range(MAX_POSITION_ATTEMPTS):
+        scenario = _random_scenario(rng, difficulty, allowed_events)
+        if scenario is not None:
+            return scenario
+    return _fallback_scenario()
 
 
 def _event_description(event_type: str) -> str:
@@ -135,98 +189,44 @@ def _event_description(event_type: str) -> str:
     return 'После броска будет доступен хотя бы один легальный ход, объявляющий шах, фигурой выпавшего типа.'
 
 
-def generate_dice_chess_position_task(*, seed: int, difficulty: int) -> tuple[dict[str, Any], dict[str, Any]]:
-    rng = random.Random(seed)
-    allowed_events = _allowed_event_types(difficulty)
-    selected: (
-        tuple[
-            chess.Board, str, dict[str, int], tuple[str, ...], tuple[str, ...], tuple[str, ...], int, int, str
-        ]
-        | None
-    ) = None
-
-    for _ in range(MAX_POSITION_ATTEMPTS):
-        position = _random_position(rng, difficulty)
-        if position is None:
-            continue
-        board, plies_from_start = position
-        options = _nontrivial_event_options(board, allowed_events)
-        if not options:
-            continue
-        event_type, counts, eligible, ineligible = rng.choice(options)
-        faces, favorable_face_count = _build_die(rng, eligible, ineligible)
-        selected = (
-            board,
-            event_type,
-            counts,
-            eligible,
-            ineligible,
-            faces,
-            favorable_face_count,
-            plies_from_start,
-            'random_legal_playout',
-        )
-        break
-
-    if selected is None:
-        (board, event_type, counts, eligible, ineligible, faces, favorable_face_count) = (
-            _fallback_task_inputs()
-        )
-        selected = (
-            board,
-            event_type,
-            counts,
-            eligible,
-            ineligible,
-            faces,
-            favorable_face_count,
-            0,
-            'deterministic_fallback',
-        )
-
-    (
-        board,
-        event_type,
-        qualifying_move_counts,
-        eligible,
-        ineligible,
-        faces,
-        favorable_face_count,
-        plies_from_start,
-        position_source,
-    ) = selected
-    probability = Fraction(favorable_face_count, DIE_FACE_COUNT)
-    side_to_move = 'white' if board.turn == chess.WHITE else 'black'
-    side_label = 'белых' if board.turn == chess.WHITE else 'чёрных'
-
-    public_state: dict[str, Any] = {
+def _public_state(scenario: _Scenario) -> dict[str, Any]:
+    white_to_move = scenario.board.turn == chess.WHITE
+    return {
         'kind': 'dice_chess_position_probability',
         'prompt': (
             'Перед вами легальная шахматная позиция. '
-            f'Ход {side_label}. Бросают один шестигранный кубик: '
+            f'Ход {"белых" if white_to_move else "чёрных"}. Бросают один шестигранный кубик: '
             'выпавшая грань задаёт тип фигуры. Все грани равновероятны. '
             'Найдите вероятность описанного события.'
         ),
-        'board': _serialize_board(board),
-        'side_to_move': side_to_move,
-        'die': {'id': 'piece-die', 'label': 'Кубик фигур', 'faces': list(faces)},
+        'board': _serialize_board(scenario.board),
+        'side_to_move': 'white' if white_to_move else 'black',
+        'die': {'id': 'piece-die', 'label': 'Кубик фигур', 'faces': list(scenario.faces)},
         'sample_space_size': DIE_FACE_COUNT,
-        'event_description': _event_description(event_type),
+        'event_description': _event_description(scenario.event_type),
         'response_hint': ('Введите вероятность сокращённой дробью a/b, десятичным числом или в процентах.'),
     }
-    private_state: dict[str, Any] = {
-        'event_type': event_type,
-        'eligible_piece_types': list(eligible),
-        'ineligible_piece_types': list(ineligible),
-        'qualifying_move_counts': qualifying_move_counts,
-        'favorable_faces': favorable_face_count,
+
+
+def _private_state(scenario: _Scenario, difficulty: int) -> dict[str, Any]:
+    probability = Fraction(scenario.favorable_face_count, DIE_FACE_COUNT)
+    return {
+        'event_type': scenario.event_type,
+        'eligible_piece_types': list(scenario.eligible),
+        'ineligible_piece_types': list(scenario.ineligible),
+        'qualifying_move_counts': scenario.qualifying_move_counts,
+        'favorable_faces': scenario.favorable_face_count,
         'total_faces': DIE_FACE_COUNT,
         'probability': {'numerator': probability.numerator, 'denominator': probability.denominator},
         'diagnostics': {
-            'fen': board.fen(),
-            'plies_from_start': plies_from_start,
-            'position_source': position_source,
+            'fen': scenario.board.fen(),
+            'plies_from_start': scenario.plies_from_start,
+            'position_source': scenario.position_source,
             'difficulty': difficulty,
         },
     }
-    return public_state, private_state
+
+
+def generate_dice_chess_position_task(*, seed: int, difficulty: int) -> tuple[dict[str, Any], dict[str, Any]]:
+    scenario = _scenario(random.Random(seed), difficulty)
+    return _public_state(scenario), _private_state(scenario, difficulty)

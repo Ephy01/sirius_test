@@ -13,7 +13,7 @@ from ..security import hash_access_code, issue_bearer_token, normalize_code
 router = APIRouter()
 
 
-def invalid_code():
+def _invalid_code():
     return api_error(status.HTTP_401_UNAUTHORIZED, 'INVALID_ACCESS_CODE', 'Код не найден, отозван или истёк.')
 
 
@@ -35,11 +35,11 @@ def redeem_access(
         .where(AccessCode.lookup_hash == hash_access_code(code, settings))
     )
     if access_code is None or access_code.status != AccessCodeStatus.ACTIVE:
-        raise invalid_code()
+        raise _invalid_code()
     now = utc_now()
     if expire_code_if_needed(access_code, now):
         session.commit()
-        raise invalid_code()
+        raise _invalid_code()
 
     enrollment = access_code.enrollment
     if enrollment.contest.status != ContestStatus.PUBLISHED:
