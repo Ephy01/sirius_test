@@ -478,3 +478,55 @@ class TaskModuleProblemResponse(ApiModel):
 class TaskFamilyCatalogResponse(ApiModel):
     items: list[TaskFamilyResponse]
     problems: list[TaskModuleProblemResponse]
+
+
+class SandboxGenerateRequest(ApiModel):
+    family: str = Field(min_length=1, max_length=80)
+    difficulty: int = Field(default=1, ge=1, le=5)
+    seed: int | None = Field(default=None, ge=0, lt=2**63)
+    sub_kind: str | None = Field(default=None, max_length=80)
+
+
+class SandboxTaskResponse(ApiModel):
+    family: str
+    generator_version: str
+    seed: int
+    difficulty: int
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    reference_answer: str | None
+    reference_commands: list[str]
+    details: list[str]
+
+
+class SandboxInteractRequest(ApiModel):
+    family: str = Field(min_length=1, max_length=80)
+    action_type: Literal['probe', 'apply_op', 'undo', 'reset', 'hint']
+    probe: str | None = Field(default=None, max_length=80)
+    op_id: str | None = Field(default=None, max_length=80)
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+
+
+class SandboxInteractResponse(ApiModel):
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    accepted: bool
+    completed: bool
+    reason: str
+    message: str
+    evaluation: dict[str, Any] | None
+    reference_answer: str | None
+    reference_commands: list[str]
+    details: list[str]
+
+
+class SandboxAnswerRequest(ApiModel):
+    family: str = Field(min_length=1, max_length=80)
+    answer: str = Field(max_length=4000)
+    private_state: dict[str, Any]
+
+
+class SandboxAnswerResponse(ApiModel):
+    evaluation: dict[str, Any]
+    finalized: bool
