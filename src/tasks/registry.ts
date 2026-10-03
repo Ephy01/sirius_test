@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { readString, requiredString, type UnknownRecord } from "../api/parsing";
 import { chessCoverage } from "./chessCoverage";
 import { classicMath } from "./classicMath";
@@ -61,3 +62,27 @@ export function parsePublicState(state: UnknownRecord): TaskPublicState {
 export function TaskScene(props: TaskSceneProps<TaskPublicState>) {
   return taskKind(props.state.kind)?.renderScene(props) ?? null;
 }
+
+/** The optional members of the task's kind, resolved for this task. */
+export function taskBehaviour(task: {
+  publicState: TaskPublicState;
+  family: string;
+}) {
+  const subject = { state: task.publicState, family: task.family };
+  const kind = taskKind(subject.state.kind);
+  return {
+    textOnly: kind?.textOnly === true,
+    commands: kind?.commands?.(subject) ?? [],
+    help: kind?.help?.(subject),
+    opening: (number: ReactNode) => kind?.opening?.(subject, number) ?? {},
+    statement: kind?.statement?.(subject) ?? {},
+    answerGuide: kind?.answerGuide?.(subject),
+    commandGuide: kind?.commandGuide?.(subject),
+    answerExample: kind?.answerExample?.(subject),
+    answerOptions: kind?.answerOptions?.(subject) ?? [],
+    metaLines: kind?.metaLines?.(subject) ?? [],
+    quickActions: kind?.quickActions?.(subject) ?? [],
+  };
+}
+
+export type TaskBehaviour = ReturnType<typeof taskBehaviour>;

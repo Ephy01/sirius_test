@@ -12,11 +12,10 @@ import type {
   ParticipantTelemetryEvent,
   TaskProgressEntry,
 } from "../api";
-import { TaskScene } from "../tasks/registry";
+import { taskBehaviour, TaskScene } from "../tasks/registry";
 import { runTaskCommand, type TaskCommandHandlers } from "./commands";
 import { initialEntries, type ConsoleEntry } from "./consoleEntries";
 import { TaskBrief } from "./TaskBrief";
-import { taskTraits } from "./taskTraits";
 import { useTelemetryQueue } from "./telemetry";
 import "./participant-workspace.css";
 
@@ -103,9 +102,7 @@ export function ParticipantWorkspace({
   const timeIsUp = Boolean(deadlineAt) && remainingTime === "00:00";
   const isBusy = busy || commandBusy || timeIsUp;
   const canAct = task.status === "active" && !isBusy;
-  const { classicMath, isZendo, isChessCoverage } = taskTraits(task);
-  const chessCoverageHasPlacement =
-    state.kind === "chess_coverage" && state.placements.length > 0;
+  const { textOnly, quickActions } = taskBehaviour(task);
 
   useEffect(() => {
     const updateTimer = () => setRemainingTime(formatRemainingTime(deadlineAt));
@@ -240,6 +237,15 @@ export function ParticipantWorkspace({
     void runCommand(draft);
   }
 
+  function prefillDraft(prefix: string) {
+    setDraft((current) =>
+      current.startsWith(prefix)
+        ? current
+        : `${prefix} ${current}`.trimEnd() + " ",
+    );
+    inputRef.current?.focus();
+  }
+
   return (
     <main
       className="participant-workspace"
@@ -300,7 +306,7 @@ export function ParticipantWorkspace({
 
         <div
           className={`participant-task__stage${
-            classicMath ? " participant-task__stage--text-only" : ""
+            textOnly ? " participant-task__stage--text-only" : ""
           }`}
           ref={stageRef}
         >
@@ -380,44 +386,25 @@ export function ParticipantWorkspace({
                 type="button"
                 disabled={isBusy}
                 aria-label="Ввести команду /answer"
-                onClick={() => {
-                  setDraft((current) =>
-                    current.startsWith("/answer")
-                      ? current
-                      : `/answer ${current}`.trimEnd() + " ",
-                  );
-                  inputRef.current?.focus();
-                }}
+                onClick={() => prefillDraft("/answer")}
               >
                 Ответ
               </button>
-              {isZendo && (
+              {quickActions.map((action) => (
                 <button
                   type="button"
-                  disabled={isBusy}
-                  aria-label="Ввести команду /test"
-                  onClick={() => {
-                    setDraft((current) =>
-                      current.startsWith("/test")
-                        ? current
-                        : `/test ${current}`.trimEnd() + " ",
-                    );
-                    inputRef.current?.focus();
-                  }}
+                  disabled={isBusy || action.disabled === true}
+                  aria-label={action.ariaLabel}
+                  onClick={() =>
+                    "command" in action
+                      ? void runCommand(action.command)
+                      : prefillDraft(action.draftPrefix)
+                  }
+                  key={action.label}
                 >
-                  Проверить
+                  {action.label}
                 </button>
-              )}
-              {isChessCoverage && (
-                <button
-                  type="button"
-                  disabled={isBusy || !chessCoverageHasPlacement}
-                  aria-label="Сбросить шахматную расстановку"
-                  onClick={() => void runCommand("/reset")}
-                >
-                  Сбросить
-                </button>
-              )}
+              ))}
               {!tutorialMode && (
                 <button
                   type="button"

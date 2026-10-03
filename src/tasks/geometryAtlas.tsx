@@ -1,11 +1,12 @@
 import { invalidResponse } from "../api/errors";
 import { readString, type UnknownRecord } from "../api/parsing";
-import type { PublicStateBase, TaskKind } from "./kind";
+import type { PublicStateBase, TaskKind, TaskSubject } from "./kind";
 import {
   GeometryAtlasScene,
   parseGeometryScene,
   type GeometryScene,
 } from "./shared/geometry";
+import { zendoBehaviour } from "./shared/zendo";
 import { readContent } from "./shared/zendoCards";
 
 export type GeometryPublicState = {
@@ -47,15 +48,32 @@ function parseGeometryState(
   };
 }
 
+function hasHiddenRule({ family }: TaskSubject<unknown>): boolean {
+  return family === "geo_zendo";
+}
+
 export const geometryAtlas: TaskKind<GeometryPublicState> = {
   parse: parseGeometryState,
-  renderScene: ({ state, family, canAct, onCommand }) => (
+  renderScene: (task) => (
     <GeometryAtlasScene
-      scene={state.scene}
-      content={state.content}
+      scene={task.state.scene}
+      content={task.state.content}
       showGrid={false}
-      canProbe={canAct && family === "geo_zendo"}
-      onProbe={(cardId) => onCommand(`/test ${cardId}`)}
+      canProbe={task.canAct && hasHiddenRule(task)}
+      onProbe={(cardId) => task.onCommand(`/test ${cardId}`)}
     />
   ),
+  ...zendoBehaviour(
+    "все рисунки даны в одной системе обозначений",
+    hasHiddenRule,
+  ),
+  statement: (task) =>
+    hasHiddenRule(task)
+      ? {
+          prompt: task.state.prompt
+            .replaceAll("Конструкции", "Графы")
+            .replaceAll("конструкции", "графы")
+            .replaceAll("конструкций", "графов"),
+        }
+      : {},
 };

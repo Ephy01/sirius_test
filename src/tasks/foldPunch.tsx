@@ -209,4 +209,14 @@ export const foldPunch: TaskKind<FoldPunchPublicState> = {
       onSubmit={(cells) => onCommand(`/answer ${cells}`)}
     />
   ),
+  answerGuide: () => (
+    <>
+      Кликните клетки на развёрнутом листе и нажмите «Отправить
+      отмеченные клетки», или отправьте ответ в чате (пример:{" "}
+      <code>/answer 2,3 5,8</code> — строка,столбец).
+    </>
+  ),
+  metaLines: () => [
+    "сгибы выполняются по порядку; дырки пробиты через все слои сразу",
+  ],
 };

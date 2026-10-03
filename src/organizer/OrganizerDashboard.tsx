@@ -7,12 +7,12 @@ import {
   ENVIRONMENT_LABEL,
   PlusIcon,
 } from "../components";
-import {
-  ContestBuilder,
-  type ContestDraftInput,
-  type GeneratedCodeRow,
-  type ParticipantDraft,
-} from "./ContestBuilder";
+import type {
+  ContestDraftInput,
+  GeneratedCodeRow,
+  ParticipantDraft,
+} from "./builder/draft";
+import { ContestBuilder } from "./ContestBuilder";
 import { ContestAccessPanel } from "./ContestAccessPanel";
 
 export function OrganizerDashboard({

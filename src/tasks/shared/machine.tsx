@@ -1,6 +1,72 @@
 import { isRecord, readString } from "../../api/parsing";
+import type { TaskCommand, TaskKind, TaskSubject } from "../kind";
 
 export const MACHINE_RESPONSE_HINT = "/op op1 · /undo · done / impossible";
+
+const MACHINE_COMMANDS: readonly TaskCommand[] = ["op", "undo", "reset", "done"];
+
+const MACHINE_HELP = (
+  <>
+    <code>/op &lt;id&gt;</code> — применить указанную операцию
+    <br />
+    <code>/undo</code> — отменить последнюю операцию
+    <br />
+    <code>/reset</code> — вернуть машину в начало
+    <br />
+    <code>done</code> — зафиксировать достигнутую цель
+    <br />
+    <code>impossible</code> — заявить, что цель недостижима
+  </>
+);
+
+const MACHINE_OPENING_GUIDE = (
+  <>
+    Применяйте операции командой <code>/op &lt;id&gt;</code>, отменяйте
+    последний шаг через <code>/undo</code>. Итог: <code>done</code> или{" "}
+    <code>impossible</code>.
+  </>
+);
+
+const MACHINE_ANSWER_GUIDE = (
+  <>
+    Ответ отправьте в чате: <code>done</code> — когда решение
+    найдено, <code>impossible</code> — если цель недостижима.
+  </>
+);
+
+const MACHINE_COMMAND_GUIDE = (
+  <>
+    <code>/op &lt;id&gt;</code> — применить операцию ·{" "}
+    <code>/undo</code> — отменить последний шаг.
+  </>
+);
+
+/**
+ * Members shared by the kinds where a state is driven to a target with
+ * operations. `applies` limits the machine game to some families of the kind.
+ */
+export function machineBehaviour(
+  applies: (task: TaskSubject<unknown>) => boolean = () => true,
+) {
+  return {
+    commands: (task) => (applies(task) ? MACHINE_COMMANDS : []),
+    help: (task) => (applies(task) ? MACHINE_HELP : undefined),
+    opening: (task, number) =>
+      applies(task)
+        ? {
+            opened: (
+              <>
+                Открыта машина {number}. Переведите текущее состояние в целевое.
+              </>
+            ),
+            guide: MACHINE_OPENING_GUIDE,
+          }
+        : {},
+    answerGuide: (task) => (applies(task) ? MACHINE_ANSWER_GUIDE : undefined),
+    commandGuide: (task) => (applies(task) ? MACHINE_COMMAND_GUIDE : undefined),
+    answerExample: (task) => (applies(task) ? "/answer done" : undefined),
+  } satisfies Partial<TaskKind<unknown>>;
+}
 
 export type MachineState =
   | { lamps: number[] }

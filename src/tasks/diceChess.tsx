@@ -269,11 +269,27 @@ function Chessboard({ board }: { board: ChessBoardState }) {
   );
 }
 
+const DICE_BEHAVIOUR = {
+  statement: ({ state }) => ({
+    prompt: state.prompt.replace(
+      /\s*Найдите вероятность описанного события\.\s*$/u,
+      "",
+    ),
+    question: `Найдите вероятность того, что ${state.eventDescription
+      .charAt(0)
+      .toLocaleLowerCase("ru-RU")}${state.eventDescription.slice(1)}`,
+  }),
+  answerExample: () => "/answer 5/12",
+} satisfies Partial<
+  TaskKind<DiceChessInventoryPublicState | DiceChessPositionPublicState>
+>;
+
 export const diceChessInventory: TaskKind<DiceChessInventoryPublicState> = {
   parse: parseInventoryState,
   renderScene: ({ state }) => (
     <DicePositionScene board={state.board} die={state.die} />
   ),
+  ...DICE_BEHAVIOUR,
 };
 
 export const diceChessPosition: TaskKind<DiceChessPositionPublicState> = {
@@ -285,4 +301,5 @@ export const diceChessPosition: TaskKind<DiceChessPositionPublicState> = {
       sideToMove={state.sideToMove}
     />
   ),
+  ...DICE_BEHAVIOUR,
 };

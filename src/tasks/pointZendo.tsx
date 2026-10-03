@@ -6,6 +6,7 @@ import {
   parseGeometryScene,
   type GeometryScene,
 } from "./shared/geometry";
+import { zendoBehaviour } from "./shared/zendo";
 import { readContent } from "./shared/zendoCards";
 
 export type PointZendoPublicState = {
@@ -49,4 +50,5 @@ export const pointZendo: TaskKind<PointZendoPublicState> = {
       onProbe={(cardId) => onCommand(`/test ${cardId}`)}
     />
   ),
+  ...zendoBehaviour("все рисунки даны в одной системе обозначений"),
 };

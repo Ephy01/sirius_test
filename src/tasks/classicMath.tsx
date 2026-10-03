@@ -85,6 +85,43 @@ function parseClassicMathState(
 }
 
 export const classicMath: TaskKind<ClassicMathPublicState> = {
+  textOnly: true,
   parse: parseClassicMathState,
   renderScene: () => null,
+  statement: ({ state }) => ({
+    heading: state.title,
+    appendix: state.table && (
+      <div className="classic-math-table-wrap">
+        <table className="classic-math-table">
+          <thead>
+            <tr>
+              {state.table.columns.map((column) => (
+                <th key={column} scope="col">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {state.table.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ),
+  }),
+  answerGuide: ({ state }) => (
+    <>
+      Ответ отправьте в чате одной командой по шаблону:
+      <code className="classic-math-submission-template">
+        {state.submissionTemplate.replace(/\s*\n+\s*/gu, " ")}
+      </code>
+    </>
+  ),
+  answerExample: () => "/answer <развёрнутое решение>",
 };

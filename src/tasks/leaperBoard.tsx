@@ -13,6 +13,7 @@ import {
 } from "./shared/chess";
 import {
   MACHINE_RESPONSE_HINT,
+  machineBehaviour,
   parseMachineOperations,
   type MachineOperation,
 } from "./shared/machine";
@@ -185,4 +186,10 @@ export const leaperBoard: TaskKind<LeaperBoardPublicState> = {
       onOp={(opId) => onCommand(`/op ${opId}`)}
     />
   ),
+  ...machineBehaviour(({ family }) => family === "machine_reach"),
+  metaLines: ({ state }) => [
+    `Фигура: (${state.current.row + 1}, ${state.current.col + 1})`,
+    `Цель: (${state.target.row + 1}, ${state.target.col + 1})`,
+    `Шагов: ${state.stepsTaken} / ${state.stepsSoftCap}`,
+  ],
 };

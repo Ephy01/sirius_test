@@ -363,4 +363,45 @@ export const chessCoverage: TaskKind<ChessCoveragePublicState> = {
       onSubmit={() => onCommand("/answer done")}
     />
   ),
+  commands: () => ["op", "reset", "done"],
+  help: () => (
+    <>
+      Выберите фигуру в палитре и нажмите на клетку доски.
+      <br />
+      <code>/reset</code> — очистить расстановку
+      <br />
+      <code>done</code> — зафиксировать выбранную расстановку
+    </>
+  ),
+  opening: (_task, number) => ({
+    opened: <>Открыта шахматная расстановка {number}.</>,
+    guide:
+      "Выберите фигуру в палитре и ставьте её на свободные клетки. Покройте все цели с минимальной стоимостью.",
+  }),
+  answerGuide: () => (
+    <>
+      Выберите тип фигуры в палитре, расставьте фигуры на доске
+      и зафиксируйте решение кнопкой под доской или командой{" "}
+      <code>/answer done</code>.
+    </>
+  ),
+  commandGuide: () => (
+    <>
+      Нажатие на установленную фигуру убирает её ·{" "}
+      <code>/reset</code> — очистить доску.
+    </>
+  ),
+  answerExample: () => "/answer done",
+  metaLines: ({ state }) => [
+    `Выбрано фигур: ${state.placements.length}`,
+    `Текущая стоимость: ${state.totalCost}`,
+  ],
+  quickActions: ({ state }) => [
+    {
+      label: "Сбросить",
+      ariaLabel: "Сбросить шахматную расстановку",
+      command: "/reset",
+      disabled: state.placements.length === 0,
+    },
+  ],
 };

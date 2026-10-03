@@ -7,6 +7,7 @@ import {
   type UnknownRecord,
 } from "../api/parsing";
 import type { PublicStateBase, TaskKind } from "./kind";
+import { zendoBehaviour } from "./shared/zendo";
 import {
   classificationLabel,
   readContent,
@@ -181,5 +182,22 @@ export const gridZendo: TaskKind<GridZendoPublicState> = {
       canProbe={canAct}
       onProbe={(pattern) => onCommand(`/test ${pattern}`)}
     />
+  ),
+  ...zendoBehaviour("узор проверяется целиком"),
+  opening: () => ({
+    guide: (
+      <>
+        Нарисуйте узор на пустой сетке и проверьте его кнопкой или командой{" "}
+        <code>/test</code>, затем отправьте итоговый ответ.
+      </>
+    ),
+  }),
+  commandGuide: () => (
+    <>
+      Пробы рисуются: закрасьте клетки в блоке «Свой узор» и
+      нажмите «Проверить узор», или отправьте{" "}
+      <code>/test &lt;25 нулей и единиц&gt;</code>.{" "}
+      <code>/hint</code> — платная подсказка: итоговый балл умножается на 0.7.
+    </>
   ),
 };

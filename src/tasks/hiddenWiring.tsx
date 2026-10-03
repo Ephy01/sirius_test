@@ -211,4 +211,49 @@ export const hiddenWiring: TaskKind<HiddenWiringPublicState> = {
       onChord={(opId) => onCommand(`/op ${opId}`)}
     />
   ),
+  commands: () => ["hint", "op"],
+  help: () => (
+    <>
+      <code>/op b1+b2</code> — нажать комбинацию из двух кнопок
+      <br />
+      Кнопки срабатывают только парами; первая проба обучающая
+      и не тратит лимит.
+      <br />
+      <code>/hint</code> — платная подсказка: итоговый балл умножается на 0.7
+      <br />
+      <code>/skip</code> — пропустить задачу
+    </>
+  ),
+  opening: (_task, number) => ({
+    opened: (
+      <>
+        Открыта панель {number}. Проводка скрыта. Кнопки срабатывают только
+        парами.
+      </>
+    ),
+    guide: (
+      <>
+        Нажимайте комбинации из двух кнопок командой <code>/op b1+b2</code>{" "}
+        или кнопками на панели. Первая проба обучающая и не тратит лимит.
+      </>
+    ),
+  }),
+  answerGuide: ({ state }) =>
+    state.variant === "reach_target" ? null : (
+      <>
+        Ответ отправьте в чате (пример:{" "}
+        <code>/answer 1101 0000 1000</code> — три битовые
+        строки по лампам экзаменационных комбинаций, 1 —
+        лампа переключится).
+      </>
+    ),
+  metaLines: ({ state }) => [
+    `Доступно проб: ${state.chordsRemaining} / ${state.chordBudget}`,
+    ...(state.examChords && state.examChords.length > 0
+      ? [
+          "экзаменационные комбинации (недоступны для проб): " +
+            state.examChords.map((chord) => chord.id).join(", "),
+        ]
+      : []),
+  ],
 };

@@ -8,6 +8,7 @@ import {
 import type { PublicStateBase, TaskKind } from "./kind";
 import {
   MACHINE_RESPONSE_HINT,
+  machineBehaviour,
   MachineStateDisplay,
   parseMachineOperations,
   type MachineOperation,
@@ -161,4 +162,8 @@ export const machinePanel: TaskKind<MachinePanelPublicState> = {
       onReset={() => onCommand("/reset")}
     />
   ),
+  ...machineBehaviour(),
+  metaLines: ({ state }) => [
+    `Шагов: ${state.stepsTaken} / ${state.stepsSoftCap}`,
+  ],
 };

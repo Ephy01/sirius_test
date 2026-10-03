@@ -6,6 +6,7 @@ import {
   type UnknownRecord,
 } from "../api/parsing";
 import type { PublicStateBase, TaskKind } from "./kind";
+import { zendoBehaviour } from "./shared/zendo";
 import { readContent, ZendoCard } from "./shared/zendoCards";
 
 export type TokenCard = {
@@ -131,4 +132,5 @@ export const tokenZendo: TaskKind<TokenZendoPublicState> = {
       onProbe={(cardId) => onCommand(`/test ${cardId}`)}
     />
   ),
+  ...zendoBehaviour("цвет и число каждой фишки видны на полке"),
 };
