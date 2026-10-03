@@ -61,7 +61,7 @@ export type TaskKind<State> = {
   /** Response hint used when the server sends none. */
   defaultResponseHint?: string;
   /** The task has no scene and the statement takes the whole stage. */
-  textOnly?: boolean;
+  textOnly?(task: TaskSubject<State>): boolean;
   parse(state: UnknownRecord, base: PublicStateBase): State;
   renderScene(props: TaskSceneProps<State>): ReactNode;
   /** Commands the task accepts: /test, /hint, /op, /undo, /reset, bare done or impossible. */

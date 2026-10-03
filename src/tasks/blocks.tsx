@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties } from "react";
 import { invalidResponse } from "../api/errors";
 import { isRecord, parseList, type UnknownRecord } from "../api/parsing";
 import {
@@ -35,8 +35,13 @@ export type BlocksPublicState = {
   kind: "blocks";
   prompt: string;
   responseHint: string;
+  /** The sentence under the statement that tells how to answer, when the task has its own. */
+  answerGuide?: string;
+  /** The response hint the task sent itself, as opposed to the default one. */
+  answerFormat?: string;
   commands: TaskCommand[];
   help: string[];
+  /** Blocks that have something to show. */
   blocks: Block[];
 };
 
@@ -104,6 +109,17 @@ function parseBlock(value: unknown): Block | null {
   return null;
 }
 
+/** A block with nothing to show, such as `facts()` without lines, leaves no gap. */
+function hasContent(block: Block): boolean {
+  if (block.type === "text") return block.text !== "";
+  if (block.type === "table") return block.columns.length > 0;
+  return block.type === "grid" || block.items.length > 0;
+}
+
+function isOptionalText(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
 function parseBlocksState(
   state: UnknownRecord,
   base: PublicStateBase,
@@ -114,17 +130,26 @@ function parseBlocksState(
   );
   const help = parseList(state.help, parseText);
   const blocks = parseList(state.blocks, parseBlock);
-  const responseHint = state.response_hint;
+  const { response_hint: responseHint, answer_guide: answerGuide } = state;
   if (
     !commands ||
     !help ||
     !blocks ||
-    (responseHint !== undefined && typeof responseHint !== "string")
+    !isOptionalText(responseHint) ||
+    !isOptionalText(answerGuide)
   ) {
     throw invalidResponse("Сервер вернул некорректную сцену задачи.", state);
   }
 
-  return { kind: "blocks", ...base, commands, help, blocks };
+  return {
+    kind: "blocks",
+    ...base,
+    answerGuide: answerGuide?.trim() ? answerGuide : undefined,
+    answerFormat: responseHint?.trim() ? responseHint : undefined,
+    commands,
+    help,
+    blocks: blocks.filter(hasContent),
+  };
 }
 
 function Grid({
@@ -249,21 +274,25 @@ function BlockView({
   );
 }
 
-/** A block with nothing to show, such as `facts()` without lines, leaves no gap. */
-function hasContent(block: Block): boolean {
-  if (block.type === "text") return block.text !== "";
-  if (block.type === "table") return block.columns.length > 0;
-  return block.type === "grid" || block.items.length > 0;
+/** A line of /help: the command before " — " is set like the commands of built-in kinds. */
+function HelpLine({ line }: { line: string }) {
+  const separator = line.indexOf(" — ");
+  if (separator <= 0) return line;
+  return (
+    <>
+      <code>{line.slice(0, separator)}</code>
+      {line.slice(separator)}
+    </>
+  );
 }
 
 export const blocks: TaskKind<BlocksPublicState> = {
+  textOnly: ({ state }) => state.blocks.length === 0,
   parse: parseBlocksState,
-  renderScene: ({ state, canAct, onCommand }) => {
-    const visible = state.blocks.filter(hasContent);
-    if (visible.length === 0) return null;
-    return (
+  renderScene: ({ state, canAct, onCommand }) =>
+    state.blocks.length > 0 && (
       <div className="blocks-scene">
-        {visible.map((block, index) => (
+        {state.blocks.map((block, index) => (
           <BlockView
             block={block}
             canAct={canAct}
@@ -272,16 +301,23 @@ export const blocks: TaskKind<BlocksPublicState> = {
           />
         ))}
       </div>
-    );
-  },
+    ),
   commands: ({ state }) => state.commands,
   help: ({ state }) =>
     state.help.length > 0
       ? state.help.map((line, index) => (
-          <span key={index}>
+          <Fragment key={index}>
             {index > 0 && <br />}
-            {line}
-          </span>
+            <HelpLine line={line} />
+          </Fragment>
         ))
       : undefined,
+  answerGuide: ({ state }) =>
+    state.answerGuide ??
+    (state.answerFormat && (
+      <>
+        Ответ отправьте в чате командой <code>{state.answerFormat}</code>.
+      </>
+    )),
+  answerExample: ({ state }) => state.answerFormat,
 };

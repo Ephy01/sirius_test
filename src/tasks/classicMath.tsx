@@ -86,7 +86,7 @@ function parseClassicMathState(
 }
 
 export const classicMath: TaskKind<ClassicMathPublicState> = {
-  textOnly: true,
+  textOnly: () => true,
   parse: parseClassicMathState,
   renderScene: () => null,
   statement: ({ state }) => ({

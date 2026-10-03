@@ -73,7 +73,7 @@ export function taskBehaviour(task: {
   const subject = { state: task.publicState, family: task.family };
   const kind = taskKind(subject.state.kind);
   return {
-    textOnly: kind?.textOnly === true,
+    textOnly: kind?.textOnly?.(subject) === true,
     commands: kind?.commands?.(subject) ?? [],
     help: kind?.help?.(subject),
     opening: (number: ReactNode) => kind?.opening?.(subject, number) ?? {},
