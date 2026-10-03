@@ -23,6 +23,9 @@ from ..tasks import FAMILIES, TaskFamily, resolve_family
 
 router = APIRouter(prefix='/sandbox')
 
+# A browser reads the seed as a JavaScript number, which is exact only up to 2**53.
+SANDBOX_SEED_BITS = 53
+
 
 def _family(name: str) -> TaskFamily:
     family = FAMILIES.get(resolve_family(name) or '')
@@ -55,7 +58,7 @@ def generate_sandbox_task(
     payload: SandboxGenerateRequest, _organizer: OrganizerDependency
 ) -> SandboxTaskResponse:
     family = _family(payload.family)
-    seed = payload.seed if payload.seed is not None else secrets.randbits(63)
+    seed = payload.seed if payload.seed is not None else secrets.randbits(SANDBOX_SEED_BITS)
     context = {'sub_kinds': [payload.sub_kind]} if payload.sub_kind else {}
     public_state, private_state = _run(lambda: family.generate(seed, payload.difficulty, context))
     return SandboxTaskResponse(

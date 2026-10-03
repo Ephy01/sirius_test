@@ -56,6 +56,7 @@ def test_sandbox_generates_a_reproducible_task_with_its_reference_answer(tmp_pat
         assert (task['family'], task['seed'], task['difficulty']) == ('geo_probability', 42, 3)
         assert task['reference_answer'].startswith('/answer ')
         assert random_seed.json()['seed'] != 42
+        assert random_seed.json()['seed'] < 2**53
         assert unknown.status_code == 404
 
         checked = client.post(
