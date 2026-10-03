@@ -521,7 +521,7 @@ def _ai_context(public_state: State) -> State:
     ]
     drawn = [
         {
-            'pattern': observation.get('card_id'),
+            'pattern': observation.get('pattern'),
             'classification': classification_label(observation.get('classification')),
         }
         for observation in content.get('probe_observations') or []

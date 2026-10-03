@@ -113,15 +113,14 @@ AI_VISIBLE_KEYS = (
     'target',
     'steps_soft_cap',
     'steps_taken',
-    'history',
+    'lamp_count',
+    'working_range',
+    'card_count',
     'rows',
     'cols',
     'blocked',
     'jump',
     'board',
-    'modulus',
-    'cards',
-    'value',
 )
 
 

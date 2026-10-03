@@ -7,7 +7,9 @@ import json
 from app.ai import build_task_context
 from app.models import TaskInstance
 from app.tasks import generate_task, generator_version_for
+from app.tasks.machine_reach import SUB_KINDS, generate_machine_reach_task
 from app.tasks.zendo.graph import transition_geo_zendo_probe
+from app.tasks.zendo.grid import transition_grid_zendo_probe
 
 FORBIDDEN_JSON_KEYS = (
     '"target_answers"',
@@ -150,3 +152,26 @@ def test_wiring_context_shows_observations_only():
     assert visible['lampCount'] == task.public_state['lamp_count']
     assert visible['observations'] == []
     assert '"matrix"' not in context.canonical_json
+
+
+def test_machine_context_shows_every_public_parameter_of_each_sub_kind():
+    hidden = {'kind', 'prompt'}
+    for sub_kind in SUB_KINDS:
+        public, private = generate_machine_reach_task(seed=7, difficulty=3, sub_kind=sub_kind)
+        task = _task('machine_reach')
+        task.public_state, task.private_state = public, private
+        visible = build_task_context(task, []).payload['visibleState']
+        assert set(visible) - {'coordinate_note'} == set(public) - hidden, sub_kind
+
+
+def test_grid_context_shows_the_patterns_the_participant_drew():
+    task = _task('grid_zendo')
+    pattern = '1000000000001000000000001'
+    transition = transition_grid_zendo_probe(
+        pattern=pattern, public_state=task.public_state, private_state=task.private_state
+    )
+    assert transition.accepted is True
+    task.public_state, task.private_state = transition.public_state, transition.private_state
+    drawn = build_task_context(task, []).payload['visibleState']['drawnProbes']
+    assert [''.join(probe['pattern']) for probe in drawn] == [pattern]
+    assert drawn[0]['classification'] in {'подходит', 'не подходит'}
