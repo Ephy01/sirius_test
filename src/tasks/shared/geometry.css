@@ -1,0 +1,100 @@
+.geometry-atlas {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  justify-self: stretch;
+}
+
+.geometry-atlas__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 12px;
+}
+
+.geometry-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--workspace-line);
+  border-radius: 14px;
+  background: #fcfbfd;
+}
+
+.geometry-card header {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--workspace-line);
+  color: #756879;
+  font-family: var(--mono, monospace);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.geometry-card svg {
+  width: 100%;
+  height: 208px;
+  display: block;
+  overflow: visible;
+  padding: 10px;
+}
+
+.geometry-card__plane {
+  fill: #fff;
+  stroke: #eee9f0;
+  stroke-width: 0.08;
+}
+
+.geometry-card line {
+  stroke-width: 0.16;
+  stroke-linecap: round;
+}
+
+.geometry-card__grid line {
+  stroke: #e4e9ed;
+  stroke-width: 0.045;
+  stroke-linecap: butt;
+}
+
+.geometry-card__grid line.is-axis {
+  stroke: #c8d4db;
+  stroke-width: 0.075;
+}
+
+.geometry-card circle {
+  stroke: rgba(255, 255, 255, 0.94);
+  stroke-width: 0.11;
+  opacity: 0.98;
+}
+
+.geometry-card text {
+  font-family: var(--mono, monospace);
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(72, 48, 77, 0.16);
+  stroke-width: 0.025;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.geometry-atlas--points .geometry-card circle {
+  stroke: none;
+}
+
+.geometry-atlas--points .geometry-card__point-label {
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 0.1;
+  stroke-linejoin: round;
+}
+
+/* --- Пара source/image: карточки крупнее --- */
+.geometry-atlas--pair .geometry-atlas__cards {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+.geometry-atlas--pair .geometry-card svg {
+  height: 320px;
+}

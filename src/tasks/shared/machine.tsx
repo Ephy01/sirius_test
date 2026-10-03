@@ -1,5 +1,6 @@
 import { isRecord, readString } from "../../api/parsing";
 import type { TaskCommand, TaskKind, TaskSubject } from "../kind";
+import "./machine.css";
 
 export const MACHINE_RESPONSE_HINT = "/op op1 · /undo · done / impossible";
 

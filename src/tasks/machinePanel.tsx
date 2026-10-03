@@ -14,6 +14,7 @@ import {
   type MachineOperation,
   type MachineState,
 } from "./shared/machine";
+import "./machinePanel.css";
 
 export type MachineSubKind =
   | "lamps_gf2"

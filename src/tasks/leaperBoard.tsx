@@ -17,6 +17,7 @@ import {
   parseMachineOperations,
   type MachineOperation,
 } from "./shared/machine";
+import "./leaperBoard.css";
 
 export type LeaperBoardPublicState = {
   kind: "chess";

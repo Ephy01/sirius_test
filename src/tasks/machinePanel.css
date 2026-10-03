@@ -1,0 +1,16 @@
+.machine-panel__reset {
+  margin-top: 12px;
+  padding: 10px 15px;
+  border: 1px solid #b9c4c6;
+  background: #fff;
+  color: #33484d;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.machine-panel__reset:disabled {
+  cursor: default;
+  opacity: 0.45;
+}

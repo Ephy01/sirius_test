@@ -7,6 +7,7 @@ import {
   type ChessBoardPieceSymbol,
   type ChessPieceSymbol,
 } from "./shared/chess";
+import "./diceChess.css";
 
 export type ChessBoardState = (ChessBoardPieceSymbol | null)[][];
 

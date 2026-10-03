@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { isRecord, type UnknownRecord } from "../../api/parsing";
+import "./zendoCards.css";
 
 export function readContent(state: UnknownRecord): Record<string, unknown> {
   return isRecord(state.content) ? state.content : {};

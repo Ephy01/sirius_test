@@ -1,5 +1,6 @@
 import { isRecord, readNumber, readString } from "../../api/parsing";
 import { ZendoCard } from "./zendoCards";
+import "./geometry.css";
 
 export type GeometryPoint = {
   id: string;

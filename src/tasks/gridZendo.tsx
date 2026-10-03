@@ -13,6 +13,7 @@ import {
   readContent,
   ZendoCard,
 } from "./shared/zendoCards";
+import "./gridZendo.css";
 
 export type GridZendoPublicState = {
   kind: "grid_zendo";

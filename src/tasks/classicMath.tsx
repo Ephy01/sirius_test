@@ -6,6 +6,7 @@ import {
   type UnknownRecord,
 } from "../api/parsing";
 import type { PublicStateBase, TaskKind } from "./kind";
+import "./classicMath.css";
 
 export type ClassicMathSubKind = "share_paradox" | "bar_seating";
 

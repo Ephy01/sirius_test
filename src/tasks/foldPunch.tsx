@@ -7,6 +7,7 @@ import {
   type UnknownRecord,
 } from "../api/parsing";
 import type { PublicStateBase, TaskKind } from "./kind";
+import "./foldPunch.css";
 
 export type FoldStep = {
   axis: "vertical" | "horizontal" | "diagonal";

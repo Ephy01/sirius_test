@@ -1,0 +1,196 @@
+.machine-panel,
+.leaper-scene {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  justify-self: stretch;
+}
+
+.machine-panel__states {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.machine-panel__states--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 560px) {
+  .machine-panel__states {
+    grid-template-columns: 1fr;
+  }
+}
+
+.machine-state {
+  min-width: 0;
+  min-height: 94px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 11px;
+  border: 1px solid #d9dede;
+  background: #f8faf9;
+}
+
+@media (max-width: 560px) {
+  .machine-state {
+    min-height: 78px;
+  }
+}
+
+.machine-state--current {
+  border-color: #70bcc7;
+  background: #edf8fa;
+}
+
+.machine-state > span {
+  display: block;
+  margin-bottom: 10px;
+  color: #727879;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.machine-number {
+  color: #263c42;
+  font-family: var(--mono, monospace);
+  font-size: clamp(23px, 3vw, 38px);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.machine-lamps,
+.machine-cards,
+.machine-operations,
+.leaper-operations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.machine-lamps {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.machine-lamps li {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.machine-lamps i {
+  width: 19px;
+  height: 19px;
+  border: 1px solid #aeb9bb;
+  border-radius: 50%;
+  background: #d7dddd;
+}
+
+.machine-lamps li.is-on i {
+  border-color: #3ba9b8;
+  background: #70c7d4;
+  box-shadow: 0 0 0 4px rgba(75, 190, 207, 0.13);
+}
+
+.machine-lamps small {
+  color: #737b7d;
+  font-family: var(--mono, monospace);
+  font-size: 6px;
+}
+
+.machine-cards {
+  display: flex;
+  gap: 5px;
+}
+
+.machine-cards li {
+  min-width: 25px;
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #abbabc;
+  background: #fff;
+  color: #263c42;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.machine-operations,
+.leaper-operations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+@media (max-width: 560px) {
+  .machine-operations {
+    grid-template-columns: 1fr;
+  }
+}
+
+.machine-operations li,
+.leaper-operations li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid #d8ddde;
+  background: #fff;
+}
+
+.machine-operations code,
+.leaper-operations code {
+  padding: 3px 5px;
+  background: #e6f4f6;
+  color: #006b80;
+  font-family: var(--mono, monospace);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.machine-operations span,
+.leaper-operations span {
+  overflow: hidden;
+  color: #424849;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Операции машин/прыгуна — кнопки --- */
+.machine-operations li > button,
+.leaper-operations li > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid #d5dcdd;
+  border-radius: 9px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.machine-operations li > button:hover:not(:disabled),
+.leaper-operations li > button:hover:not(:disabled) {
+  border-color: #006b80;
+  background: var(--cyan-soft, #e8f7f9);
+}
+
+.machine-operations li > button:disabled,
+.leaper-operations li > button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

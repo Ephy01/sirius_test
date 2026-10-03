@@ -1,0 +1,56 @@
+/* --- Роли карточек: конструкции, цели и пробы отличаются фоном --- */
+/* Вскрытая проба получает роль example и перекрашивается как конструкция. */
+.geometry-card[data-role="example"],
+.token-card[data-role="example"],
+.grid-card[data-role="example"] {
+  background: #edf7f2;
+  border-color: #cbe5d8;
+}
+
+.geometry-card[data-role="probe"],
+.token-card[data-role="probe"],
+.grid-card[data-role="probe"] {
+  background: #f6f4f8;
+  border-color: #ddd5e4;
+}
+
+.geometry-card[data-role="target"],
+.token-card[data-role="target"],
+.grid-card[data-role="target"] {
+  background: #f3ecfb;
+  border-color: #dcc9f0;
+}
+
+/* --- Исход классификации: зелёный «подходит», мягко-красный «не подходит» --- */
+.geometry-card[data-outcome="positive"],
+.token-card[data-outcome="positive"],
+.grid-card[data-outcome="positive"] {
+  background: #e7f5ec;
+  border-color: #9fd4b4;
+}
+
+.geometry-card[data-outcome="negative"],
+.token-card[data-outcome="negative"],
+.grid-card[data-outcome="negative"] {
+  background: #fbeeee;
+  border-color: #e4b8b8;
+}
+
+/* --- Кликабельные карточки-пробы --- */
+.geometry-card--probeable,
+.token-card--probeable {
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.geometry-card--probeable:hover,
+.token-card--probeable:hover {
+  border-color: #006b80;
+  box-shadow: 0 0 0 3px rgba(75, 190, 207, 0.18);
+}
+
+.geometry-card--probeable header span,
+.token-card--probeable header span {
+  color: #00707f;
+  font-weight: 600;
+}

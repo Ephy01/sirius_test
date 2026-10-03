@@ -8,6 +8,7 @@ import {
 import type { PublicStateBase, TaskKind } from "./kind";
 import { zendoBehaviour } from "./shared/zendo";
 import { readContent, ZendoCard } from "./shared/zendoCards";
+import "./tokenZendo.css";
 
 export type TokenCard = {
   num: number;

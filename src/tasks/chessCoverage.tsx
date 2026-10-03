@@ -8,6 +8,7 @@ import {
 } from "../api/parsing";
 import type { PublicStateBase, TaskKind } from "./kind";
 import { parseBoardPoints, pieceGlyph, type BoardPoint } from "./shared/chess";
+import "./chessCoverage.css";
 
 export type ChessCoveragePieceId = "N" | "B" | "R" | "Q";
 

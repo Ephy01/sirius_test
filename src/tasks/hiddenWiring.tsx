@@ -12,6 +12,7 @@ import {
   parseMachineOperations,
   type MachineOperation,
 } from "./shared/machine";
+import "./hiddenWiring.css";
 
 export type WiringObservation = {
   chord: string;

@@ -1,0 +1,67 @@
+.leaper-scene {
+  width: 100%;
+}
+
+.leaper-operations {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+/* --- Доска прыгуна: матричная разметка с нумерацией от 1 --- */
+.leaper-board {
+  display: grid;
+  gap: 3px;
+  width: min(100%, 430px);
+}
+
+.leaper-board__corner {
+  display: block;
+}
+
+.leaper-board__axis {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  color: #5f686b;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leaper-board__cell {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid #d9dfe0;
+  border-radius: 6px;
+  background: #fdfdfa;
+  font-size: 22px;
+}
+
+.leaper-board__cell.is-blocked {
+  border-color: #b7a99a;
+  background: repeating-linear-gradient(
+    45deg,
+    #ece5dc,
+    #ece5dc 5px,
+    #e0d6c9 5px,
+    #e0d6c9 10px
+  );
+}
+
+.leaper-board__cell.is-current {
+  border-color: #006b80;
+  background: var(--cyan-soft, #e8f7f9);
+}
+
+.leaper-board__cell.is-target {
+  border-color: #c792df;
+  background: #f3ecfb;
+  color: #8a5fae;
+}
+
+.leaper-scene__legend {
+  margin: 10px 0 0;
+  color: #5f686b;
+  font-size: 12px;
+  line-height: 1.55;
+}
