@@ -480,6 +480,9 @@ class TaskFamilyCatalogResponse(ApiModel):
     problems: list[TaskModuleProblemResponse]
 
 
+SANDBOX_STATE_LIMIT = 2_000_000
+
+
 class SandboxGenerateRequest(ApiModel):
     family: str = Field(min_length=1, max_length=80)
     difficulty: int = Field(default=1, ge=1, le=5)
@@ -493,7 +496,7 @@ class SandboxTaskResponse(ApiModel):
     seed: int
     difficulty: int
     public_state: dict[str, Any]
-    private_state: dict[str, Any]
+    state: str
     reference_answer: str | None
     reference_commands: list[str]
     details: list[str]
@@ -504,13 +507,12 @@ class SandboxInteractRequest(ApiModel):
     action_type: Literal['probe', 'apply_op', 'undo', 'reset', 'hint']
     probe: str | None = Field(default=None, max_length=80)
     op_id: str | None = Field(default=None, max_length=80)
-    public_state: dict[str, Any]
-    private_state: dict[str, Any]
+    state: str = Field(max_length=SANDBOX_STATE_LIMIT)
 
 
 class SandboxInteractResponse(ApiModel):
     public_state: dict[str, Any]
-    private_state: dict[str, Any]
+    state: str
     accepted: bool
     completed: bool
     reason: str
@@ -524,7 +526,7 @@ class SandboxInteractResponse(ApiModel):
 class SandboxAnswerRequest(ApiModel):
     family: str = Field(min_length=1, max_length=80)
     answer: str = Field(max_length=4000)
-    private_state: dict[str, Any]
+    state: str = Field(max_length=SANDBOX_STATE_LIMIT)
 
 
 class SandboxAnswerResponse(ApiModel):

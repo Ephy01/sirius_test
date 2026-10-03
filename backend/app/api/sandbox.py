@@ -1,9 +1,12 @@
 """Sandbox for task authors: generate, play and check a task without a contest.
 
 Nothing is stored. The author's browser keeps both states and sends them back,
-which is acceptable because the sandbox is open to organizers only.
+which is acceptable because the sandbox is open to organizers only. The states
+travel as one string that the browser returns untouched: parsed into JavaScript
+numbers, integers above 2**53 would come back changed.
 """
 
+import json
 import secrets
 from collections.abc import Callable
 from typing import Any
@@ -45,6 +48,27 @@ def _run(step: Callable[[], Any]) -> Any:
         ) from error
 
 
+def _state_text(public_state: dict, private_state: dict) -> str:
+    return json.dumps(
+        {'private_state': private_state, 'public_state': public_state}, ensure_ascii=False, indent=2
+    )
+
+
+def _states(text: str) -> tuple[dict, dict]:
+    try:
+        state = json.loads(text)
+        public_state, private_state = state['public_state'], state['private_state']
+    except (ValueError, KeyError, TypeError):
+        public_state = private_state = None
+    if not isinstance(public_state, dict) or not isinstance(private_state, dict):
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            'SANDBOX_STATE_INVALID',
+            'Состояние задачи повреждено. Сгенерируйте вариант заново.',
+        )
+    return public_state, private_state
+
+
 def _reference(family: TaskFamily, private_state: dict) -> dict:
     answer, commands = (
         _run(lambda: family.reference_answer(private_state)) if family.reference_answer else (None, [])
@@ -67,7 +91,7 @@ def generate_sandbox_task(
         seed=seed,
         difficulty=payload.difficulty,
         public_state=public_state,
-        private_state=private_state,
+        state=_state_text(public_state, private_state),
         **_reference(family, private_state),
     )
 
@@ -90,10 +114,11 @@ def interact_in_sandbox(
         'client_action_id': secrets.token_hex(8),
         'first_action_latency_ms': 0,
     }
-    transition = _run(lambda: action(action_payload, payload.public_state, payload.private_state))
+    public_state, private_state = _states(payload.state)
+    transition = _run(lambda: action(action_payload, public_state, private_state))
     return SandboxInteractResponse(
         public_state=transition.public_state,
-        private_state=transition.private_state,
+        state=_state_text(transition.public_state, transition.private_state),
         accepted=transition.accepted,
         completed=transition.completed,
         reason=transition.reason,
@@ -108,7 +133,8 @@ def answer_in_sandbox(
     payload: SandboxAnswerRequest, _organizer: OrganizerDependency
 ) -> SandboxAnswerResponse:
     family = _family(payload.family)
-    evaluation = dict(_run(lambda: family.evaluate(payload.answer, payload.private_state)))
+    _public_state, private_state = _states(payload.state)
+    evaluation = dict(_run(lambda: family.evaluate(payload.answer, private_state)))
     return SandboxAnswerResponse(
         evaluation=evaluation, finalized=evaluation.get('should_finalize') is not False
     )
