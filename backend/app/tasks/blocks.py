@@ -83,8 +83,13 @@ def scene(
     commands: Iterable[str] = (),
     help_lines: Iterable[str] = (),
     response_hint: str | None = None,
+    answer_guide: str | None = None,
 ) -> State:
-    """Public state of a task: the statement, the blocks and the chat commands it accepts."""
+    """Public state of a task: the statement, the blocks and the chat commands it accepts.
+
+    ``response_hint`` is the answer format shown in the input field, ``answer_guide`` is
+    the sentence under the statement that tells how to answer.
+    """
 
     allowed = list(commands)
     if any(command not in COMMANDS for command in allowed):
@@ -98,6 +103,8 @@ def scene(
     }
     if response_hint is not None:
         state['response_hint'] = str(response_hint)
+    if answer_guide is not None:
+        state['answer_guide'] = str(answer_guide)
     return state
 
 
