@@ -10,6 +10,7 @@ import {
   grantNextAttempt,
   listContestEnrollments,
   listContests,
+  listTaskFamilies,
   publishContest,
   recoverCodes,
   rotateEnrollmentCode,
@@ -49,6 +50,7 @@ export { isRecord, readNullableString, readString } from "./parsing";
 export const api = {
   redeemCode,
   listContests,
+  listTaskFamilies,
   deleteContest,
   createContest,
   addEnrollments,

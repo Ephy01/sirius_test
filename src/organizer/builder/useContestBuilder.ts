@@ -1,13 +1,15 @@
-import { FormEvent, useMemo, useState } from "react";
-import { saveDownloadedFile, type ContestSummary } from "../../api";
-import type { ClassicMathSubKind } from "../../tasks/classicMath";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  CONTENT_FAMILIES,
+  saveDownloadedFile,
+  type ContestSummary,
+  type TaskFamilyCatalog,
+} from "../../api";
+import {
+  defaultFamilyConfig,
+  scriptedFamily,
   type TaskFamilyConfig,
-  type TaskFamilyKey,
 } from "../families";
 import {
-  cloneFamilies,
   draftNumber,
   isIntegerInRange,
   newParticipant,
@@ -19,6 +21,7 @@ import {
 } from "./draft";
 
 export function useContestBuilder({
+  onLoadFamilies,
   onCreateContest,
   onAddParticipants,
   onGenerateCodes,
@@ -34,13 +37,12 @@ export function useContestBuilder({
   const [aiTurnsPerAttempt, setAiTurnsPerAttempt] =
     useState<NumericDraft>(15);
   const [aiTurnsPerTask, setAiTurnsPerTask] = useState<NumericDraft>(5);
-  const [classicMathEnabled, setClassicMathEnabled] = useState(false);
-  const [classicMathTask, setClassicMathTask] =
-    useState<ClassicMathSubKind>("share_paradox");
-  const [classicMathPosition, setClassicMathPosition] =
-    useState<NumericDraft>(1);
-  const [families, setFamilies] =
-    useState<TaskFamilyDraftConfig[]>(() => cloneFamilies(CONTENT_FAMILIES));
+  const [catalog, setCatalog] = useState<TaskFamilyCatalog | null>(null);
+  const [catalogError, setCatalogError] = useState("");
+  const [scriptedEnabled, setScriptedEnabled] = useState(false);
+  const [scriptedVariant, setScriptedVariant] = useState("");
+  const [scriptedPosition, setScriptedPosition] = useState<NumericDraft>(1);
+  const [families, setFamilies] = useState<TaskFamilyDraftConfig[]>([]);
   const [participants, setParticipants] = useState<ParticipantDraft[]>([
     newParticipant(),
   ]);
@@ -49,6 +51,10 @@ export function useContestBuilder({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const scripted = useMemo(
+    () => (catalog ? scriptedFamily(catalog) : undefined),
+    [catalog],
+  );
   const activeFamilies = useMemo(
     () => families.filter((family) => family.enabled),
     [families],
@@ -62,10 +68,36 @@ export function useContestBuilder({
     [participants],
   );
 
-  function updateFamily(
-    key: TaskFamilyKey,
-    patch: Partial<TaskFamilyDraftConfig>,
-  ) {
+  async function loadCatalog(signal?: AbortSignal) {
+    setCatalog(null);
+    setCatalogError("");
+    try {
+      const loaded = await onLoadFamilies(signal);
+      if (signal?.aborted) return;
+      setFamilies(
+        loaded.items
+          .filter((family) => family.listed)
+          .map((family) => ({ ...defaultFamilyConfig(family), card: family })),
+      );
+      setScriptedVariant(scriptedFamily(loaded)?.variants[0].key ?? "");
+      setCatalog(loaded);
+    } catch (caught) {
+      if (signal?.aborted) return;
+      setCatalogError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось загрузить семейства задач.",
+      );
+    }
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadCatalog(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  function updateFamily(key: string, patch: Partial<TaskFamilyDraftConfig>) {
     setFamilies((current) =>
       current.map((family) =>
         family.key === key ? { ...family, ...patch } : family,
@@ -120,15 +152,16 @@ export function useContestBuilder({
       );
       return;
     }
-    if (
-      activeFamilies.some(
-        (family) =>
-          !isIntegerInRange(family.initialDifficulty, 1, 5) ||
-          !isIntegerInRange(family.maxDifficulty, 1, 5),
-      )
-    ) {
+    const outOfBounds = activeFamilies.find(({ card, ...family }) =>
+      [family.initialDifficulty, family.maxDifficulty].some(
+        (value) =>
+          !isIntegerInRange(value, card.minDifficulty, card.maxDifficulty),
+      ),
+    );
+    if (outOfBounds) {
+      const { minDifficulty, maxDifficulty } = outOfBounds.card;
       setError(
-        "Сложность каждого выбранного семейства должна быть целым числом от 1 до 5.",
+        `Сложность каждого выбранного семейства должна быть целым числом от ${minDifficulty} до ${maxDifficulty}.`,
       );
       return;
     }
@@ -155,22 +188,24 @@ export function useContestBuilder({
       );
       return;
     }
-    if (
-      classicMathEnabled &&
-      !isIntegerInRange(classicMathPosition, 1, 100)
-    ) {
+    if (scriptedEnabled && !isIntegerInRange(scriptedPosition, 1, 100)) {
       setError(
         "Позиция классической задачи должна быть целым числом от 1 до 100.",
       );
       return;
     }
 
-    const normalizedFamilies: TaskFamilyConfig[] = families.map((family) => ({
-      ...family,
-      weight: draftNumber(family.weight, 1),
-      initialDifficulty: draftNumber(family.initialDifficulty, 1),
-      maxDifficulty: draftNumber(family.maxDifficulty, 5),
-    }));
+    const normalizedFamilies: TaskFamilyConfig[] = families.map(
+      ({ card, ...family }) => ({
+        ...family,
+        weight: draftNumber(family.weight, 1),
+        initialDifficulty: draftNumber(
+          family.initialDifficulty,
+          card.minDifficulty,
+        ),
+        maxDifficulty: draftNumber(family.maxDifficulty, card.maxDifficulty),
+      }),
+    );
 
     setBusy(true);
     setError("");
@@ -189,15 +224,16 @@ export function useContestBuilder({
             maxTurnsPerTask: draftNumber(aiTurnsPerTask, 5),
           },
           families: normalizedFamilies,
-          scriptedTasks: classicMathEnabled
-            ? [
-                {
-                  family: "classic_math",
-                  subKind: classicMathTask,
-                  position: draftNumber(classicMathPosition, 1),
-                },
-              ]
-            : [],
+          scriptedTasks:
+            scriptedEnabled && scripted
+              ? [
+                  {
+                    family: scripted.key,
+                    subKind: scriptedVariant,
+                    position: draftNumber(scriptedPosition, 1),
+                  },
+                ]
+              : [],
         },
       });
       setContest(created);
@@ -307,12 +343,16 @@ export function useContestBuilder({
     setAiTurnsPerAttempt,
     aiTurnsPerTask,
     setAiTurnsPerTask,
-    classicMathEnabled,
-    setClassicMathEnabled,
-    classicMathTask,
-    setClassicMathTask,
-    classicMathPosition,
-    setClassicMathPosition,
+    catalog,
+    catalogError,
+    reloadCatalog: () => void loadCatalog(),
+    scripted,
+    scriptedEnabled,
+    setScriptedEnabled,
+    scriptedVariant,
+    setScriptedVariant,
+    scriptedPosition,
+    setScriptedPosition,
     families,
     updateFamily,
     participants,

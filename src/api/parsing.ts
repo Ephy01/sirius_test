@@ -39,6 +39,19 @@ export function readStringList(value: unknown): string[] {
     : [];
 }
 
+/** Every item parsed, or `null` when the value is not a list or one item is wrong. */
+export function parseList<Item>(
+  value: unknown,
+  parseItem: (item: unknown) => Item | null,
+): Item[] | null {
+  if (!Array.isArray(value)) return null;
+  const items = value.flatMap((item): Item[] => {
+    const parsed = parseItem(item);
+    return parsed === null ? [] : [parsed];
+  });
+  return items.length === value.length ? items : null;
+}
+
 export function expectRecord(value: unknown, message: string): UnknownRecord {
   if (!isRecord(value)) throw invalidResponse(message, value);
   return value;

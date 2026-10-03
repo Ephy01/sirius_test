@@ -18,7 +18,16 @@ export type TaskSceneProps<State> = TaskSubject<State> & {
 };
 
 /** Chat commands a kind can switch on in addition to /answer, /skip and /next. */
-export type TaskCommand = "probe" | "hint" | "op" | "undo" | "reset" | "done";
+export const TASK_COMMANDS = [
+  "probe",
+  "hint",
+  "op",
+  "undo",
+  "reset",
+  "done",
+] as const;
+
+export type TaskCommand = (typeof TASK_COMMANDS)[number];
 
 export type TaskOpening = {
   opened?: ReactNode;

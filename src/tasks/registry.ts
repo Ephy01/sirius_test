@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { readString, requiredString, type UnknownRecord } from "../api/parsing";
+import { blocks } from "./blocks";
 import { chessCoverage } from "./chessCoverage";
 import { classicMath } from "./classicMath";
 import { diceChessInventory, diceChessPosition } from "./diceChess";
@@ -18,6 +19,7 @@ import { pointZendo } from "./pointZendo";
 import { tokenZendo } from "./tokenZendo";
 
 export const TASK_KINDS = {
+  blocks,
   chess_coverage: chessCoverage,
   dice_chess_board_inventory_probability: diceChessInventory,
   dice_chess_position_probability: diceChessPosition,

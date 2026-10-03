@@ -12,9 +12,11 @@ import {
   type EnrollmentSummary,
   type ParticipantSummary,
 } from "./models";
+import { invalidResponse } from "./errors";
 import {
   expectRecord,
   isRecord,
+  parseList,
   readNullableString,
   readNumber,
   readString,
@@ -106,6 +108,40 @@ export type AttemptGrantResponse = {
   enrollmentId: string;
   pending: boolean;
   created: boolean;
+};
+
+export type TaskFamilyVariant = {
+  key: string;
+  title: string;
+  description: string;
+};
+
+/** A task family as the server describes it for the contest builder. */
+export type TaskFamily = {
+  key: string;
+  title: string;
+  description: string;
+  version: string;
+  source: "builtin" | "module";
+  module: string | null;
+  listed: boolean;
+  scriptedOnly: boolean;
+  interactive: boolean;
+  defaultWeight: number;
+  defaultSkin: string | null;
+  minDifficulty: number;
+  maxDifficulty: number;
+  variants: TaskFamilyVariant[];
+};
+
+export type TaskModuleProblem = {
+  module: string;
+  error: string;
+};
+
+export type TaskFamilyCatalog = {
+  items: TaskFamily[];
+  problems: TaskModuleProblem[];
 };
 
 function parseAccessCodeStatus(value: unknown): AccessCodeStatus {
@@ -208,6 +244,105 @@ function parseGeneratedCodes(body: unknown): GenerateCodesResponse {
       readNumber(counters, "generatedCount", "generated_count") ?? items.length,
     skippedCount: readNumber(counters, "skippedCount", "skipped_count") ?? 0,
   };
+}
+
+function isName(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+function hasUniqueKeys(items: readonly { key: string }[]): boolean {
+  return new Set(items.map((item) => item.key)).size === items.length;
+}
+
+function parseTaskFamilyVariant(value: unknown): TaskFamilyVariant | null {
+  if (!isRecord(value)) return null;
+  const { key, title, description } = value;
+  if (!isName(key) || !isName(title) || typeof description !== "string") {
+    return null;
+  }
+  return { key, title, description };
+}
+
+function parseTaskFamily(value: unknown): TaskFamily | null {
+  if (!isRecord(value)) return null;
+  const { key, title, description, version, source, module } = value;
+  const { listed, interactive, scripted_only: scriptedOnly } = value;
+  const {
+    default_weight: defaultWeight,
+    default_skin: defaultSkin,
+    min_difficulty: minDifficulty,
+    max_difficulty: maxDifficulty,
+  } = value;
+  const variants = parseList(value.variants, parseTaskFamilyVariant);
+  if (
+    !isName(key) ||
+    !isName(title) ||
+    typeof description !== "string" ||
+    !isName(version) ||
+    (source !== "builtin" && source !== "module") ||
+    (module !== null && !isName(module)) ||
+    typeof listed !== "boolean" ||
+    typeof scriptedOnly !== "boolean" ||
+    typeof interactive !== "boolean" ||
+    !isInteger(defaultWeight) ||
+    (defaultSkin !== null && !isName(defaultSkin)) ||
+    !isInteger(minDifficulty) ||
+    !isInteger(maxDifficulty) ||
+    minDifficulty < 1 ||
+    minDifficulty > maxDifficulty ||
+    !variants ||
+    !hasUniqueKeys(variants)
+  ) {
+    return null;
+  }
+
+  return {
+    key,
+    title,
+    description,
+    version,
+    source,
+    module,
+    listed,
+    scriptedOnly,
+    interactive,
+    defaultWeight,
+    defaultSkin,
+    minDifficulty,
+    maxDifficulty,
+    variants,
+  };
+}
+
+function parseTaskModuleProblem(value: unknown): TaskModuleProblem | null {
+  if (!isRecord(value)) return null;
+  const { module, error } = value;
+  return isName(module) && typeof error === "string"
+    ? { module, error }
+    : null;
+}
+
+function parseTaskFamilyCatalog(body: unknown): TaskFamilyCatalog {
+  const record = isRecord(body) ? body : {};
+  const items = parseList(record.items, parseTaskFamily);
+  const problems = parseList(record.problems, parseTaskModuleProblem);
+  if (!items || !problems || !hasUniqueKeys(items)) {
+    throw invalidResponse(
+      "Сервер вернул некорректный каталог семейств задач.",
+      body,
+    );
+  }
+  return { items, problems };
+}
+
+export async function listTaskFamilies(
+  options: AuthenticatedRequestOptions,
+): Promise<TaskFamilyCatalog> {
+  return parseTaskFamilyCatalog(await request("/task-families", options));
 }
 
 export async function listContests(

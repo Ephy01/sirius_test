@@ -87,9 +87,10 @@ export function OrganizerDashboard({
           trajectory: {
             mode: "adaptive",
             director_version: "director-v2",
-            start_family:
-              taskConfig.families.find((family) => family.enabled)?.key ??
-              "geo_zendo",
+            start_family: (
+              taskConfig.families.find((family) => family.enabled) ??
+              taskConfig.families[0]
+            )?.key,
           },
           families: taskConfig.families.map((family) => ({
             family: family.key,
@@ -188,6 +189,9 @@ export function OrganizerDashboard({
             setBuilderOpen(false);
             void refreshContests();
           }}
+          onLoadFamilies={(signal) =>
+            api.listTaskFamilies({ token: session.token, signal })
+          }
           onCreateContest={createContest}
           onAddParticipants={addParticipants}
           onGenerateCodes={generateCodes}

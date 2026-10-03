@@ -9,7 +9,8 @@ import "./contest-builder.css";
 export function ContestBuilder(props: ContestBuilderProps) {
   const { onCancel } = props;
   const builder = useContestBuilder(props);
-  const { step, setStep, contest, busy, error, submitCurrentStep } = builder;
+  const { step, setStep, contest, catalog, busy, error, submitCurrentStep } =
+    builder;
 
   return (
     <main className="builder-page">
@@ -72,7 +73,7 @@ export function ContestBuilder(props: ContestBuilderProps) {
               <button
                 className="primary-action primary-action--fit"
                 type="submit"
-                disabled={busy}
+                disabled={busy || !catalog}
               >
                 {busy ? "Создаём…" : "Создать контест"}
               </button>

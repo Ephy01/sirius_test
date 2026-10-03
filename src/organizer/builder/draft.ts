@@ -1,5 +1,8 @@
-import type { ContestSummary } from "../../api";
-import type { ClassicMathSubKind } from "../../tasks/classicMath";
+import type {
+  ContestSummary,
+  TaskFamily,
+  TaskFamilyCatalog,
+} from "../../api";
 import type { TaskFamilyConfig } from "../families";
 
 export type NumericDraft = number | "";
@@ -8,6 +11,7 @@ export type TaskFamilyDraftConfig = Omit<
   TaskFamilyConfig,
   "weight" | "initialDifficulty" | "maxDifficulty"
 > & {
+  card: TaskFamily;
   weight: NumericDraft;
   initialDifficulty: NumericDraft;
   maxDifficulty: NumericDraft;
@@ -21,8 +25,8 @@ export type ContestAiConfig = {
 };
 
 export type ScriptedTaskConfig = {
-  family: "classic_math";
-  subKind: ClassicMathSubKind;
+  family: string;
+  subKind: string;
   position: number;
 };
 
@@ -51,6 +55,7 @@ export type GeneratedCodeRow = ParticipantDraft & {
 
 export type ContestBuilderProps = {
   onCancel: () => void;
+  onLoadFamilies: (signal?: AbortSignal) => Promise<TaskFamilyCatalog>;
   onCreateContest: (input: ContestDraftInput) => Promise<ContestSummary>;
   onAddParticipants: (
     contestId: string,
@@ -81,15 +86,6 @@ export function isIntegerInRange(
 
 export function draftNumber(value: NumericDraft, fallback: number): number {
   return typeof value === "number" ? value : fallback;
-}
-
-export function cloneFamilies(
-  families: readonly TaskFamilyConfig[],
-): TaskFamilyDraftConfig[] {
-  return families.map((family) => ({
-    ...family,
-    subKinds: family.subKinds ? [...family.subKinds] : undefined,
-  }));
 }
 
 export function newParticipant(): ParticipantDraft {

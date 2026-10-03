@@ -222,6 +222,55 @@
   padding: 0 8px;
 }
 
+.family-module-mark {
+  padding: 2px 6px;
+  border: 1px solid var(--thistle);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--grape-soft);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.family-catalog-state {
+  margin: 24px 0 0;
+  padding: 32px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 15px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.family-catalog-state p {
+  margin: 0 0 14px;
+  color: var(--error);
+}
+
+.family-problems {
+  margin: 20px 0 0;
+  padding: 10px 13px;
+  border-radius: 11px;
+  background: #fbecf0;
+  color: var(--error);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.family-problems ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.family-problems code {
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
 .scripted-family {
   margin: 24px 0 18px;
   padding: 20px;
