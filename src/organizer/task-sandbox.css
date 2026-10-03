@@ -1,0 +1,369 @@
+.sandbox-page {
+  min-width: 0;
+}
+
+/* Панель управления и задача занимают первый экран, панель автора идёт ниже. */
+.sandbox-screen {
+  height: calc(100vh - 86px);
+  min-height: 780px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sandbox-bar {
+  display: grid;
+  gap: 10px;
+  padding: 14px clamp(16px, 3vw, 48px) 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.sandbox-bar__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sandbox-bar__heading h1 {
+  margin: 2px 0 0;
+  color: var(--vintage-grape);
+  font-size: clamp(19px, 2vw, 25px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+
+.sandbox-button {
+  min-height: 40px;
+  padding: 0 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--vintage-grape);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sandbox-button:hover:not(:disabled) {
+  border-color: rgba(75, 190, 207, 0.55);
+  background: var(--cyan-soft);
+}
+
+.sandbox-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sandbox-button--primary {
+  border-color: var(--strong-cyan);
+  background: var(--strong-cyan);
+}
+
+.sandbox-button--primary:hover:not(:disabled) {
+  border-color: #62c7d5;
+  background: #62c7d5;
+}
+
+/* Поля переносятся сами: вариант есть не у каждого семейства. */
+.sandbox-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.sandbox-field {
+  min-width: 0;
+  flex: 1 1 150px;
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.sandbox-field--family {
+  flex: 2 1 230px;
+}
+
+.sandbox-field--narrow {
+  flex: 0 1 96px;
+}
+
+.sandbox-field input,
+.sandbox-field select {
+  width: 100%;
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fcfbfd;
+  color: var(--vintage-grape);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sandbox-field input:focus,
+.sandbox-field select:focus {
+  border-color: var(--strong-cyan);
+  box-shadow: 0 0 0 4px rgba(75, 190, 207, 0.1);
+}
+
+.sandbox-field input:disabled,
+.sandbox-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sandbox-controls__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sandbox-controls__notice {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--error);
+  font-size: 10px;
+}
+
+.sandbox-controls__notice:empty {
+  display: none;
+}
+
+.sandbox-state {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sandbox-state p {
+  margin: 0 0 10px;
+  color: var(--error);
+}
+
+.sandbox-run {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 16px;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.sandbox-run b {
+  color: var(--vintage-grape);
+  font-weight: 700;
+  user-select: all;
+}
+
+.sandbox-bar__problems {
+  margin: 0;
+  color: var(--error);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.sandbox-failure {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: #fbecf0;
+  color: var(--error);
+  font-size: 11px;
+}
+
+.sandbox-failure--task {
+  border: 1px solid var(--error);
+}
+
+.sandbox-failure pre {
+  max-width: 100%;
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sandbox-failure details {
+  max-width: 100%;
+}
+
+.sandbox-failure summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.sandbox-stage {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+}
+
+/* Высоту рабочего места задаёт экран песочницы, а не окно. */
+.sandbox-stage .participant-workspace {
+  height: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.sandbox-stage__empty {
+  max-width: 520px;
+  margin: auto;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.sandbox-author {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 14px;
+  padding: 22px clamp(16px, 3vw, 48px) 48px;
+  border-top: 1px solid var(--line);
+}
+
+.sandbox-card {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.sandbox-card--wide,
+.sandbox-card--problems {
+  grid-column: 1 / -1;
+}
+
+.sandbox-card--problems {
+  border-color: transparent;
+  background: #fbecf0;
+  color: var(--error);
+}
+
+.sandbox-card h2 {
+  margin: 0 0 8px;
+  color: var(--grape-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sandbox-card--problems h2 {
+  color: inherit;
+}
+
+.sandbox-card p,
+.sandbox-card ul,
+.sandbox-card ol {
+  margin: 0;
+}
+
+.sandbox-card ul {
+  padding: 0;
+  list-style: none;
+}
+
+.sandbox-card code {
+  font-family: var(--mono);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.sandbox-card__empty,
+.sandbox-card__detail {
+  color: var(--muted);
+}
+
+.sandbox-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 0;
+  list-style-position: inside;
+}
+
+.sandbox-verdict {
+  display: inline-block;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--plum-soft);
+  color: var(--vintage-grape);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sandbox-verdict::first-letter {
+  text-transform: uppercase;
+}
+
+.sandbox-verdict--correct {
+  background: var(--success);
+  color: var(--paper);
+}
+
+.sandbox-verdict--wrong {
+  background: var(--error);
+  color: var(--paper);
+}
+
+.sandbox-json {
+  max-height: 360px;
+  margin: 8px 0 0;
+  padding: 11px 13px;
+  overflow: auto;
+  border-radius: 11px;
+  background: #fcfbfd;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* Ниже этой ширины рабочее место само складывается в один столбец и растёт по содержимому. */
+@media (max-width: 820px) {
+  .sandbox-screen {
+    height: auto;
+    min-height: 0;
+  }
+
+  .sandbox-stage {
+    display: block;
+  }
+
+  .sandbox-author {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .sandbox-controls__actions,
+  .sandbox-controls__actions .sandbox-button {
+    flex: 1 1 auto;
+  }
+}

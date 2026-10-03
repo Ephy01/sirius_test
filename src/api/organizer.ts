@@ -345,6 +345,15 @@ export async function listTaskFamilies(
   return parseTaskFamilyCatalog(await request("/task-families", options));
 }
 
+/** Makes the server read the modules directory again and returns the new catalog. */
+export async function reloadTaskModules(
+  options: AuthenticatedRequestOptions,
+): Promise<TaskFamilyCatalog> {
+  return parseTaskFamilyCatalog(
+    await request("/task-modules/reload", { ...options, method: "POST" }),
+  );
+}
+
 export async function listContests(
   options: AuthenticatedRequestOptions,
 ): Promise<ContestSummary[]> {

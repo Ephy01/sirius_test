@@ -14,6 +14,7 @@ import type {
 } from "./builder/draft";
 import { ContestBuilder } from "./ContestBuilder";
 import { ContestAccessPanel } from "./ContestAccessPanel";
+import { TaskSandbox } from "./TaskSandbox";
 
 export function OrganizerDashboard({
   session,
@@ -23,6 +24,7 @@ export function OrganizerDashboard({
   onLogout: () => void;
 }) {
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [sandboxOpen, setSandboxOpen] = useState(false);
   const [managedContest, setManagedContest] =
     useState<ContestSummary | null>(null);
   const [contests, setContests] = useState<ContestSummary[]>([]);
@@ -201,6 +203,22 @@ export function OrganizerDashboard({
     );
   }
 
+  if (sandboxOpen) {
+    return (
+      <div className="dashboard-page">
+        <AppHeader
+          role="Организатор"
+          onLogout={onLogout}
+          meta={<span className="workspace-label">Песочница</span>}
+        />
+        <TaskSandbox
+          token={session.token}
+          onClose={() => setSandboxOpen(false)}
+        />
+      </div>
+    );
+  }
+
   if (managedContest) {
     return (
       <div className="dashboard-page">
@@ -245,6 +263,14 @@ export function OrganizerDashboard({
               onClick={() => setBuilderOpen(true)}
             >
               <PlusIcon />
+            </button>
+            <button
+              className="side-nav-item side-nav-item--link"
+              type="button"
+              onClick={() => setSandboxOpen(true)}
+            >
+              <span className="side-nav-icon">◇</span>
+              Песочница
             </button>
             <button className="side-nav-item" type="button" disabled>
               <span className="side-nav-icon">◎</span>

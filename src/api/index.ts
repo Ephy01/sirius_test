@@ -13,6 +13,7 @@ import {
   listTaskFamilies,
   publishContest,
   recoverCodes,
+  reloadTaskModules,
   rotateEnrollmentCode,
 } from "./organizer";
 import {
@@ -27,6 +28,11 @@ import {
   skipTask,
   startAttempt,
 } from "./participant";
+import {
+  answerInSandbox,
+  generateSandboxTask,
+  interactInSandbox,
+} from "./sandbox";
 
 export type * from "./access";
 export type * from "./assistant";
@@ -37,6 +43,7 @@ export type * from "./models";
 export type * from "./organizer";
 export type * from "./parsing";
 export type * from "./participant";
+export type * from "./sandbox";
 export { ApiError } from "./errors";
 export { saveDownloadedFile } from "./files";
 export {
@@ -51,6 +58,10 @@ export const api = {
   redeemCode,
   listContests,
   listTaskFamilies,
+  reloadTaskModules,
+  generateSandboxTask,
+  interactInSandbox,
+  answerInSandbox,
   deleteContest,
   createContest,
   addEnrollments,

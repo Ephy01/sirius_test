@@ -412,6 +412,15 @@ svg {
   color: var(--paper);
 }
 
+.side-nav-item--link {
+  cursor: pointer;
+}
+
+.side-nav-item--link:hover {
+  background: var(--cyan-soft);
+  color: var(--vintage-grape);
+}
+
 .side-nav-item:disabled {
   opacity: 0.45;
 }
