@@ -1048,7 +1048,7 @@ Bearer API key, folder ID и model URI. В запросе выставляютс
 
 - `backend/app/ai/provider.py` задаёт протокол `AssistantProvider` с единственным методом `generate(ProviderRequest) -> ProviderResult`. Сервис `ai/service.py` работает только с этим протоколом.
 - `provider_from_settings` в `backend/app/ai/yandex.py` выбирает провайдера при старте процесса. Провайдер один на процесс и хранится в `app.state.ai_provider`.
-- URI модели берётся из настройки `YANDEX_AI_MODEL_URI` и записывается в каждый `ai_turns.model_uri`, название провайдера — в `ai_turns.provider`.
+- В `ai/service.py` и `ai/report.py` остались три привязки к Yandex: название провайдера записывается в `ai_turns.provider` константой `'yandex'`, URI модели берётся из настройки `YANDEX_AI_MODEL_URI`, лимит параллельных запросов — из `YANDEX_AI_MAX_PARALLEL_REQUESTS`. Для второго провайдера их нужно обобщить.
 - Локальная модель с OpenAI-совместимым интерфейсом (Ollama, vLLM, llama.cpp) может использовать тот же формат запроса, что и `YandexAssistantProvider`.
 
 ### 15.2. Условия доступности
