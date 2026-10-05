@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ContestSummary } from "../api";
 import type { AccessSession } from "../auth";
+import { EDITOR_PATH } from "../editor/path";
 import {
   AppHeader,
   ArrowIcon,
@@ -272,6 +273,15 @@ export function OrganizerDashboard({
               <span className="side-nav-icon">◇</span>
               Песочница
             </button>
+            <a
+              className="side-nav-item side-nav-item--link"
+              href={EDITOR_PATH}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="side-nav-icon">✎</span>
+              Редактор задач
+            </a>
             <button className="side-nav-item" type="button" disabled>
               <span className="side-nav-icon">◎</span>
               Участники

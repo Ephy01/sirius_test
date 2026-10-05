@@ -414,6 +414,7 @@ svg {
 
 .side-nav-item--link {
   cursor: pointer;
+  text-decoration: none;
 }
 
 .side-nav-item--link:hover {

@@ -326,7 +326,7 @@ function parseTaskModuleProblem(value: unknown): TaskModuleProblem | null {
     : null;
 }
 
-function parseTaskFamilyCatalog(body: unknown): TaskFamilyCatalog {
+export function parseTaskFamilyCatalog(body: unknown): TaskFamilyCatalog {
   const record = isRecord(body) ? body : {};
   const items = parseList(record.items, parseTaskFamily);
   const problems = parseList(record.problems, parseTaskModuleProblem);

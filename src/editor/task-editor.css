@@ -1,0 +1,165 @@
+.task-editor {
+  height: 100vh;
+  min-height: 560px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--page);
+}
+
+.task-editor__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 24px;
+  padding: 10px clamp(16px, 2vw, 32px) 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.task-editor__title {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.task-editor__bar .sandbox-controls {
+  flex: 1 1 420px;
+}
+
+.task-editor__files {
+  display: flex;
+  gap: 8px;
+}
+
+.task-editor__status {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.task-editor__status--ready {
+  color: var(--success);
+}
+
+.task-editor__status--failed {
+  color: var(--error);
+}
+
+.task-editor__panes {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+}
+
+.task-editor__code {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.code-editor {
+  min-height: 0;
+  flex: 1;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
+  font-size: 13px;
+}
+
+.code-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.code-editor .cm-scroller {
+  font-family: var(--mono);
+  line-height: 1.6;
+}
+
+.code-editor .cm-gutters {
+  border-right: 1px solid var(--line);
+  background: #fcfbfd;
+  color: var(--muted);
+}
+
+.task-editor__report {
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+  background: #fcfbfd;
+}
+
+.task-editor__report header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  color: var(--vintage-grape);
+  font-size: 11px;
+}
+
+.task-editor__report pre {
+  margin: 0;
+  padding: 0 14px 14px;
+  overflow: auto;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.task-editor__preview {
+  min-width: 0;
+  min-height: 0;
+}
+
+.preview-frame {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+  background: var(--page);
+}
+
+/* Внутри рамки экран песочницы занимает её целиком. */
+.sandbox-screen--framed {
+  height: 100vh;
+  min-height: 560px;
+}
+
+.sandbox-screen--framed .sandbox-bar:empty {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .task-editor {
+    height: auto;
+  }
+
+  .task-editor__panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .task-editor__code {
+    height: 70vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .task-editor__preview {
+    height: 100vh;
+  }
+}
+
+@media (max-width: 820px) {
+  .sandbox-screen--framed {
+    height: auto;
+    min-height: 0;
+  }
+}

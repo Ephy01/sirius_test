@@ -10,9 +10,11 @@ import pytest
 from task_module_samples import PLUS_ONE
 
 from sirius_gate import sandbox
+from sirius_gate.check import check_family
 from sirius_gate.loading import load_source
 
 BACKEND = str(Path(__file__).resolve().parents[1])
+EXAMPLES = sorted((Path(BACKEND) / 'sirius_gate' / 'examples').glob('*.py'))
 
 STANDALONE = """
 import sys
@@ -77,3 +79,15 @@ def test_module_text_that_fails_to_load_is_explained(source, expected):
 
     assert module.families == ()
     assert expected in module.error
+
+
+@pytest.mark.parametrize('example', EXAMPLES, ids=lambda path: path.stem)
+def test_example_the_editor_opens_with_passes_the_module_check(example):
+    module = load_source(example.read_text(encoding='utf-8'))
+
+    assert module.error is None
+    for family in module.families:
+        levels = check_family(family, seeds=10)
+        assert [(level.generated, level.reference_accepted, level.problems) for level in levels] == [
+            (10, 10, [])
+        ] * 5

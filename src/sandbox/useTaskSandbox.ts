@@ -394,7 +394,7 @@ export function useTaskSandbox(backend: SandboxBackend) {
     failure,
     generate: (anotherSeed: boolean) => void generate(anotherSeed),
     reloadModules: () => void reloadModules(),
-    reloadAndGenerate: () => void reloadAndGenerate(),
+    reloadAndGenerate,
     handlers: {
       onAnswer: answer,
       onSkip: anotherVariant,

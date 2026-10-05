@@ -90,7 +90,7 @@ function parseTaskState(body: UnknownRecord): SandboxTaskState | null {
   };
 }
 
-function parseSandboxTask(body: unknown): SandboxTask {
+export function parseSandboxTask(body: unknown): SandboxTask {
   const record = isRecord(body) ? body : {};
   const state = parseTaskState(record);
   const { family, seed, difficulty } = record;
@@ -109,7 +109,7 @@ function parseSandboxTask(body: unknown): SandboxTask {
   return { ...state, family, generatorVersion, seed, difficulty };
 }
 
-function parseSandboxInteraction(body: unknown): SandboxInteraction {
+export function parseSandboxInteraction(body: unknown): SandboxInteraction {
   const record = isRecord(body) ? body : {};
   const state = parseTaskState(record);
   const { accepted, completed, reason, message, evaluation } = record;
@@ -126,7 +126,7 @@ function parseSandboxInteraction(body: unknown): SandboxInteraction {
   return { ...state, accepted, completed, reason, message, evaluation };
 }
 
-function parseSandboxAnswer(body: unknown): SandboxAnswer {
+export function parseSandboxAnswer(body: unknown): SandboxAnswer {
   const record = isRecord(body) ? body : {};
   const { evaluation, finalized } = record;
   if (!isRecord(evaluation) || typeof finalized !== "boolean") {
@@ -138,6 +138,37 @@ function parseSandboxAnswer(body: unknown): SandboxAnswer {
   return { evaluation, finalized };
 }
 
+/** The requests in the field names the server and `sirius_gate.editor` expect. */
+export function sandboxTaskBody(input: SandboxTaskInput) {
+  return {
+    family: input.family,
+    difficulty: input.difficulty,
+    seed: input.seed,
+    sub_kind: input.subKind,
+  };
+}
+
+export function sandboxInteractionBody(input: SandboxInteractionInput) {
+  return {
+    family: input.family,
+    action_type: input.actionType,
+    ...(input.actionType === "probe"
+      ? { probe: input.probe }
+      : input.actionType === "apply_op"
+        ? { op_id: input.opId }
+        : {}),
+    state: input.stateText,
+  };
+}
+
+export function sandboxAnswerBody(input: SandboxAnswerInput) {
+  return {
+    family: input.family,
+    answer: input.answer,
+    state: input.stateText,
+  };
+}
+
 export async function generateSandboxTask(
   input: SandboxTaskInput,
   options: AuthenticatedRequestOptions,
@@ -146,12 +177,7 @@ export async function generateSandboxTask(
     await request("/sandbox/tasks", {
       ...options,
       method: "POST",
-      body: {
-        family: input.family,
-        difficulty: input.difficulty,
-        seed: input.seed,
-        sub_kind: input.subKind,
-      },
+      body: sandboxTaskBody(input),
     }),
   );
 }
@@ -164,16 +190,7 @@ export async function interactInSandbox(
     await request("/sandbox/interactions", {
       ...options,
       method: "POST",
-      body: {
-        family: input.family,
-        action_type: input.actionType,
-        ...(input.actionType === "probe"
-          ? { probe: input.probe }
-          : input.actionType === "apply_op"
-            ? { op_id: input.opId }
-            : {}),
-        state: input.stateText,
-      },
+      body: sandboxInteractionBody(input),
     }),
   );
 }
@@ -186,11 +203,7 @@ export async function answerInSandbox(
     await request("/sandbox/answers", {
       ...options,
       method: "POST",
-      body: {
-        family: input.family,
-        answer: input.answer,
-        state: input.stateText,
-      },
+      body: sandboxAnswerBody(input),
     }),
   );
 }
