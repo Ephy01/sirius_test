@@ -29,8 +29,8 @@ def test_module_file_adds_a_family_and_unloading_removes_it(tmp_path):
 
     loaded = load_task_modules(str(tmp_path))
 
-    assert [(module.name, module.families, module.error) for module in loaded] == [
-        ('plus_one', ('plus_one',), None)
+    assert [(module.name, [family.key for family in module.families], module.error) for module in loaded] == [
+        ('plus_one', ['plus_one'], None)
     ]
     task = generate_task(family='plus_one', generator_version='plus-one-v1', seed=3, difficulty=2)
     assert task.public_state['kind'] == 'blocks'

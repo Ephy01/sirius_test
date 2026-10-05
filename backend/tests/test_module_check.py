@@ -4,6 +4,7 @@ from task_module_samples import PLUS_ONE
 
 from app.tasks import FAMILIES
 from sirius_gate import check
+from sirius_gate.loading import load_directory
 
 WITH_REFERENCE = PLUS_ONE.replace(
     '    evaluate=evaluate,\n',
@@ -23,7 +24,7 @@ def test_check_accepts_a_sound_module_and_reports_how_guessable_it_is(tmp_path, 
     output = capsys.readouterr().out
     assert 'plus_one (Плюс один), версия plus-one-v1' in output
     assert 'Ошибок нет.' in output
-    levels = check.check_family(FAMILIES['plus_one'], seeds=14)
+    levels = check.check_family(load_directory(tmp_path)[0].families[0], seeds=14)
     assert [level.generated for level in levels] == [14] * 5
     assert [level.reference_accepted for level in levels] == [14] * 5
     assert all(level.distinct == 7 and level.top_answer_share == 2 / 14 for level in levels)

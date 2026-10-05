@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from typing import NamedTuple
 
 from sirius_gate.family import State, TaskFamily, Transition
@@ -63,14 +64,17 @@ def _index_aliases() -> None:
 _index_aliases()
 
 
-def register_module_family(family: TaskFamily, module: str) -> None:
-    """Add a family that came from a task module; built-in keys cannot be replaced."""
+def register_module_families(families: Iterable[TaskFamily], module: str) -> None:
+    """Add the families of one task module; a key that is already taken rejects the whole module."""
 
-    if family.key in FAMILIES:
-        owner = MODULE_OF.get(family.key, 'the platform')
-        raise ValueError(f'family key {family.key!r} is already taken by {owner}')
-    FAMILIES[family.key] = family
-    MODULE_OF[family.key] = module
+    families = tuple(families)
+    for family in families:
+        if family.key in FAMILIES:
+            owner = MODULE_OF.get(family.key, 'the platform')
+            raise ValueError(f'family key {family.key!r} is already taken by {owner}')
+    for family in families:
+        FAMILIES[family.key] = family
+        MODULE_OF[family.key] = module
     _index_aliases()
 
 

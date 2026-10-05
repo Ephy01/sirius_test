@@ -7,11 +7,12 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import status
 
+from sirius_gate.family import MAX_DIFFICULTY
+
 from .dependencies import api_error
 from .tasks import FAMILIES, resolve_family
 from .tasks.director import DIRECTOR_VERSION
 
-MAX_DIFFICULTY = 5
 DEFAULT_FAMILY = 'chess_coverage'
 ADAPTIVE_MODE = 'adaptive'
 MAX_SCRIPTED_POSITION = 100

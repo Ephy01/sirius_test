@@ -16,6 +16,11 @@ from typing import Any
 
 State = dict[str, Any]
 
+# Version of the interface a module is written for.
+API = 1
+MIN_DIFFICULTY = 1
+MAX_DIFFICULTY = 5
+
 
 @dataclass(frozen=True)
 class Transition:

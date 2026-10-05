@@ -10,9 +10,7 @@ server, in a terminal and in the browser of a task author.
 """
 
 from . import answers, blocks
-from .family import FamilyCard, State, TaskFamily, Transition, Variant, optional_text, required_text
-
-API = 1
+from .family import API, FamilyCard, State, TaskFamily, Transition, Variant, optional_text, required_text
 
 __all__ = [
     'API',

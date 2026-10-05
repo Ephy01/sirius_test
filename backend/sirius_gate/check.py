@@ -16,11 +16,12 @@ import sys
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from app.tasks import FAMILIES, TaskFamily
-from app.tasks.modules import load_task_modules
+from .family import MAX_DIFFICULTY, MIN_DIFFICULTY, TaskFamily
+from .loading import load_directory
 
-DIFFICULTIES = range(1, 6)
+DIFFICULTIES = range(MIN_DIFFICULTY, MAX_DIFFICULTY + 1)
 ACTION_OF_COMMAND = {'/op': 'apply_op', '/test': 'probe', '/hint': 'hint', '/undo': 'undo', '/reset': 'reset'}
 PAYLOAD_KEY = {'apply_op': 'op_id', 'probe': 'probe'}
 WRONG_ANSWERS = ('', 'не знаю')
@@ -155,19 +156,23 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument('--seeds', type=int, default=40, help='сколько вариантов создать на каждой сложности')
     options = parser.parse_args(arguments)
 
+    directory = Path(options.directory).expanduser()
+    if not directory.is_dir():
+        print(f'Папки {directory} нет.')
+        return 1
     failed = remarked = False
-    for module in load_task_modules(options.directory):
+    for module in load_directory(directory):
         if options.module and module.name != options.module:
             continue
         if module.error:
             print(f'{module.name}: не загружен. {module.error}\n')
             failed = True
             continue
-        for key in module.families:
-            levels = check_family(FAMILIES[key], options.seeds)
+        for family in module.families:
+            levels = check_family(family, options.seeds)
             failed = failed or any(level.problems for level in levels)
             remarked = remarked or any(level.remarks for level in levels)
-            print(render(FAMILIES[key], levels, options.seeds), end='\n\n')
+            print(render(family, levels, options.seeds), end='\n\n')
     print('Есть ошибки.' if failed else 'Ошибок нет, есть замечания.' if remarked else 'Ошибок нет.')
     return 1 if failed else 0
 
