@@ -5,7 +5,8 @@ from __future__ import annotations
 import random
 from collections.abc import Iterable
 
-from ..family import State
+from sirius_gate.family import State
+
 from .common import (
     LAMPS_GF2,
     MACHINE_PANEL_KIND,

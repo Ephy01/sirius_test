@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-import re
+from sirius_gate.answers import integer as parse_integer
+from sirius_gate.answers import text as strip_answer_command
+from sirius_gate.family import State
 
-from .family import State
-
-
-def strip_answer_command(answer: str) -> str:
-    return re.sub(r'^\s*/?answer\b', '', answer.strip().casefold()).strip()
-
-
-def parse_integer(answer: str) -> int | None:
-    """The integer a participant sent, with or without the ``/answer`` command."""
-
-    text = strip_answer_command(answer).replace('\u2212', '-').replace(' ', '')
-    return int(text) if re.fullmatch(r'[+-]?\d{1,18}', text) else None
+__all__ = [
+    'parse_integer',
+    'probability_debug_details',
+    'probability_reference_answer',
+    'strip_answer_command',
+]
 
 
 def probability_reference_answer(private_state: State) -> tuple[str, list[str]]:

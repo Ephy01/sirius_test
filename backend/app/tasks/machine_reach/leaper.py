@@ -8,7 +8,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from ..family import State
+from sirius_gate.family import State
+
 from .common import (
     CHESS_KIND,
     DISTANCE_RANGES,

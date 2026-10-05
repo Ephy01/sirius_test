@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from ..family import State, Transition
+from sirius_gate.family import State, Transition
+
 from .common import LEAPER_BOARD, state_key
 from .leaper import current_board
 from .operations import apply_operation, find_operation

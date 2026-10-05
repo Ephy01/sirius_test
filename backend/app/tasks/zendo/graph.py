@@ -7,7 +7,8 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Any
 
-from ..family import FamilyCard, State, TaskFamily, Transition, required_text
+from sirius_gate.family import FamilyCard, State, TaskFamily, Transition, required_text
+
 from ..graphs import public_state as scene_public_state
 from ..graphs import scene
 from .engine import (

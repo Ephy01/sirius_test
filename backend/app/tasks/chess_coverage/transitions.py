@@ -6,7 +6,8 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from ..family import State, Transition
+from sirius_gate.family import State, Transition
+
 from .board import interaction_counts, piece_map, placement_state
 
 Outcome = tuple[bool, str, str]

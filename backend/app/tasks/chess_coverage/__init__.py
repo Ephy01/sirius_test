@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from ..family import FamilyCard, State, TaskFamily, Transition, latency_ms, optional_text, required_text
+from sirius_gate.family import (
+    FamilyCard,
+    State,
+    TaskFamily,
+    Transition,
+    latency_ms,
+    optional_text,
+    required_text,
+)
+
 from .board import CUSTOM_PIECES, FAMILY_KEY, GENERATOR_VERSION, PUBLIC_KIND, READABLE_VERSIONS
 from .evaluation import evaluate_chess_coverage_answer
 from .generation import generate_chess_coverage_task

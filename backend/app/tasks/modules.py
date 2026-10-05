@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from .family import TaskFamily
+from sirius_gate.family import TaskFamily
+
 from .registry import register_module_family, unregister_module_families
 
 API_VERSION = 1

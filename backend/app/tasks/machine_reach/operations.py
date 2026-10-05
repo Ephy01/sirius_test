@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ..family import State
+from sirius_gate.family import State
+
 from .common import LAMPS_GF2, LEAPER_BOARD, NUMERIC_MACHINE, PERM_PUZZLE, Operation
 from .lamps import apply_toggle
 from .leaper import apply_leap

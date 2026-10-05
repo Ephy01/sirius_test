@@ -22,7 +22,7 @@ import random
 import re
 from typing import Any
 
-from .family import FamilyCard, State, TaskFamily
+from sirius_gate.family import FamilyCard, State, TaskFamily
 
 FAMILY_KEY = 'fold_punch'
 GENERATOR_VERSION = 'fold-punch-v1'

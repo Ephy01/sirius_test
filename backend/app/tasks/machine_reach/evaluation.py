@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ..family import State
+from sirius_gate.family import State
+
 from .common import FAMILY_KEY, GENERATOR_VERSION
 
 DONE_ANSWERS = frozenset({'done', 'готово', 'готов'})

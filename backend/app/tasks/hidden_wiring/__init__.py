@@ -19,7 +19,8 @@ budget counts from the second chord onwards.
 
 from __future__ import annotations
 
-from ..family import FamilyCard, State, TaskFamily, Transition, required_text
+from sirius_gate.family import FamilyCard, State, TaskFamily, Transition, required_text
+
 from ..zendo.engine import transition_zendo_hint
 from .evaluation import evaluate_hidden_wiring_answer
 from .generation import WIRING_HINT_CATEGORIES, generate_hidden_wiring_task, validate_hidden_wiring_instance

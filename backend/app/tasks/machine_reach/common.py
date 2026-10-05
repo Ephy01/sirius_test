@@ -9,7 +9,7 @@ from collections.abc import Hashable
 from copy import deepcopy
 from typing import Any
 
-from ..family import State
+from sirius_gate.family import State
 
 FAMILY_KEY = 'machine_reach'
 GENERATOR_VERSION = 'machine-reach-v2'

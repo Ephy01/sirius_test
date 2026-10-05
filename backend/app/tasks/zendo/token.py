@@ -13,7 +13,8 @@ import random
 from collections.abc import Hashable
 from typing import Any
 
-from ..family import FamilyCard, State
+from sirius_gate.family import FamilyCard, State
+
 from .engine import (
     ANSWER_RESPONSE_HINT,
     card_probes,

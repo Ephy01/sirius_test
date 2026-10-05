@@ -5,8 +5,10 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from sirius_gate import blocks
+
 from ..models import TaskInstance, TaskInteraction
-from ..tasks import FAMILIES, blocks
+from ..tasks import FAMILIES
 
 
 @dataclass(frozen=True)

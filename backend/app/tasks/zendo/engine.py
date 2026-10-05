@@ -28,7 +28,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Protocol
 
-from ..family import FamilyCard, State, TaskFamily, Transition, required_text
+from sirius_gate.family import FamilyCard, State, TaskFamily, Transition, required_text
+
 from ..graphs import scene_cards
 from .rule_dsl import (
     MAX_BASE_RATE,

@@ -5,7 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from ..family import State, Transition
+from sirius_gate.family import State, Transition
+
 from .panel import CHORD_BUDGET, HINT_SCORE_MULTIPLIER, REACH_VARIANT, entropy_bits, lamp_list
 
 

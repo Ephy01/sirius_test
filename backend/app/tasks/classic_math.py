@@ -13,7 +13,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
-from .family import FamilyCard, State, TaskFamily, Variant
+from sirius_gate.family import FamilyCard, State, TaskFamily, Variant
 
 FAMILY_KEY = 'classic_math'
 GENERATOR_VERSION = 'classic-math-v1'

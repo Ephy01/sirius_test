@@ -5,7 +5,8 @@ from __future__ import annotations
 import random
 from collections import deque
 
-from ..family import State
+from sirius_gate.family import State
+
 from .common import (
     DISTANCE_RANGES,
     MACHINE_PANEL_KIND,

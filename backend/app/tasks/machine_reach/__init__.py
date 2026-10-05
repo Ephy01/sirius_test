@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ..family import (
+from sirius_gate.family import (
     FamilyCard,
     State,
     TaskFamily,
@@ -25,6 +25,7 @@ from ..family import (
     optional_text,
     required_text,
 )
+
 from .common import (
     CHESS_KIND,
     DISTANCE_RANGES,

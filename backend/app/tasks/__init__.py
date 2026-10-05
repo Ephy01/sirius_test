@@ -1,6 +1,7 @@
 """Task content: families, their registry and the routing director."""
 
-from .family import State, TaskFamily, Transition
+from sirius_gate.family import State, TaskFamily, Transition
+
 from .registry import (
     FAMILIES,
     derive_task_seed,

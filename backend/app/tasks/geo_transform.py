@@ -8,8 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from sirius_gate.family import FamilyCard, State, TaskFamily
+
 from .answers import strip_answer_command
-from .family import FamilyCard, State, TaskFamily
 from .graphs import CARD_COORDINATES, MiniGraph, normalize_edges, public_state, scene, scene_cards
 
 FAMILY_KEY = 'geo_transform'

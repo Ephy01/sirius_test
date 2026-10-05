@@ -8,7 +8,8 @@ from collections.abc import Hashable
 from copy import deepcopy
 from typing import Any
 
-from ..family import FamilyCard, State, Transition, required_text
+from sirius_gate.family import FamilyCard, State, Transition, required_text
+
 from .engine import (
     ANSWER_RESPONSE_HINT,
     card_visibility,

@@ -14,7 +14,8 @@ import random
 from collections.abc import Hashable
 from typing import Any
 
-from ..family import FamilyCard
+from sirius_gate.family import FamilyCard
+
 from .engine import (
     ANSWER_RESPONSE_HINT,
     card_probes,

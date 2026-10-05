@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Request
 
+from sirius_gate.family import FamilyCard, Variant
+
 from ..contest_config import MAX_DIFFICULTY
 from ..dependencies import OrganizerDependency, SettingsDependency
 from ..schemas import (
@@ -9,7 +11,6 @@ from ..schemas import (
     TaskVariantResponse,
 )
 from ..tasks import FAMILIES, TaskFamily
-from ..tasks.family import FamilyCard, Variant
 from ..tasks.modules import load_task_modules
 from ..tasks.registry import MODULE_OF
 

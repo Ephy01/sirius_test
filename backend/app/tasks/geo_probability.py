@@ -9,8 +9,9 @@ from collections.abc import Iterable, Sequence
 from fractions import Fraction
 from typing import Any
 
+from sirius_gate.family import FamilyCard, State, TaskFamily
+
 from .answers import probability_debug_details, probability_reference_answer, strip_answer_command
-from .family import FamilyCard, State, TaskFamily
 from .graphs import (
     GRAPH_COORDINATES,
     POINT_COLORS,

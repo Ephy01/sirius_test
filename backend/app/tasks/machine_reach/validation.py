@@ -6,7 +6,8 @@ from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
 
-from ..family import State
+from sirius_gate.family import State
+
 from .common import LEAPER_BOARD, state_key, witness_to
 from .lamps import orthogonal_vector_separates
 from .leaper import colours_differ, target_disconnected

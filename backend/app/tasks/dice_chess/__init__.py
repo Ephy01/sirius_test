@@ -6,8 +6,9 @@ levels about legal moves in a position reached by random play.
 
 from __future__ import annotations
 
+from sirius_gate.family import FamilyCard, State, TaskFamily
+
 from ..answers import probability_debug_details, probability_reference_answer
-from ..family import FamilyCard, State, TaskFamily
 from .inventory import generate_dice_chess_inventory_task
 from .position import generate_dice_chess_position_task
 from .probability import evaluate_dice_chess_answer

@@ -10,6 +10,8 @@ import hashlib
 import json
 from typing import NamedTuple
 
+from sirius_gate.family import State, TaskFamily, Transition
+
 from . import (
     chess_coverage,
     classic_math,
@@ -20,7 +22,6 @@ from . import (
     hidden_wiring,
     machine_reach,
 )
-from .family import State, TaskFamily, Transition
 from .zendo import graph, grid, point, token
 
 
