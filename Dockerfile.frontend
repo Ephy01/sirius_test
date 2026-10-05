@@ -8,6 +8,8 @@ RUN npm ci
 COPY index.html tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts ./
 COPY public ./public
 COPY src ./src
+# The task editor runs these Python files in the browser.
+COPY backend/sirius_gate ./backend/sirius_gate
 
 RUN npm run build
 
