@@ -1,4 +1,4 @@
-import type { TaskModuleProblem, UnknownRecord } from "../../api";
+import type { TaskModuleProblem, UnknownRecord } from "../api";
 import { verdict, type SandboxRun } from "./useTaskSandbox";
 
 function Json({ value }: { value: unknown }) {

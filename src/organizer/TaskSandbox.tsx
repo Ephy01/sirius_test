@@ -1,8 +1,11 @@
-import { ParticipantWorkspace } from "../participant/ParticipantWorkspace";
-import { AuthorPanel } from "./sandbox/AuthorPanel";
-import { SandboxControls } from "./sandbox/SandboxControls";
-import { useTaskSandbox, verdict } from "./sandbox/useTaskSandbox";
-import "./task-sandbox.css";
+import { useMemo } from "react";
+import { AuthorPanel } from "../sandbox/AuthorPanel";
+import { serverSandbox } from "../sandbox/backend";
+import { SandboxControls } from "../sandbox/SandboxControls";
+import { SandboxReport } from "../sandbox/SandboxReport";
+import { SandboxStage } from "../sandbox/SandboxStage";
+import { useTaskSandbox } from "../sandbox/useTaskSandbox";
+import "../sandbox/sandbox.css";
 
 /** Lets an author generate a task and play it as a participant would, without a contest. */
 export function TaskSandbox({
@@ -12,11 +15,8 @@ export function TaskSandbox({
   token: string;
   onClose: () => void;
 }) {
-  const sandbox = useTaskSandbox(token);
-  const { catalog, catalogError, reloadCatalog, run, task, busy, failure } =
-    sandbox;
-  const source = catalog?.items.find((item) => item.key === run?.family);
-  const problems = catalog?.problems ?? [];
+  const sandbox = useTaskSandbox(useMemo(() => serverSandbox(token), [token]));
+  const { catalog, catalogError, reloadCatalog, run } = sandbox;
 
   return (
     <div className="sandbox-page">
@@ -49,88 +49,14 @@ export function TaskSandbox({
           ) : (
             <SandboxControls sandbox={sandbox} />
           )}
-          {run && (
-            <p className="sandbox-run">
-              <span>Вариант {run.number}</span>
-              <span>
-                {run.family}
-                {source?.source === "module" && " (модуль)"}
-              </span>
-              <span>версия {run.generatorVersion}</span>
-              {run.subKind && <span>вариант {run.subKind}</span>}
-              <span>сложность {run.difficulty}</span>
-              <span>
-                сид <b>{run.seed}</b>
-              </span>
-              {run.closed && <span>задача закрыта</span>}
-              {run.evaluation && (
-                <span>проверка: {verdict(run.evaluation)}</span>
-              )}
-            </p>
-          )}
-          {problems.length > 0 && (
-            <p className="sandbox-bar__problems">
-              Не загружены модули:{" "}
-              {problems.map((problem) => problem.module).join(", ")}. Причины —
-              в панели автора под задачей.
-            </p>
-          )}
-          {failure && (
-            <div
-              className={`sandbox-failure${
-                failure.inTaskCode || failure.rejectedState !== undefined
-                  ? " sandbox-failure--task"
-                  : ""
-              }`}
-              role="alert"
-            >
-              <strong>
-                {failure.inTaskCode
-                  ? "Код задачи завершился ошибкой"
-                  : failure.rejectedState !== undefined
-                    ? "Клиент не смог показать состояние задачи"
-                    : "Запрос не выполнен"}
-              </strong>
-              <pre>{failure.message}</pre>
-              {failure.rejectedState !== undefined && (
-                <details>
-                  <summary>Состояние, которое клиент не смог показать</summary>
-                  <pre>{JSON.stringify(failure.rejectedState, null, 2)}</pre>
-                </details>
-              )}
-              {failure.retry && (
-                <button
-                  className="sandbox-button"
-                  type="button"
-                  disabled={busy}
-                  onClick={failure.retry}
-                >
-                  Повторить
-                </button>
-              )}
-            </div>
-          )}
+          <SandboxReport sandbox={sandbox} />
         </header>
-        <div className="sandbox-stage">
-          {task ? (
-            <ParticipantWorkspace
-              task={task}
-              busy={busy}
-              modeLabel="Песочница"
-              assistantOffReply="В песочнице ассистент выключен. Команды работают как в попытке."
-              {...sandbox.handlers}
-              key={task.id}
-            />
-          ) : (
-            <p className="sandbox-stage__empty">
-              {busy
-                ? "Генерируем вариант…"
-                : "Выберите семейство и нажмите «Сгенерировать»: задача откроется так, как её увидит участник."}
-            </p>
-          )}
-        </div>
+        <SandboxStage
+          sandbox={sandbox}
+          emptyHint="Выберите семейство и нажмите «Сгенерировать»: задача откроется так, как её увидит участник."
+        />
       </div>
-      <AuthorPanel run={run} problems={problems} />
+      <AuthorPanel run={run} problems={catalog?.problems ?? []} />
     </div>
   );
 }

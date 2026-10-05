@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
-  api,
   type DebugAnswerResponse,
   type ParticipantTask,
   type SandboxMove,
@@ -10,12 +9,16 @@ import {
   type TaskFamily,
   type TaskFamilyCatalog,
   type UnknownRecord,
-} from "../../api";
+} from "../api";
+import {
+  isIntegerInRange,
+  type NumericDraft,
+} from "../organizer/builder/draft";
 import type {
   TaskMoveTransitionResult,
   TaskTransitionResult,
-} from "../../participant/commands";
-import { isIntegerInRange, type NumericDraft } from "../builder/draft";
+} from "../participant/commands";
+import type { SandboxBackend } from "./backend";
 
 /** One generated variant together with what the author did to it. */
 export type SandboxRun = {
@@ -28,6 +31,13 @@ export type SandboxRun = {
   state: SandboxTaskState;
   closed: boolean;
   evaluation: UnknownRecord | null;
+};
+
+/** What a variant is generated from. */
+type Selection = {
+  family: TaskFamily;
+  variant: string;
+  difficulty: NumericDraft;
 };
 
 export type SandboxFailure = {
@@ -78,7 +88,11 @@ export function verdict(evaluation: UnknownRecord) {
   return "без оценки";
 }
 
-export function useTaskSandbox(token: string) {
+function defaultVariant(family: TaskFamily) {
+  return family.scriptedOnly ? (family.variants[0]?.key ?? "") : "";
+}
+
+export function useTaskSandbox(backend: SandboxBackend) {
   const [catalog, setCatalog] = useState<TaskFamilyCatalog | null>(null);
   const [catalogError, setCatalogError] = useState("");
   const [familyKey, setFamilyKey] = useState("");
@@ -92,33 +106,55 @@ export function useTaskSandbox(token: string) {
 
   const family = catalog?.items.find((item) => item.key === familyKey);
 
+  function select(next: Selection): Selection {
+    setFamilyKey(next.family.key);
+    setVariant(next.variant);
+    setDifficulty(next.difficulty);
+    return next;
+  }
+
   function selectFamily(next: TaskFamily) {
-    setFamilyKey(next.key);
-    setVariant(next.scriptedOnly ? (next.variants[0]?.key ?? "") : "");
-    setDifficulty(next.minDifficulty);
+    select({
+      family: next,
+      variant: defaultVariant(next),
+      difficulty: next.minDifficulty,
+    });
     setNotice("");
   }
 
   /** Keeps the author's settings when the family survived the reload. */
-  function adoptCatalog(loaded: TaskFamilyCatalog) {
+  function adoptCatalog(loaded: TaskFamilyCatalog): Selection | null {
     setCatalog(loaded);
     const kept = loaded.items.find((item) => item.key === familyKey);
     if (!kept) {
-      if (loaded.items.length > 0) selectFamily(loaded.items[0]);
-      return;
+      const first = loaded.items.at(0);
+      if (!first) return null;
+      setNotice("");
+      return select({
+        family: first,
+        variant: defaultVariant(first),
+        difficulty: first.minDifficulty,
+      });
     }
-    if (!kept.variants.some((item) => item.key === variant)) {
-      setVariant(kept.scriptedOnly ? (kept.variants[0]?.key ?? "") : "");
-    }
-    if (!isIntegerInRange(difficulty, kept.minDifficulty, kept.maxDifficulty)) {
-      setDifficulty(kept.minDifficulty);
-    }
+    return select({
+      family: kept,
+      variant: kept.variants.some((item) => item.key === variant)
+        ? variant
+        : defaultVariant(kept),
+      difficulty: isIntegerInRange(
+        difficulty,
+        kept.minDifficulty,
+        kept.maxDifficulty,
+      )
+        ? difficulty
+        : kept.minDifficulty,
+    });
   }
 
   async function loadCatalog(signal?: AbortSignal) {
     setCatalogError("");
     try {
-      const loaded = await api.listTaskFamilies({ token, signal });
+      const loaded = await backend.catalog(signal);
       if (signal?.aborted) return;
       adoptCatalog(loaded);
     } catch (caught) {
@@ -135,7 +171,7 @@ export function useTaskSandbox(token: string) {
     const controller = new AbortController();
     void loadCatalog(controller.signal);
     return () => controller.abort();
-  }, [token]);
+  }, [backend]);
 
   async function fromControls<Result>(
     action: () => Promise<Result>,
@@ -170,11 +206,10 @@ export function useTaskSandbox(token: string) {
     return opened;
   }
 
-  /** `anotherSeed` ignores the seed field: same settings, a new random variant. */
-  async function generate(anotherSeed: boolean): Promise<SandboxRun | null> {
-    if (!family) return null;
-    const { minDifficulty, maxDifficulty } = family;
-    if (!isIntegerInRange(difficulty, minDifficulty, maxDifficulty)) {
+  /** The request for a variant, or `null` with a notice when the settings are wrong. */
+  function taskInput(selection: Selection, anotherSeed: boolean) {
+    const { minDifficulty, maxDifficulty } = selection.family;
+    if (!isIntegerInRange(selection.difficulty, minDifficulty, maxDifficulty)) {
       setNotice(
         `Сложность должна быть целым числом от ${minDifficulty} до ${maxDifficulty}.`,
       );
@@ -190,24 +225,42 @@ export function useTaskSandbox(token: string) {
       );
       return null;
     }
-    const subKind = variant || null;
-    const input = {
-      family: family.key,
-      difficulty,
+    return {
+      family: selection.family.key,
+      difficulty: selection.difficulty,
       seed: fixedSeed ? Number(fixedSeed) : null,
-      subKind,
+      subKind: selection.variant || null,
     };
+  }
+
+  /** `anotherSeed` ignores the seed field: same settings, a new random variant. */
+  async function generate(anotherSeed: boolean): Promise<SandboxRun | null> {
+    if (!family) return null;
+    const input = taskInput({ family, variant, difficulty }, anotherSeed);
+    if (!input) return null;
     return fromControls(
-      async () =>
-        openRun(await api.generateSandboxTask(input, { token }), subKind),
+      async () => openRun(await backend.generate(input), input.subKind),
       () => void generate(anotherSeed),
     );
   }
 
   function reloadModules() {
     return fromControls(
-      async () => adoptCatalog(await api.reloadTaskModules({ token })),
+      async () => adoptCatalog(await backend.reload()),
       () => void reloadModules(),
+    );
+  }
+
+  /** Reads the task code again and opens a variant of what it now defines. */
+  function reloadAndGenerate() {
+    return fromControls(
+      async () => {
+        const selection = adoptCatalog(await backend.reload());
+        const input = selection && taskInput(selection, false);
+        if (!input) return null;
+        return openRun(await backend.generate(input), input.subKind);
+      },
+      () => void reloadAndGenerate(),
     );
   }
 
@@ -227,14 +280,11 @@ export function useTaskSandbox(token: string) {
     const current = activeRun();
     const reply = { ordinal: current.number, advanced: false };
     try {
-      const { evaluation, finalized } = await api.answerInSandbox(
-        {
-          family: current.family,
-          answer: value,
-          stateText: current.state.stateText,
-        },
-        { token },
-      );
+      const { evaluation, finalized } = await backend.answer({
+        family: current.family,
+        answer: value,
+        stateText: current.state.stateText,
+      });
       setFailure(null);
       updateRun(current.number, { closed: finalized, evaluation });
       if (finalized) {
@@ -261,14 +311,11 @@ export function useTaskSandbox(token: string) {
     const current = activeRun();
     const reply = { ordinal: current.number, advanced: false };
     try {
-      const result = await api.interactInSandbox(
-        {
-          ...action,
-          family: current.family,
-          stateText: current.state.stateText,
-        },
-        { token },
-      );
+      const result = await backend.interact({
+        ...action,
+        family: current.family,
+        stateText: current.state.stateText,
+      });
       setFailure(null);
       updateRun(current.number, {
         state: taskState(result),
@@ -347,6 +394,7 @@ export function useTaskSandbox(token: string) {
     failure,
     generate: (anotherSeed: boolean) => void generate(anotherSeed),
     reloadModules: () => void reloadModules(),
+    reloadAndGenerate: () => void reloadAndGenerate(),
     handlers: {
       onAnswer: answer,
       onSkip: anotherVariant,
