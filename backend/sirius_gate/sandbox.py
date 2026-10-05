@@ -47,9 +47,11 @@ def _run(step: Callable[[], Any]) -> Any:
 
 
 def _state_text(public_state: State, private_state: State) -> str:
-    return json.dumps(
-        {'private_state': private_state, 'public_state': public_state}, ensure_ascii=False, indent=2
-    )
+    states = {'private_state': private_state, 'public_state': public_state}
+    try:
+        return json.dumps(states, ensure_ascii=False, indent=2, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise TaskCodeFailed(f'Состояние задачи нельзя записать в JSON: {error}') from error
 
 
 def _states(text: str) -> tuple[State, State]:
