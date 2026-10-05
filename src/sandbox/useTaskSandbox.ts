@@ -122,32 +122,27 @@ export function useTaskSandbox(backend: SandboxBackend) {
     setNotice("");
   }
 
-  /** Keeps the author's settings when the family survived the reload. */
+  /** Keeps the author's settings that still fit: the family may be gone or renamed after a reload. */
   function adoptCatalog(loaded: TaskFamilyCatalog): Selection | null {
     setCatalog(loaded);
-    const kept = loaded.items.find((item) => item.key === familyKey);
-    if (!kept) {
-      const first = loaded.items.at(0);
-      if (!first) return null;
-      setNotice("");
-      return select({
-        family: first,
-        variant: defaultVariant(first),
-        difficulty: first.minDifficulty,
-      });
-    }
+    const next =
+      loaded.items.find((item) => item.key === familyKey) ?? loaded.items.at(0);
+    if (!next) return null;
+    const sameFamily = next.key === familyKey;
+    if (!sameFamily) setNotice("");
     return select({
-      family: kept,
-      variant: kept.variants.some((item) => item.key === variant)
-        ? variant
-        : defaultVariant(kept),
+      family: next,
+      variant:
+        sameFamily && next.variants.some((item) => item.key === variant)
+          ? variant
+          : defaultVariant(next),
       difficulty: isIntegerInRange(
         difficulty,
-        kept.minDifficulty,
-        kept.maxDifficulty,
+        next.minDifficulty,
+        next.maxDifficulty,
       )
         ? difficulty
-        : kept.minDifficulty,
+        : next.minDifficulty,
     });
   }
 
