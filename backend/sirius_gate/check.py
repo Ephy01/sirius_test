@@ -131,17 +131,24 @@ def check_family(family: TaskFamily, seeds: int = 40) -> list[LevelReport]:
     return [check_level(family, difficulty, seeds, context) for difficulty in levels]
 
 
+def _level_name(family: TaskFamily, difficulty: int) -> str:
+    titles = family.level_titles
+    return titles[difficulty - MIN_DIFFICULTY] if titles else str(difficulty)
+
+
 def render(family: TaskFamily, levels: list[LevelReport], seeds: int) -> str:
     title = family.card.title if family.card else family.key
+    names = [_level_name(family, level.difficulty) for level in levels]
+    width = max(len('сложность'), *map(len, names))
     lines = [
         f'{family.key} ({title}), версия {family.version}',
-        '  сложность  создано  разных  эталон принят  самый частый ответ  дольше всего',
+        f'  {"сложность":<{width}}  создано  разных  эталон принят  самый частый ответ  дольше всего',
     ]
-    for level in levels:
+    for name, level in zip(names, levels, strict=True):
         reference = '—' if level.reference_accepted is None else f'{level.reference_accepted}/{seeds}'
         share = '—' if level.top_answer_share is None else f'{level.top_answer_share:.0%}'
         lines.append(
-            f'  {level.difficulty:^9}  {level.generated:>3}/{seeds:<3}  {level.distinct:^6}  {reference:^13}'
+            f'  {name:<{width}}  {level.generated:>3}/{seeds:<3}  {level.distinct:^6}  {reference:^13}'
             f'  {share:^18}  {level.slowest_seconds * 1000:>7.0f} мс'
         )
         lines.extend(f'      ошибка: {problem}' for problem in level.problems)
