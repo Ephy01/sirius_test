@@ -1,5 +1,5 @@
 import type { TaskFamily } from "../api";
-import { numericDraft } from "../organizer/builder/draft";
+import { LevelField } from "./LevelField";
 import type { TaskSandboxState } from "./useTaskSandbox";
 
 function FamilyOptions({ families }: { families: readonly TaskFamily[] }) {
@@ -17,8 +17,6 @@ export function SandboxControls({ sandbox }: { sandbox: TaskSandboxState }) {
     selectFamily,
     variant,
     setVariant,
-    difficulty,
-    setDifficulty,
     seed,
     setSeed,
     busy,
@@ -78,18 +76,7 @@ export function SandboxControls({ sandbox }: { sandbox: TaskSandboxState }) {
           </select>
         </label>
       )}
-      <label className="sandbox-field sandbox-field--narrow">
-        <span>Сложность</span>
-        <input
-          type="number"
-          min={family?.minDifficulty}
-          max={family?.maxDifficulty}
-          step={1}
-          value={difficulty}
-          disabled={busy}
-          onChange={(event) => setDifficulty(numericDraft(event.target.value))}
-        />
-      </label>
+      <LevelField sandbox={sandbox} />
       <label className="sandbox-field">
         <span>Сид, пусто — случайный</span>
         <input

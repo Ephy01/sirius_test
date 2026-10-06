@@ -1,4 +1,4 @@
-import { numericDraft } from "../organizer/builder/draft";
+import { LevelField } from "../sandbox/LevelField";
 import type { TaskSandboxState } from "../sandbox/useTaskSandbox";
 
 /** Settings of the variant that is opened from the code in the editor. */
@@ -17,8 +17,6 @@ export function EditorControls({
     selectFamily,
     variant,
     setVariant,
-    difficulty,
-    setDifficulty,
     seed,
     setSeed,
     busy,
@@ -73,18 +71,7 @@ export function EditorControls({
           </select>
         </label>
       )}
-      <label className="sandbox-field sandbox-field--narrow">
-        <span>Сложность</span>
-        <input
-          type="number"
-          min={family?.minDifficulty ?? 1}
-          max={family?.maxDifficulty ?? 5}
-          step={1}
-          value={difficulty}
-          disabled={busy}
-          onChange={(event) => setDifficulty(numericDraft(event.target.value))}
-        />
-      </label>
+      <LevelField sandbox={sandbox} />
       <label className="sandbox-field sandbox-field--narrow">
         <span>Сид</span>
         <input

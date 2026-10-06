@@ -121,6 +121,8 @@ export type TaskFamily = {
   key: string;
   title: string;
   description: string;
+  /** Who wrote the plugin; empty for built-in families. */
+  author: string;
   version: string;
   source: "builtin" | "module";
   module: string | null;
@@ -131,6 +133,8 @@ export type TaskFamily = {
   defaultSkin: string | null;
   minDifficulty: number;
   maxDifficulty: number;
+  /** Names of the levels from the lowest one, when the family names them. */
+  levelTitles: string[];
   variants: TaskFamilyVariant[];
 };
 
@@ -269,7 +273,7 @@ function parseTaskFamilyVariant(value: unknown): TaskFamilyVariant | null {
 
 function parseTaskFamily(value: unknown): TaskFamily | null {
   if (!isRecord(value)) return null;
-  const { key, title, description, version, source, module } = value;
+  const { key, title, description, author, version, source, module } = value;
   const { listed, interactive, scripted_only: scriptedOnly } = value;
   const {
     default_weight: defaultWeight,
@@ -278,10 +282,15 @@ function parseTaskFamily(value: unknown): TaskFamily | null {
     max_difficulty: maxDifficulty,
   } = value;
   const variants = parseList(value.variants, parseTaskFamilyVariant);
+  const levelTitles = parseList(value.level_titles, (item) =>
+    isName(item) ? item : null,
+  );
   if (
     !isName(key) ||
     !isName(title) ||
     typeof description !== "string" ||
+    typeof author !== "string" ||
+    !levelTitles ||
     !isName(version) ||
     (source !== "builtin" && source !== "module") ||
     (module !== null && !isName(module)) ||
@@ -304,6 +313,7 @@ function parseTaskFamily(value: unknown): TaskFamily | null {
     key,
     title,
     description,
+    author,
     version,
     source,
     module,
@@ -314,6 +324,7 @@ function parseTaskFamily(value: unknown): TaskFamily | null {
     defaultSkin,
     minDifficulty,
     maxDifficulty,
+    levelTitles,
     variants,
   };
 }

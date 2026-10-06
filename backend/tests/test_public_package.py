@@ -90,4 +90,4 @@ def test_example_the_editor_opens_with_passes_the_module_check(example):
         levels = check_family(family, seeds=10)
         assert [(level.generated, level.reference_accepted, level.problems) for level in levels] == [
             (10, 10, [])
-        ] * 5
+        ] * family.max_difficulty
