@@ -25,7 +25,7 @@ FAMILY = TaskFamily(
 
 # The same kind of task written against the plugin interface of the hackathon brief.
 COUNT_UP = """
-from sirius_gate import EASY, HARD, MEDIUM, Plugin, Rejected, TaskType, answers, blocks
+from sirius_gate import EASY, HARD, MEDIUM, NotYet, Plugin, Rejected, TaskType, answers, blocks
 
 LIMITS = {EASY: 3, MEDIUM: 6, HARD: 9}
 
@@ -55,6 +55,8 @@ def move(variant, text):
 
 def check(answer, variant):
     if answers.text(answer) == "done":
+        if variant["count"] < variant["target"]:
+            raise NotYet("Счётчик ещё не дошёл до цели.")
         return variant["count"] == variant["target"]
     return answers.integer(answer) == variant["target"]
 

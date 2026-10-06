@@ -35,6 +35,10 @@ class Rejected(Exception):
     """Raised by ``move`` to refuse a move; the text is shown to the participant."""
 
 
+class NotYet(Exception):
+    """Raised by ``check`` when the answer cannot be judged yet; the task stays open."""
+
+
 @dataclass(frozen=True)
 class TaskType:
     """One type of task inside a plugin.
@@ -42,7 +46,8 @@ class TaskType:
     ``generate(level, rng)`` returns the variant: a dict with everything that defines
     the task, the answer included. ``validate(variant)`` says whether the variant may
     be given to a participant. ``check(answer, variant)`` says whether the answer is
-    right. ``view(variant)`` returns ``blocks.scene(...)``, which is all a participant
+    right, or raises ``NotYet`` to keep the task open. ``view(variant)`` returns
+    ``blocks.scene(...)``, which is all a participant
     sees. ``model_context(scene)`` narrows what the language model is told, it gets
     the scene and never the variant.
 
@@ -139,7 +144,11 @@ def _accepts(validate: Callable[[State], bool], variant: State) -> bool:
 
 
 def _evaluate(task: TaskType, answer: str, private_state: State) -> State:
-    verdict = task.check(answer, deepcopy(private_state['variant']))
+    try:
+        verdict = task.check(answer, deepcopy(private_state['variant']))
+    except NotYet as wait:
+        feedback = str(wait) or 'Ответ пока не завершает задачу.'
+        return {'correct': False, 'should_finalize': False, 'feedback': feedback}
     if isinstance(verdict, bool):
         return {'correct': verdict}
     if isinstance(verdict, dict) and 'correct' in verdict:

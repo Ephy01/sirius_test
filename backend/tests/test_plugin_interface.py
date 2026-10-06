@@ -80,7 +80,14 @@ def test_moves_change_the_view_and_undo_and_reset_come_for_free():
 
     undone = _act(family, twice, action_type='undo')
     assert undone['public_state']['blocks'][0]['items'] == ['Счётчик: 1']
-    assert sandbox.answer(family, answer='done', state=undone['state'])['evaluation'] == {'correct': False}
+    assert sandbox.answer(family, answer='done', state=undone['state']) == {
+        'evaluation': {
+            'correct': False,
+            'should_finalize': False,
+            'feedback': 'Счётчик ещё не дошёл до цели.',
+        },
+        'finalized': False,
+    }
 
     cleared = _act(family, undone, action_type='reset')
     assert cleared['public_state'] == task['public_state']
