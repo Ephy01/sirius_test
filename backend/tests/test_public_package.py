@@ -71,7 +71,7 @@ def test_error_in_task_code_names_the_line_of_the_module():
     [
         ('def broken(:\n', 'task.py, строка 1'),
         ('VALUE = 1 / 0\n', 'ZeroDivisionError: division by zero\ntask.py, строка 1, функция <module>'),
-        ('VALUE = 1\n', 'must define FAMILY'),
+        ('VALUE = 1\n', 'должен быть PLUGIN'),
     ],
 )
 def test_module_text_that_fails_to_load_is_explained(source, expected):

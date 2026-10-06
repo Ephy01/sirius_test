@@ -7,8 +7,6 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import status
 
-from sirius_gate.family import MAX_DIFFICULTY
-
 from .dependencies import api_error
 from .tasks import FAMILIES, resolve_family
 from .tasks.director import DIRECTOR_VERSION
@@ -83,7 +81,8 @@ def family_settings(config: dict) -> tuple[list[FamilyTaskSettings], int]:
         units = weight_units(values.get('weight', 1))
         if units == 0:
             continue
-        initial = bounded_int(values.get('initial_difficulty'), default=1, minimum=1, maximum=MAX_DIFFICULTY)
+        highest = FAMILIES[family].max_difficulty
+        initial = bounded_int(values.get('initial_difficulty'), default=1, minimum=1, maximum=highest)
         skin = values.get('skin')
         sub_kinds = values.get('sub_kinds')
         parsed[family] = FamilyTaskSettings(
@@ -91,7 +90,7 @@ def family_settings(config: dict) -> tuple[list[FamilyTaskSettings], int]:
             weight_units=units,
             initial_difficulty=initial,
             max_difficulty=bounded_int(
-                values.get('max_difficulty'), default=MAX_DIFFICULTY, minimum=initial, maximum=MAX_DIFFICULTY
+                values.get('max_difficulty'), default=highest, minimum=initial, maximum=highest
             ),
             skin=skin.strip() if isinstance(skin, str) and skin.strip() else None,
             sub_kinds=tuple(kind.strip() for kind in sub_kinds if isinstance(kind, str) and kind.strip())

@@ -18,10 +18,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .family import MAX_DIFFICULTY, MIN_DIFFICULTY, TaskFamily
+from .family import MIN_DIFFICULTY, TaskFamily
 from .loading import load_directory
 
-DIFFICULTIES = range(MIN_DIFFICULTY, MAX_DIFFICULTY + 1)
 ACTION_OF_COMMAND = {'/op': 'apply_op', '/test': 'probe', '/hint': 'hint', '/undo': 'undo', '/reset': 'reset'}
 PAYLOAD_KEY = {'apply_op': 'op_id', 'probe': 'probe'}
 WRONG_ANSWERS = ('', 'не знаю')
@@ -128,7 +127,8 @@ def check_level(family: TaskFamily, difficulty: int, seeds: int, context: dict |
 
 def check_family(family: TaskFamily, seeds: int = 40) -> list[LevelReport]:
     context = {'sub_kinds': [family.sub_kinds[0]]} if family.scripted_only and family.sub_kinds else None
-    return [check_level(family, difficulty, seeds, context) for difficulty in DIFFICULTIES]
+    levels = range(MIN_DIFFICULTY, family.max_difficulty + 1)
+    return [check_level(family, difficulty, seeds, context) for difficulty in levels]
 
 
 def render(family: TaskFamily, levels: list[LevelReport], seeds: int) -> str:

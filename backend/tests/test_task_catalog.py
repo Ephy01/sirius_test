@@ -72,6 +72,7 @@ def test_catalog_lists_module_families_and_load_problems(tmp_path):
         'key': 'plus_one',
         'title': 'Плюс один',
         'description': 'Учебный модуль.',
+        'author': '',
         'version': 'plus-one-v1',
         'source': 'module',
         'module': 'plus_one',
@@ -82,7 +83,8 @@ def test_catalog_lists_module_families_and_load_problems(tmp_path):
         'default_skin': None,
         'min_difficulty': 1,
         'max_difficulty': 5,
+        'level_titles': [],
         'variants': [],
     }
     assert [problem['module'] for problem in catalog['problems']] == ['broken']
-    assert 'must define FAMILY' in catalog['problems'][0]['error']
+    assert 'должен быть PLUGIN' in catalog['problems'][0]['error']

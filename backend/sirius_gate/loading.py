@@ -1,7 +1,8 @@
 """Loading task modules from a folder or from the text of one module.
 
 A module is either ``<name>.py`` or a folder ``<name>/`` with ``task.py`` inside. It
-defines ``FAMILY`` (or ``FAMILIES``) with ``TaskFamily`` records and may declare the
+defines ``PLUGIN = Plugin(...)``. A module written against the core contract defines
+``FAMILY`` (or ``FAMILIES``) with ``TaskFamily`` records instead and may declare the
 interface version it was written for as ``API = 1``.
 """
 
@@ -20,6 +21,7 @@ from types import ModuleType
 
 from .errors import explain
 from .family import API, TaskFamily
+from .plugin import Plugin
 
 PACKAGE = 'sirius_gate_modules'
 KEY_PATTERN = re.compile(r'[a-z][a-z0-9_]{2,39}')
@@ -93,10 +95,15 @@ def _run(name: str, source: str, filename: str) -> ModuleType:
 
 
 def _declared_families(module: ModuleType) -> list[TaskFamily]:
+    plugin = getattr(module, 'PLUGIN', None)
+    if plugin is not None:
+        if not isinstance(plugin, Plugin):
+            raise ValueError('PLUGIN должен быть создан через Plugin(...)')
+        return list(plugin.families())
     declared = getattr(module, 'FAMILIES', None)
     families = list(declared) if declared is not None else [getattr(module, 'FAMILY', None)]
     if not families or any(not isinstance(family, TaskFamily) for family in families):
-        raise ValueError('the module must define FAMILY (or FAMILIES) built with TaskFamily')
+        raise ValueError('в файле должен быть PLUGIN = Plugin(...)')
     return families
 
 
@@ -105,29 +112,30 @@ def _smoke_test(family: TaskFamily) -> None:
 
     first = family.generate(SMOKE_SEED, 1, {})
     if not (isinstance(first, tuple) and len(first) == 2 and all(isinstance(part, dict) for part in first)):
-        raise ValueError('generate must return (public_state, private_state) as two dicts')
+        raise ValueError('генерация должна вернуть два словаря: открытое и закрытое состояние задачи')
     encoded = json.dumps(first, ensure_ascii=False, allow_nan=False)
     if json.dumps(family.generate(SMOKE_SEED, 1, {}), ensure_ascii=False, allow_nan=False) != encoded:
-        raise ValueError('generate must return the same task for the same seed and difficulty')
+        raise ValueError(
+            'один и тот же номер варианта дал разные задачи: все случайные решения берите из rng'
+        )
     public_state = first[0]
     if not isinstance(public_state.get('kind'), str) or not isinstance(public_state.get('prompt'), str):
-        raise ValueError('public_state must contain text fields "kind" and "prompt"')
+        raise ValueError('в открытом состоянии задачи должны быть текстовые поля "kind" и "prompt"')
 
 
 def _checked_families(module: ModuleType) -> tuple[TaskFamily, ...]:
     families = _declared_families(module)
     declared = getattr(module, 'API', API)
     if declared != API:
-        raise ValueError(
-            f'the module is written for interface version {declared}, the platform provides {API}'
-        )
+        raise ValueError(f'плагин написан для версии интерфейса {declared}, платформа предоставляет {API}')
     keys = [family.key for family in families]
     if len(set(keys)) != len(keys):
-        raise ValueError('family keys inside the module must differ')
+        raise ValueError('ключи типов задач внутри плагина должны различаться')
     for family in families:
-        if not KEY_PATTERN.fullmatch(family.key):
+        if not isinstance(family.key, str) or not KEY_PATTERN.fullmatch(family.key):
             raise ValueError(
-                f'family key {family.key!r} must be 3 to 40 lowercase latin letters, digits or "_"'
+                f'ключ типа задачи {family.key!r} пишется строчными латинскими буквами, цифрами '
+                'и знаком "_", от 3 до 40 знаков'
             )
         _smoke_test(family)
     return tuple(families)

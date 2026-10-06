@@ -457,6 +457,7 @@ class TaskFamilyResponse(ApiModel):
     key: str
     title: str
     description: str
+    author: str
     version: str
     source: Literal['builtin', 'module']
     module: str | None
@@ -467,6 +468,7 @@ class TaskFamilyResponse(ApiModel):
     default_skin: str | None
     min_difficulty: int
     max_difficulty: int
+    level_titles: list[str]
     variants: list[TaskVariantResponse]
 
 

@@ -11,12 +11,19 @@ server, in a terminal and in the browser of a task author.
 
 from . import answers, blocks
 from .family import API, FamilyCard, State, TaskFamily, Transition, Variant, optional_text, required_text
+from .plugin import EASY, HARD, MEDIUM, Plugin, Rejected, TaskType
 
 __all__ = [
     'API',
+    'EASY',
+    'HARD',
+    'MEDIUM',
     'FamilyCard',
+    'Plugin',
+    'Rejected',
     'State',
     'TaskFamily',
+    'TaskType',
     'Transition',
     'Variant',
     'answers',

@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .errors import explain
-from .family import State, TaskFamily
+from .family import MIN_DIFFICULTY, State, TaskFamily
 
 # A browser reads the seed as a JavaScript number, which is exact only up to 2**53.
 SEED_BITS = 53
@@ -35,6 +35,10 @@ class StateInvalid(SandboxError):
 
 class ActionNotSupported(SandboxError):
     code = 'TASK_INTERACTION_ACTION_NOT_SUPPORTED'
+
+
+class LevelNotSupported(SandboxError):
+    code = 'TASK_LEVEL_NOT_SUPPORTED'
 
 
 def _run(step: Callable[[], Any]) -> Any:
@@ -78,6 +82,10 @@ def generate(
 ) -> State:
     """A task of the family; without ``seed`` a random one is chosen and reported."""
 
+    if not MIN_DIFFICULTY <= difficulty <= family.max_difficulty:
+        raise LevelNotSupported(
+            f'У этого типа задач уровни сложности от {MIN_DIFFICULTY} до {family.max_difficulty}.'
+        )
     seed = secrets.randbits(SEED_BITS) if seed is None else seed
     context = {'sub_kinds': [sub_kind]} if sub_kind else {}
     public_state, private_state = _run(lambda: family.generate(seed, difficulty, context))

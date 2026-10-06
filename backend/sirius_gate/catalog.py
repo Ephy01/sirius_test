@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .family import MAX_DIFFICULTY, MIN_DIFFICULTY, FamilyCard, State, TaskFamily, Variant
+from .family import MIN_DIFFICULTY, FamilyCard, State, TaskFamily, Variant
 
 
 def describe(family: TaskFamily, module: str | None = None) -> State:
@@ -14,6 +14,7 @@ def describe(family: TaskFamily, module: str | None = None) -> State:
         'key': family.key,
         'title': card.title,
         'description': card.description,
+        'author': card.author,
         'version': family.version,
         'source': 'module' if module else 'builtin',
         'module': module,
@@ -23,7 +24,8 @@ def describe(family: TaskFamily, module: str | None = None) -> State:
         'default_weight': card.weight,
         'default_skin': card.skin,
         'min_difficulty': MIN_DIFFICULTY,
-        'max_difficulty': MAX_DIFFICULTY,
+        'max_difficulty': family.max_difficulty,
+        'level_titles': list(family.level_titles),
         'variants': [
             {'key': key, 'title': variant.title, 'description': variant.description}
             for key, variant in variants

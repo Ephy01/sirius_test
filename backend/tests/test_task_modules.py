@@ -63,15 +63,15 @@ def test_module_folder_can_import_its_own_files(tmp_path, monkeypatch):
     ('source', 'expected'),
     [
         ('def broken(:\n', 'SyntaxError'),
-        ('VALUE = 1\n', 'must define FAMILY'),
-        (PLUS_ONE.replace('key="plus_one"', 'key="geo_zendo"'), 'already taken by the platform'),
-        (PLUS_ONE.replace('key="plus_one"', 'key="Плюс"'), 'lowercase latin'),
-        (PLUS_ONE + 'API = 99\n', 'interface version 99'),
+        ('VALUE = 1\n', 'должен быть PLUGIN'),
+        (PLUS_ONE.replace('key="plus_one"', 'key="geo_zendo"'), 'уже занят платформой'),
+        (PLUS_ONE.replace('key="plus_one"', 'key="Плюс"'), 'строчными латинскими'),
+        (PLUS_ONE + 'API = 99\n', 'версии интерфейса 99'),
         (
             PLUS_ONE.replace('total = seed % 7 + difficulty', 'import random\n    total = random.random()'),
-            'same task for the same seed',
+            'разные задачи',
         ),
-        (PLUS_ONE.replace('return public, {"answer": total + 1}', 'return public'), 'two dicts'),
+        (PLUS_ONE.replace('return public, {"answer": total + 1}', 'return public'), 'два словаря'),
     ],
 )
 def test_broken_module_is_reported_and_does_not_touch_the_platform(tmp_path, source, expected):
@@ -93,7 +93,7 @@ def test_two_modules_cannot_share_a_family_key(tmp_path):
     first, second = load_task_modules(str(tmp_path))
 
     assert first.error is None
-    assert 'already taken by a_first' in second.error
+    assert 'уже занят плагином a_first' in second.error
 
 
 def test_module_family_runs_through_a_contest(tmp_path):

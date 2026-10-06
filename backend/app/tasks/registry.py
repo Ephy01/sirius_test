@@ -70,8 +70,8 @@ def register_module_families(families: Iterable[TaskFamily], module: str) -> Non
     families = tuple(families)
     for family in families:
         if family.key in FAMILIES:
-            owner = MODULE_OF.get(family.key, 'the platform')
-            raise ValueError(f'family key {family.key!r} is already taken by {owner}')
+            owner = f'плагином {MODULE_OF[family.key]}' if family.key in MODULE_OF else 'платформой'
+            raise ValueError(f'ключ типа задачи {family.key!r} уже занят {owner}')
     for family in families:
         FAMILIES[family.key] = family
         MODULE_OF[family.key] = module
