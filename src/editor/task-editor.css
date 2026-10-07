@@ -26,6 +26,15 @@
   flex: 1 1 420px;
 }
 
+/* В панели редактора мало полей, растягивать их на всю ширину незачем. */
+.task-editor__bar .sandbox-field {
+  flex: 0 1 220px;
+}
+
+.task-editor__bar .sandbox-field--narrow {
+  flex-basis: 110px;
+}
+
 .task-editor__files {
   display: flex;
   gap: 8px;

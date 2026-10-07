@@ -153,10 +153,14 @@ export function FamiliesStep({ builder }: { builder: ContestBuilderState }) {
                     <small>
                       {family.key}
                       {family.skin !== null && <> · {family.skin}</>}
-                      {card.author && <> · автор: {card.author}</>}
                     </small>
                   </header>
-                  <p>{card.description}</p>
+                  <p>
+                    {card.description}
+                    {card.author && (
+                      <span className="family-author">Автор: {card.author}</span>
+                    )}
+                  </p>
                   <div>
                     <label>
                       Вес
