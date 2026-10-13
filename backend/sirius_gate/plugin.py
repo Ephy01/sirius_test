@@ -20,6 +20,7 @@ from functools import partial
 from typing import Any
 
 from . import blocks
+from .errors import PluginError
 from .family import API, FamilyCard, State, TaskFamily, Transition, required_text
 
 GENERATION_TRIES = 200
@@ -83,26 +84,26 @@ class Plugin:
 
     def _check_metadata(self) -> None:
         if not isinstance(self.name, str) or not NAME_PATTERN.fullmatch(self.name):
-            raise ValueError(
+            raise PluginError(
                 'имя плагина пишется строчными латинскими буквами, цифрами и знаком "_", от 3 до 40 знаков'
             )
         if not isinstance(self.version, str) or not VERSION_PATTERN.fullmatch(self.version):
-            raise ValueError('версия плагина пишется латинскими буквами, цифрами и точками, например "1.0"')
+            raise PluginError('версия плагина пишется латинскими буквами, цифрами и точками, например "1.0"')
         if not all(isinstance(text, str) and text.strip() for text in (self.author, self.description)):
-            raise ValueError('у плагина должны быть автор (author) и описание (description)')
+            raise PluginError('у плагина должны быть автор (author) и описание (description)')
         if self.api != API:
-            raise ValueError(
+            raise PluginError(
                 f'плагин написан для версии интерфейса {self.api}, платформа предоставляет {API}'
             )
         types = list(self.task_types)
         if not types or any(not isinstance(task, TaskType) for task in types):
-            raise ValueError('в task_types должен быть хотя бы один тип задачи, созданный через TaskType')
+            raise PluginError('в task_types должен быть хотя бы один тип задачи, созданный через TaskType')
 
 
 def _scene(task: TaskType, variant: State) -> State:
     scene = task.view(deepcopy(variant))
     if not isinstance(scene, dict) or scene.get('kind') != blocks.KIND:
-        raise ValueError('view должна вернуть blocks.scene(...)')
+        raise PluginError('view должна вернуть blocks.scene(...)')
     if task.move is None:
         return scene
     commands = list(scene.get('commands') or [])
@@ -119,11 +120,11 @@ def _generate(task: TaskType, seed: int, difficulty: int, context: State) -> tup
     for _ in range(GENERATION_TRIES):
         variant = task.generate(difficulty, rng)
         if not isinstance(variant, dict):
-            raise ValueError('generate должна вернуть словарь с данными варианта')
+            raise PluginError('generate должна вернуть словарь с данными варианта')
         if task.validate is None or _accepts(task.validate, variant):
             break
     else:
-        raise ValueError(
+        raise PluginError(
             f'за {GENERATION_TRIES} попыток generate не дала варианта, который принимает validate'
         )
     private_state: State = {'variant': variant}
@@ -135,7 +136,7 @@ def _generate(task: TaskType, seed: int, difficulty: int, context: State) -> tup
 def _accepts(validate: Callable[[State], bool], variant: State) -> bool:
     verdict = validate(deepcopy(variant))
     if not isinstance(verdict, bool):
-        raise ValueError('validate должна вернуть True или False')
+        raise PluginError('validate должна вернуть True или False')
     return verdict
 
 
@@ -149,7 +150,7 @@ def _evaluate(task: TaskType, answer: str, private_state: State) -> State:
         return {'correct': verdict}
     if isinstance(verdict, dict) and 'correct' in verdict:
         return verdict
-    raise ValueError('check должна вернуть True или False')
+    raise PluginError('check должна вернуть True или False')
 
 
 def _reference(task: TaskType, private_state: State) -> tuple[str, list[str]]:
@@ -162,7 +163,7 @@ def _moved(task: TaskType, variant: State, text: str) -> tuple[State, str]:
     outcome = task.move(deepcopy(variant), text)
     changed, message = outcome if isinstance(outcome, tuple) else (outcome, '')
     if not isinstance(changed, dict):
-        raise ValueError('move должна вернуть изменённый вариант или пару (вариант, сообщение)')
+        raise PluginError('move должна вернуть изменённый вариант или пару (вариант, сообщение)')
     return changed, str(message)
 
 

@@ -19,9 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from .errors import explain
+from .errors import PluginError, explain
 from .family import API, TaskFamily
 from .plugin import Plugin
+from .rules import check_source
 
 PACKAGE = 'sirius_gate_modules'
 KEY_PATTERN = re.compile(r'[a-z][a-z0-9_]{2,39}')
@@ -63,7 +64,15 @@ def _without_bytecode_cache() -> Iterator[None]:
         sys.dont_write_bytecode = previous
 
 
+def _sources(path: Path) -> list[Path]:
+    """Files of a module: the file itself, or every Python file of its folder."""
+
+    return sorted(path.parent.rglob('*.py')) if path.name == 'task.py' else [path]
+
+
 def _import(name: str, path: Path) -> ModuleType:
+    for file in _sources(path):
+        check_source(file.read_text(encoding='utf-8'), str(file))
     qualified = f'{PACKAGE}.{name}'
     search = [str(path.parent)] if path.name == 'task.py' else None
     spec = importlib.util.spec_from_file_location(qualified, path, submodule_search_locations=search)
@@ -81,6 +90,7 @@ def _import(name: str, path: Path) -> ModuleType:
 def _run(name: str, source: str, filename: str) -> ModuleType:
     """Execute the text of a module; ``linecache`` lets a traceback quote its lines."""
 
+    check_source(source, filename)
     qualified = f'{PACKAGE}.{name}'
     module = ModuleType(qualified)
     module.__file__ = filename
@@ -98,12 +108,12 @@ def _declared_families(module: ModuleType) -> list[TaskFamily]:
     plugin = getattr(module, 'PLUGIN', None)
     if plugin is not None:
         if not isinstance(plugin, Plugin):
-            raise ValueError('PLUGIN должен быть создан через Plugin(...)')
+            raise PluginError('PLUGIN должен быть создан через Plugin(...)')
         return list(plugin.families())
     declared = getattr(module, 'FAMILIES', None)
     families = list(declared) if declared is not None else [getattr(module, 'FAMILY', None)]
     if not families or any(not isinstance(family, TaskFamily) for family in families):
-        raise ValueError('в файле должен быть PLUGIN = Plugin(...)')
+        raise PluginError('в файле должен быть PLUGIN = Plugin(...)')
     return families
 
 
@@ -112,28 +122,28 @@ def _smoke_test(family: TaskFamily) -> None:
 
     first = family.generate(SMOKE_SEED, 1, {})
     if not (isinstance(first, tuple) and len(first) == 2 and all(isinstance(part, dict) for part in first)):
-        raise ValueError('генерация должна вернуть два словаря: открытое и закрытое состояние задачи')
+        raise PluginError('генерация должна вернуть два словаря: открытое и закрытое состояние задачи')
     encoded = json.dumps(first, ensure_ascii=False, allow_nan=False)
     if json.dumps(family.generate(SMOKE_SEED, 1, {}), ensure_ascii=False, allow_nan=False) != encoded:
-        raise ValueError(
+        raise PluginError(
             'один и тот же номер варианта дал разные задачи: все случайные решения берите из rng'
         )
     public_state = first[0]
     if not isinstance(public_state.get('kind'), str) or not isinstance(public_state.get('prompt'), str):
-        raise ValueError('в открытом состоянии задачи должны быть текстовые поля "kind" и "prompt"')
+        raise PluginError('в открытом состоянии задачи должны быть текстовые поля "kind" и "prompt"')
 
 
 def _checked_families(module: ModuleType) -> tuple[TaskFamily, ...]:
     families = _declared_families(module)
     declared = getattr(module, 'API', API)
     if declared != API:
-        raise ValueError(f'плагин написан для версии интерфейса {declared}, платформа предоставляет {API}')
+        raise PluginError(f'плагин написан для версии интерфейса {declared}, платформа предоставляет {API}')
     keys = [family.key for family in families]
     if len(set(keys)) != len(keys):
-        raise ValueError('ключи типов задач внутри плагина должны различаться')
+        raise PluginError('ключи типов задач внутри плагина должны различаться')
     for family in families:
         if not isinstance(family.key, str) or not KEY_PATTERN.fullmatch(family.key):
-            raise ValueError(
+            raise PluginError(
                 f'ключ типа задачи {family.key!r} пишется строчными латинскими буквами, цифрами '
                 'и знаком "_", от 3 до 40 знаков'
             )
