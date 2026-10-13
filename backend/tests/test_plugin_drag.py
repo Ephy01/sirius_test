@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from plugin_contest import events, family, open_contest
 from task_module_samples import MIDPOINT
 
 from sirius_gate import sandbox
@@ -78,3 +79,24 @@ def test_drops_can_be_undone_and_the_reference_solution_is_a_drop():
     assert [(level.generated, level.reference_accepted, level.problems) for level in levels] == [
         (8, 8, [])
     ] * 5
+
+
+def test_drop_in_a_contest_is_logged_as_a_move_of_the_participant(tmp_path):
+    application, client, participant, attempt_id = open_contest(
+        tmp_path, {'midpoint': MIDPOINT}, [family('midpoint', level=2)]
+    )
+    with client:
+        task = client.get('/api/v1/participant/tasks/current', headers=participant).json()['task']
+        dropped = client.post(
+            f'/api/v1/participant/tasks/{task["id"]}/interactions',
+            headers=participant,
+            json={'action_type': 'apply_op', 'op_id': 'drag:M:3.4:2.6', 'client_action_id': 'drop-1'},
+        )
+
+    assert dropped.status_code == 200, dropped.text
+    assert dropped.json()['message'] == 'Точка M теперь в (3, 3).'
+    (submitted,) = events(application, attempt_id, 'task_interaction_submitted')
+    assert (submitted['action_type'], submitted['op_id']) == ('apply_op', 'drag:M:3.4:2.6')
+    (resolved,) = events(application, attempt_id, 'task_interaction_resolved')
+    assert (resolved['accepted'], resolved['reason']) == (True, 'accepted')
+    assert resolved['before_state_hash'] != resolved['after_state_hash']
