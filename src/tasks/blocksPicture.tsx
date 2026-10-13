@@ -1,5 +1,6 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import { isRecord, parseList, type UnknownRecord } from "../api/parsing";
+import { useShapeDrag } from "./blocksDrag";
 import { parseOptionalCommand, parseTone, type Tone } from "./blocksParts";
 
 type Pair = [number, number];
@@ -13,13 +14,20 @@ type Shape =
   | { shape: "sector" | "arc"; x: number; y: number; radius: number; start: number; end: number }
   | { shape: "label"; x: number; y: number; text: string };
 
-type DrawnShape = Shape & { tone: Tone; command: string | null };
+/** `command` is sent when the shape is pressed, `drag` names the shape when it is moved. */
+type DrawnShape = Shape & {
+  tone: Tone;
+  command: string | null;
+  drag: string | null;
+};
 
 export type PictureBlock = {
   type: "picture";
   x: Pair;
   y: Pair;
   grid: boolean;
+  /** A dragged shape lands on multiples of this step. */
+  snap: number | null;
   caption: string | null;
   shapes: DrawnShape[];
 };
@@ -91,8 +99,10 @@ function parseShape(value: unknown): DrawnShape | null {
   const outline = parseOutline(value);
   const tone = parseTone(value.tone);
   const command = parseOptionalCommand(value.command);
+  const drag = value.drag ?? null;
   if (!outline || !tone || command === undefined) return null;
-  return { ...outline, tone, command };
+  if (drag !== null && (typeof drag !== "string" || !drag)) return null;
+  return { ...outline, tone, command, drag };
 }
 
 export function parsePicture(value: UnknownRecord): PictureBlock | null {
@@ -100,9 +110,23 @@ export function parsePicture(value: UnknownRecord): PictureBlock | null {
   const y = parsePair(value.y);
   const shapes = parseList(value.shapes, parseShape);
   const caption = value.caption ?? null;
+  const snap = value.snap ?? null;
   if (!x || !y || x[0] >= x[1] || y[0] >= y[1] || !shapes) return null;
   if (caption !== null && typeof caption !== "string") return null;
-  return { type: "picture", x, y, grid: value.grid === true, caption, shapes };
+  if (snap !== null && !(typeof snap === "number" && snap > 0)) return null;
+  return { type: "picture", x, y, grid: value.grid === true, snap, caption, shapes };
+}
+
+/** The point of a shape whose new coordinates are reported when the shape is dragged. */
+function anchor(shape: Shape): Pair {
+  if (shape.shape === "polygon") return shape.points[0];
+  if (shape.shape === "line") return [shape.x1, shape.y1];
+  return [shape.x, shape.y];
+}
+
+/** Coordinates in a chat command: whole where they are whole, without rounding noise otherwise. */
+function written(value: number): string {
+  return String(Number(value.toFixed(6)));
 }
 
 /** Maps the coordinates of a task, where the y axis points up, to the units of the drawing. */
@@ -251,32 +275,57 @@ const SHAPE_NAMES: Record<Shape["shape"], string> = {
   label: "Подпись",
 };
 
+type ShapeDrag = ReturnType<typeof useShapeDrag>;
+
 function ShapeView({
   shape,
+  index,
   view,
   canAct,
+  drag,
   onCommand,
 }: {
   shape: DrawnShape;
+  index: number;
   view: Frame;
   canAct: boolean;
+  drag: ShapeDrag;
   onCommand: (command: string) => void;
 }) {
   const className = `blocks-shape blocks-shape--${shape.tone}`;
   const { command } = shape;
-  if (command === null) return <g className={className}>{outline(shape, view)}</g>;
+  if (command === null && shape.drag === null) {
+    return <g className={className}>{outline(shape, view)}</g>;
+  }
 
   const name = shape.shape === "point" && shape.label ? `Точка ${shape.label}` : SHAPE_NAMES[shape.shape];
+  const shared = {
+    role: "button",
+    tabIndex: canAct ? 0 : -1,
+    "aria-disabled": !canAct,
+  };
+  if (shape.drag !== null) {
+    const carried = drag.offset(index);
+    return (
+      <g
+        {...shared}
+        className={`${className} blocks-shape--drag${carried ? " blocks-shape--carried" : ""}`}
+        aria-label={`${name}. Переносится мышью или стрелками, Enter ставит на место`}
+        transform={carried ? `translate(${carried.dx * view.unit} ${-carried.dy * view.unit})` : undefined}
+        {...drag.handlers(index, anchor(shape))}
+      >
+        {outline(shape, view)}
+      </g>
+    );
+  }
   return (
     <g
+      {...shared}
       className={`${className} blocks-shape--action`}
-      role="button"
-      tabIndex={canAct ? 0 : -1}
       aria-label={name}
-      aria-disabled={!canAct}
-      onClick={canAct ? () => onCommand(command) : undefined}
+      onClick={canAct && command ? () => onCommand(command) : undefined}
       onKeyDown={
-        canAct
+        canAct && command
           ? (event: KeyboardEvent) => {
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
@@ -301,6 +350,16 @@ export function Picture({
   onCommand: (command: string) => void;
 }) {
   const view = frame(block);
+  const drag = useShapeDrag({
+    area: block,
+    canAct,
+    onDrop: (index, x, y) =>
+      onCommand(`/op drag:${block.shapes[index].drag}:${written(x)}:${written(y)}`),
+    onPress: (index) => {
+      const { command } = block.shapes[index];
+      if (command) onCommand(command);
+    },
+  });
   return (
     <figure className="blocks-picture">
       {block.caption && <figcaption>{block.caption}</figcaption>}
@@ -312,7 +371,15 @@ export function Picture({
       >
         {block.grid && <GridLines block={block} view={view} />}
         {block.shapes.map((shape, index) => (
-          <ShapeView shape={shape} view={view} canAct={canAct} onCommand={onCommand} key={index} />
+          <ShapeView
+            shape={shape}
+            index={index}
+            view={view}
+            canAct={canAct}
+            drag={drag}
+            onCommand={onCommand}
+            key={index}
+          />
         ))}
       </svg>
     </figure>

@@ -264,3 +264,32 @@ button.blocks-cell:disabled {
   stroke-width: 6;
   stroke-opacity: 0.25;
 }
+
+/* Переносимую фигуру ведут пальцем, поэтому страница под ней не прокручивается. */
+.blocks-shape--drag {
+  cursor: grab;
+  outline: none;
+  touch-action: none;
+}
+
+.blocks-shape--drag[aria-disabled="true"] {
+  cursor: default;
+}
+
+.blocks-shape--carried {
+  cursor: grabbing;
+}
+
+.blocks-shape--drag:not([aria-disabled="true"]):hover .blocks-shape--dot,
+.blocks-shape--drag:focus-visible .blocks-shape--dot,
+.blocks-shape--carried .blocks-shape--dot {
+  stroke: var(--shape-color);
+  stroke-width: 8;
+  stroke-opacity: 0.25;
+}
+
+.blocks-shape--drag:not([aria-disabled="true"]):hover,
+.blocks-shape--drag:focus-visible,
+.blocks-shape--carried {
+  stroke-width: 3.5;
+}
