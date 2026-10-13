@@ -242,9 +242,17 @@ def _static_route(
 
 
 def choose_route(
-    session: Session, attempt: Attempt, task_config: dict, ordinal: int, latest: TaskInstance | None
+    session: Session,
+    attempt: Attempt,
+    task_config: dict,
+    ordinal: int,
+    latest: TaskInstance | None,
+    failed: frozenset[str] = frozenset(),
 ) -> Route:
-    settings, threshold = family_settings(task_config)
+    """The family and difficulty of the next task. ``failed`` lists families whose code has just failed."""
+
+    configured, threshold = family_settings(task_config)
+    settings = [item for item in configured if item.family not in failed]
     if not settings:
         raise api_error(
             status.HTTP_409_CONFLICT,
@@ -253,7 +261,7 @@ def choose_route(
         )
     scripted = _scripted_at(task_config, ordinal)
     adaptive, start_family = adaptive_trajectory(task_config)
-    if scripted is not None:
+    if scripted is not None and scripted.family not in failed:
         return _scripted_route(scripted)
     if adaptive:
         return _director_route(session, attempt, settings, start_family)

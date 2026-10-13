@@ -24,6 +24,7 @@ from ..task_flow import (
     get_task_or_error,
     private_state_of,
     require_input_available,
+    run_task_code,
     scored_evaluation,
     task_state_hash,
 )
@@ -194,17 +195,22 @@ def interact_with_task(
 
     family = _require_action(task, action)
     hash_before = task_state_hash(task)
-    transition = interact_task(
-        family=task.family,
-        generator_version=task.generator_version,
-        action_type=action,
-        action_payload={
-            **request,
-            'client_action_id': payload.client_action_id,
-            'first_action_latency_ms': first_action_latency_ms(task),
-        },
-        public_state=task.public_state,
-        private_state=task.private_state,
+    transition = run_task_code(
+        session,
+        task,
+        action,
+        lambda: interact_task(
+            family=task.family,
+            generator_version=task.generator_version,
+            action_type=action,
+            action_payload={
+                **request,
+                'client_action_id': payload.client_action_id,
+                'first_action_latency_ms': first_action_latency_ms(task),
+            },
+            public_state=task.public_state,
+            private_state=task.private_state,
+        ),
     )
     signal = _apply_transition(task, transition)
     interaction = _record_interaction(session, task, payload.client_action_id, action, request, transition)
@@ -246,8 +252,14 @@ def get_debug_answer(
     private_state = private_state_of(task)
     answer, commands = NO_REFERENCE_ANSWER, []
     if family is not None and family.reference_answer is not None:
-        answer, commands = family.reference_answer(private_state)
-    details = family.debug_details(private_state) if family is not None and family.debug_details else []
+        answer, commands = run_task_code(
+            session, task, 'reference_answer', lambda: family.reference_answer(private_state)
+        )
+    details = (
+        run_task_code(session, task, 'debug_details', lambda: family.debug_details(private_state))
+        if family is not None and family.debug_details
+        else []
+    )
     append_task_event(session, task, 'debug_answer_revealed', {'family': task.family})
     session.commit()
     return DebugAnswerResponse(family=task.family, answer=answer, commands=commands, details=details)
@@ -268,18 +280,19 @@ def _track_first_action(task: TaskInstance) -> None:
     task.private_state = private_state
 
 
-def _evaluate_answer(task: TaskInstance, answer: str) -> dict:
-    evaluation = scored_evaluation(
+def _evaluate_answer(session: Session, task: TaskInstance, answer: str) -> dict:
+    checked = run_task_code(
+        session,
         task,
-        dict(
-            evaluate_task(
-                family=task.family,
-                generator_version=task.generator_version,
-                answer=answer,
-                private_state=task.private_state,
-            )
+        'answer',
+        lambda: evaluate_task(
+            family=task.family,
+            generator_version=task.generator_version,
+            answer=answer,
+            private_state=task.private_state,
         ),
     )
+    evaluation = scored_evaluation(task, dict(checked))
     evaluation['director_signal'] = director_signal(evaluation)
     return evaluation
 
@@ -321,7 +334,7 @@ def answer_task(
     require_input_available(task)
 
     _track_first_action(task)
-    evaluation = _evaluate_answer(task, payload.answer)
+    evaluation = _evaluate_answer(session, task, payload.answer)
     append_task_event(session, task, 'answer_submitted', {'answer': payload.answer})
     if evaluation.get('should_finalize') is False:
         _freeze_input(session, task, evaluation)

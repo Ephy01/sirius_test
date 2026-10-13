@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
 from datetime import datetime
+from typing import TypeVar
 
-from fastapi import status
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from sirius_gate.errors import explain
+
 from .attempts import attempt_task_config
 from .dependencies import api_error
-from .events import append_task_event, canonical_hash
+from .events import append_event, append_task_event, canonical_hash
 from .models import Attempt, Contest, TaskInstance, TaskStatus, as_utc, utc_now
 from .routing import Route, choose_route, route_records, task_seed
 from .tasks import family_for, generate_task
+
+logger = logging.getLogger(__name__)
+Result = TypeVar('Result')
 
 
 def active_task(session: Session, attempt_id: str) -> TaskInstance | None:
@@ -137,6 +145,73 @@ def _generate_states(route: Route, seed: int) -> tuple[dict, dict]:
     return public_state, private_state
 
 
+def _generated_route(
+    session: Session, attempt: Attempt, task_config: dict, ordinal: int, latest: TaskInstance | None
+) -> tuple[Route, int, str | None, dict, dict]:
+    """Choose the next task and generate it.
+
+    When the code of a family fails, the failure is logged and another family is
+    chosen, so one broken plugin does not stop the attempt.
+    """
+
+    failed: set[str] = set()
+    while True:
+        try:
+            route = choose_route(session, attempt, task_config, ordinal, latest, frozenset(failed))
+        except HTTPException:
+            if not failed:
+                raise
+            raise api_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                'TASK_GENERATION_FAILED',
+                'Не удалось подготовить задачу. Сообщите об этом организатору.',
+            ) from None
+        seed, context_hash = task_seed(attempt, ordinal, route, task_config)
+        try:
+            return route, seed, context_hash, *_generate_states(route, seed)
+        except Exception as error:
+            family = family_for(route.selected.family)
+            logger.exception('Task family %s failed to generate a task', family.key)
+            append_event(
+                session,
+                attempt_id=attempt.id,
+                event_type='task_generation_failed',
+                payload={
+                    'ordinal': ordinal,
+                    'family': family.key,
+                    'generator_version': family.version,
+                    'seed': seed,
+                    'difficulty': route.difficulty,
+                    'error': explain(error),
+                },
+            )
+            session.commit()
+            failed.add(family.key)
+
+
+def run_task_code(session: Session, task: TaskInstance, action: str, step: Callable[[], Result]) -> Result:
+    """Call the code of the task's family on behalf of a participant.
+
+    A failure is logged as an event and reported so that the participant can skip
+    the task: a broken plugin must not stop the attempt.
+    """
+
+    try:
+        return step()
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception('Task family %s failed on %s', task.family, action)
+        session.rollback()
+        append_task_event(session, task, 'task_code_failed', {'action': action, 'error': explain(error)})
+        session.commit()
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            'TASK_CODE_FAILED',
+            'В задаче произошла ошибка, и это действие не выполнено. Задачу можно пропустить командой /skip.',
+        ) from error
+
+
 def create_or_get_current_task(
     session: Session, attempt: Attempt, contest: Contest
 ) -> tuple[TaskInstance, bool]:
@@ -152,10 +227,10 @@ def create_or_get_current_task(
         .limit(1)
     )
     ordinal = (latest.ordinal if latest is not None else 0) + 1
-    route = choose_route(session, attempt, task_config, ordinal, latest)
+    route, seed, context_hash, public_state, private_state = _generated_route(
+        session, attempt, task_config, ordinal, latest
+    )
     family = family_for(route.selected.family)
-    seed, context_hash = task_seed(attempt, ordinal, route, task_config)
-    public_state, private_state = _generate_states(route, seed)
     private_extra, event_extra = route_records(route, context_hash, task_config)
 
     task = TaskInstance(

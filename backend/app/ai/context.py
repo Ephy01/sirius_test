@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from sirius_gate import blocks
+from sirius_gate.family import TaskFamily
 
 from ..models import TaskInstance, TaskInteraction
 from ..tasks import FAMILIES
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,10 +51,22 @@ def _interaction_history(interactions: list[TaskInteraction]) -> list[dict[str, 
     return history
 
 
+def _visible_state(family: TaskFamily | None, public: dict[str, Any]) -> dict[str, Any]:
+    """What the model is told about the task. A family whose own view fails gets the default one."""
+
+    default = _default_view(public)
+    if family is None or family.ai_context is None:
+        return default(public)
+    try:
+        return family.ai_context(public)
+    except Exception:
+        logger.exception('Task family %s failed to build the context for the assistant', family.key)
+        return default(public)
+
+
 def build_task_context(task: TaskInstance, interactions: list[TaskInteraction]) -> AiVisibleContext:
     public = task.public_state if isinstance(task.public_state, dict) else {}
     family = FAMILIES.get(task.family)
-    builder = family.ai_context if family is not None and family.ai_context else _default_view(public)
     payload = {
         'task': {
             'id': task.id,
@@ -59,7 +75,7 @@ def build_task_context(task: TaskInstance, interactions: list[TaskInteraction]) 
             'difficulty': task.difficulty,
             'prompt': public.get('prompt'),
         },
-        'visibleState': builder(public),
+        'visibleState': _visible_state(family, public),
         'interactionHistory': _interaction_history(interactions),
         'answerFormat': public.get('response_hint'),
     }
