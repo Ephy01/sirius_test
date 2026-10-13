@@ -11,6 +11,7 @@ through the same core.
 
 from __future__ import annotations
 
+import math
 import random
 import re
 from collections.abc import Callable, Sequence
@@ -28,6 +29,8 @@ NAME_PATTERN = re.compile(r'[a-z][a-z0-9_]{2,39}')
 VERSION_PATTERN = re.compile(r'[0-9A-Za-z][0-9A-Za-z._-]{0,19}')
 MOVE_COMMANDS = ('op', 'undo', 'reset')
 MOVE_HELP = ('/undo — отменить последний ход', '/reset — вернуть начальное состояние')
+DROP = 'drag:'
+DROP_HELP = '/op drag:<имя>:<x>:<y> — перенести объект в точку с этими координатами'
 
 
 class Rejected(Exception):
@@ -51,8 +54,9 @@ class TaskType:
     the scene and never the variant.
 
     ``move(variant, text)`` makes the task interactive: it handles ``/op <text>`` and
-    returns the changed variant, optionally with a message. Undo and reset then work
-    without more code.
+    returns the changed variant, optionally with a message. ``drag(variant, name, x, y)``
+    does the same when the participant drags a shape of the drawing to a new place.
+    Undo and reset then work without more code.
     """
 
     key: str
@@ -65,6 +69,11 @@ class TaskType:
     solution: Callable[[State], Any] | None = None
     model_context: Callable[[State], State] | None = None
     move: Callable[[State, str], Any] | None = None
+    drag: Callable[[State, str, float, float], Any] | None = None
+
+    @property
+    def interactive(self) -> bool:
+        return self.move is not None or self.drag is not None
 
 
 @dataclass(frozen=True)
@@ -104,14 +113,15 @@ def _scene(task: TaskType, variant: State) -> State:
     scene = task.view(deepcopy(variant))
     if not isinstance(scene, dict) or scene.get('kind') != blocks.KIND:
         raise PluginError('view должна вернуть blocks.scene(...)')
-    if task.move is None:
+    if not task.interactive:
         return scene
     commands = list(scene.get('commands') or [])
     lines = list(scene.get('help') or [])
+    offered = (DROP_HELP, *MOVE_HELP) if task.drag is not None else MOVE_HELP
     return {
         **scene,
         'commands': commands + [name for name in MOVE_COMMANDS if name not in commands],
-        'help': lines + [line for line in MOVE_HELP if not any(line.split()[0] in known for known in lines)],
+        'help': lines + [line for line in offered if not any(line.split()[0] in known for known in lines)],
     }
 
 
@@ -128,7 +138,7 @@ def _generate(task: TaskType, seed: int, difficulty: int, context: State) -> tup
             f'за {GENERATION_TRIES} попыток generate не дала варианта, который принимает validate'
         )
     private_state: State = {'variant': variant}
-    if task.move is not None:
+    if task.interactive:
         private_state.update(initial=variant, moves=[])
     return _scene(task, variant), private_state
 
@@ -159,11 +169,50 @@ def _reference(task: TaskType, private_state: State) -> tuple[str, list[str]]:
     return str(answer), [str(command) for command in commands]
 
 
+def _whole(value: float) -> float:
+    return int(value) if float(value).is_integer() else round(value, 6)
+
+
+def _drop(text: str) -> tuple[str, float, float]:
+    """Read ``drag:<name>:<x>:<y>``."""
+
+    try:
+        name, *numbers = text[len(DROP) :].split(':')
+        x, y = (float(number) for number in numbers)
+    except ValueError:
+        x = y = math.nan
+    if not (math.isfinite(x) and math.isfinite(y)):
+        raise Rejected('Перенос записывается так: /op drag:<имя>:<x>:<y>.')
+    return name, _whole(x), _whole(y)
+
+
+def _landing(public_state: State, text: str) -> str:
+    """The drop as the task type will receive it: on the step of the drawing and inside its ranges."""
+
+    name, x, y = _drop(text)
+    for block in public_state.get('blocks') or []:
+        if block.get('type') != 'picture' or all(shape.get('drag') != name for shape in block['shapes']):
+            continue
+        step = block.get('snap')
+        if step:
+            x, y = round(x / step) * step, round(y / step) * step
+        (left, right), (bottom, top) = block['x'], block['y']
+        if not (left <= x <= right and bottom <= y <= top):
+            raise Rejected('Объект нельзя вынести за пределы рисунка.')
+        return f'{DROP}{name}:{_whole(x)}:{_whole(y)}'
+    raise Rejected(f'На рисунке нет объекта {name}, который можно переносить.')
+
+
 def _moved(task: TaskType, variant: State, text: str) -> tuple[State, str]:
-    outcome = task.move(deepcopy(variant), text)
+    if task.drag is not None and text.startswith(DROP):
+        handler, outcome = 'drag', task.drag(deepcopy(variant), *_drop(text))
+    elif task.move is not None:
+        handler, outcome = 'move', task.move(deepcopy(variant), text)
+    else:
+        raise Rejected('В этой задаче объекты только переносятся.')
     changed, message = outcome if isinstance(outcome, tuple) else (outcome, '')
     if not isinstance(changed, dict):
-        raise PluginError('move должна вернуть изменённый вариант или пару (вариант, сообщение)')
+        raise PluginError(f'{handler} должна вернуть изменённый вариант или пару (вариант, сообщение)')
     return changed, str(message)
 
 
@@ -176,6 +225,8 @@ def _refusal(
 def _apply(task: TaskType, payload: State, public_state: State, private_state: State) -> Transition:
     text = required_text(payload, 'op_id', 'Нужно указать ход.')
     try:
+        if task.drag is not None and text.startswith(DROP):
+            text = _landing(public_state, text)
         variant, message = _moved(task, private_state['variant'], text)
     except Rejected as refusal:
         return _refusal(public_state, private_state, 'rejected', str(refusal) or 'Ход отклонён.', text)
@@ -202,7 +253,7 @@ def _reset(task: TaskType, payload: State, public_state: State, private_state: S
 
 
 def _family(plugin: Plugin, task: TaskType) -> TaskFamily:
-    moves = {'apply_op': _apply, 'undo': _undo, 'reset': _reset} if task.move is not None else {}
+    moves = {'apply_op': _apply, 'undo': _undo, 'reset': _reset} if task.interactive else {}
     return TaskFamily(
         key=task.key,
         version=f'{plugin.name}-{plugin.version}',

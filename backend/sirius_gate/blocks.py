@@ -8,6 +8,7 @@ example ``/op press:2:3`` or ``/answer 7``.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -17,6 +18,7 @@ KIND = 'blocks'
 TONES = ('plain', 'accent', 'muted', 'good', 'bad')
 COMMANDS = ('probe', 'hint', 'op', 'undo', 'reset', 'done')
 SHAPES = ('point', 'line', 'polygon', 'circle', 'ellipse', 'sector', 'arc', 'label')
+DRAG_NAME = re.compile(r'[A-Za-z0-9_]{1,24}')
 BARE_ANSWERS = ('done', 'impossible')
 
 
@@ -53,6 +55,18 @@ def _tone(tone: str) -> str:
 
 def _action(command: str | None) -> str | None:
     return None if command is None else _chat_command(command)
+
+
+def _grip(drag: str | None) -> str | None:
+    """Name under which a shape is reported when the participant drags it to a new place."""
+
+    if drag is not None and not (isinstance(drag, str) and DRAG_NAME.fullmatch(drag)):
+        raise ValueError('имя переносимого объекта пишется латинскими буквами, цифрами и знаком "_"')
+    return drag
+
+
+def _handles(command: str | None, drag: str | None) -> State:
+    return {'command': _action(command), 'drag': _grip(drag)}
 
 
 def cell(label: Any = '', *, tone: str = 'plain', command: str | None = None) -> State:
@@ -98,8 +112,20 @@ def _positive(value: Any, name: str) -> float:
     return value
 
 
-def point(x: float, y: float, *, label: str = '', tone: str = 'accent', command: str | None = None) -> State:
-    """A point with an optional name next to it. With ``command`` the point becomes a button."""
+def point(
+    x: float,
+    y: float,
+    *,
+    label: str = '',
+    tone: str = 'accent',
+    command: str | None = None,
+    drag: str | None = None,
+) -> State:
+    """A point with an optional name next to it.
+
+    With ``command`` the point becomes a button. With ``drag`` the participant can
+    move it, and the task type receives the name and the new coordinates.
+    """
 
     return {
         'shape': 'point',
@@ -107,7 +133,7 @@ def point(x: float, y: float, *, label: str = '', tone: str = 'accent', command:
         'y': _number(y, 'y'),
         'label': str(label),
         'tone': _tone(tone),
-        'command': _action(command),
+        **_handles(command, drag),
     }
 
 
@@ -119,9 +145,14 @@ def line(x1: float, y1: float, x2: float, y2: float, *, tone: str = 'plain', das
 
 
 def polygon(
-    points: Iterable[Sequence[float]], *, tone: str = 'plain', filled: bool = True, command: str | None = None
+    points: Iterable[Sequence[float]],
+    *,
+    tone: str = 'plain',
+    filled: bool = True,
+    command: str | None = None,
+    drag: str | None = None,
 ) -> State:
-    """A polygon through the given vertices, in order."""
+    """A polygon through the given vertices, in order. A dragged polygon reports its first vertex."""
 
     vertices = [[_number(x, 'x'), _number(y, 'y')] for x, y in points]
     if len(vertices) < 3:
@@ -131,7 +162,7 @@ def polygon(
         'points': vertices,
         'filled': bool(filled),
         'tone': _tone(tone),
-        'command': _action(command),
+        **_handles(command, drag),
     }
 
 
@@ -143,6 +174,7 @@ def circle(
     tone: str = 'plain',
     filled: bool = False,
     command: str | None = None,
+    drag: str | None = None,
 ) -> State:
     return {
         'shape': 'circle',
@@ -151,7 +183,7 @@ def circle(
         'radius': _positive(radius, 'radius'),
         'filled': bool(filled),
         'tone': _tone(tone),
-        'command': _action(command),
+        **_handles(command, drag),
     }
 
 
@@ -164,6 +196,7 @@ def ellipse(
     tone: str = 'plain',
     filled: bool = False,
     command: str | None = None,
+    drag: str | None = None,
 ) -> State:
     """An ellipse with its axes along the coordinate axes."""
 
@@ -175,7 +208,7 @@ def ellipse(
         'radius_y': _positive(radius_y, 'radius_y'),
         'filled': bool(filled),
         'tone': _tone(tone),
-        'command': _action(command),
+        **_handles(command, drag),
     }
 
 
@@ -200,10 +233,11 @@ def sector(
     *,
     tone: str = 'accent',
     command: str | None = None,
+    drag: str | None = None,
 ) -> State:
     """A filled part of a disc. Angles are in degrees, counted counterclockwise from the x axis."""
 
-    return {**_round_part('sector', x, y, radius, start, end, tone), 'command': _action(command)}
+    return {**_round_part('sector', x, y, radius, start, end, tone), **_handles(command, drag)}
 
 
 def arc(x: float, y: float, radius: float, start: float, end: float, *, tone: str = 'plain') -> State:
@@ -212,7 +246,7 @@ def arc(x: float, y: float, radius: float, start: float, end: float, *, tone: st
     return _round_part('arc', x, y, radius, start, end, tone)
 
 
-def label(x: float, y: float, text: Any, *, tone: str = 'plain') -> State:
+def label(x: float, y: float, text: Any, *, tone: str = 'plain', drag: str | None = None) -> State:
     """A short text centred at a point of the drawing."""
 
     return {
@@ -221,6 +255,7 @@ def label(x: float, y: float, text: Any, *, tone: str = 'plain') -> State:
         'y': _number(y, 'y'),
         'text': str(text),
         'tone': _tone(tone),
+        'drag': _grip(drag),
     }
 
 
@@ -237,12 +272,15 @@ def picture(
     x: Sequence[float] = (0, 10),
     y: Sequence[float] = (0, 10),
     grid: bool = False,
+    snap: float | None = 1,
     caption: str | None = None,
 ) -> State:
     """A drawing on the coordinate plane, built from points, lines, polygons and round shapes.
 
     ``x`` and ``y`` are the visible ranges of the coordinates, the y axis points up.
     With ``grid`` the lines of integer coordinates are drawn under the shapes.
+    A dragged shape lands on coordinates that are multiples of ``snap``, on whole
+    numbers by default. ``snap=None`` lets it land anywhere.
     """
 
     drawn = list(shapes)
@@ -253,6 +291,7 @@ def picture(
         'x': _range(x, 'x'),
         'y': _range(y, 'y'),
         'grid': bool(grid),
+        'snap': None if snap is None else _positive(snap, 'snap'),
         'caption': caption,
         'shapes': drawn,
     }
@@ -303,8 +342,10 @@ def for_assistant(public_state: State) -> State:
         if block.get('type') == 'buttons':
             return {'type': 'buttons', 'items': [item.get('label') for item in block['items']]}
         if block.get('type') == 'picture':
+            handles = ('command', 'drag')
             shapes = [
-                {key: value for key, value in shape.items() if key != 'command'} for shape in block['shapes']
+                {key: value for key, value in shape.items() if key not in handles}
+                for shape in block['shapes']
             ]
             return {**block, 'shapes': shapes}
         return block

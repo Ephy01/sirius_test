@@ -32,13 +32,14 @@ def test_picture_is_plain_data_with_every_shape_of_the_brief():
     picture = _picture()
 
     assert json.loads(json.dumps(picture, allow_nan=False)) == picture
-    assert (picture['type'], picture['x'], picture['y'], picture['grid'], picture['caption']) == (
-        'picture',
-        [0, 6],
-        [-1, 6],
-        True,
-        'Чертёж',
-    )
+    assert {key: value for key, value in picture.items() if key != 'shapes'} == {
+        'type': 'picture',
+        'x': [0, 6],
+        'y': [-1, 6],
+        'grid': True,
+        'snap': 1,
+        'caption': 'Чертёж',
+    }
     assert {shape['shape'] for shape in picture['shapes']} == set(blocks.SHAPES)
     assert picture['shapes'][1] == {
         'shape': 'point',
@@ -47,6 +48,7 @@ def test_picture_is_plain_data_with_every_shape_of_the_brief():
         'label': 'A',
         'tone': 'accent',
         'command': '/op pick:A',
+        'drag': None,
     }
     assert picture['shapes'][0]['points'] == [[1, 1], [5, 1], [3, 4]]
 
@@ -56,7 +58,7 @@ def test_language_model_gets_the_shapes_without_the_commands_behind_them():
 
     shapes = told['blocks'][0]['shapes']
     assert len(shapes) == 8
-    assert all('command' not in shape for shape in shapes)
+    assert all('command' not in shape and 'drag' not in shape for shape in shapes)
     assert shapes[1] == {'shape': 'point', 'x': 1, 'y': 1, 'label': 'A', 'tone': 'accent'}
 
 
@@ -72,6 +74,8 @@ def test_language_model_gets_the_shapes_without_the_commands_behind_them():
         (lambda: blocks.point(0, 0, command='pick'), 'должна начинаться с "/"'),
         (lambda: blocks.picture([{'shape': 'star'}]), 'рисунок собирается из фигур'),
         (lambda: blocks.picture([], x=(3, 3)), 'левая граница должна быть меньше правой'),
+        (lambda: blocks.picture([], snap=0), 'snap должно быть больше нуля'),
+        (lambda: blocks.point(0, 0, drag='точка D'), 'имя переносимого объекта'),
     ],
 )
 def test_shape_the_client_could_not_draw_is_refused_when_it_is_built(build, expected):
