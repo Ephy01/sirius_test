@@ -1,6 +1,8 @@
 import { Fragment, type CSSProperties } from "react";
 import { invalidResponse } from "../api/errors";
 import { isRecord, parseList, type UnknownRecord } from "../api/parsing";
+import { parseChatCommand, parseOptionalCommand, parseTone, type Tone } from "./blocksParts";
+import { parsePicture, Picture, type PictureBlock } from "./blocksPicture";
 import {
   TASK_COMMANDS,
   type PublicStateBase,
@@ -9,11 +11,9 @@ import {
 } from "./kind";
 import "./blocks.css";
 
-const TONES = ["plain", "accent", "muted", "good", "bad"] as const;
-
 type BlockCell = {
   text: string;
-  tone: (typeof TONES)[number];
+  tone: Tone;
   command: string | null;
 };
 
@@ -28,7 +28,13 @@ type GridBlock = { type: "grid"; caption: string | null; cells: BlockCell[][] };
 type ButtonsBlock = { type: "buttons"; items: BlockButton[] };
 type FactsBlock = { type: "facts"; items: string[] };
 
-type Block = TextBlock | TableBlock | GridBlock | ButtonsBlock | FactsBlock;
+type Block =
+  | TextBlock
+  | TableBlock
+  | GridBlock
+  | ButtonsBlock
+  | FactsBlock
+  | PictureBlock;
 
 /** A scene the server describes as data, so a task module needs no client code. */
 export type BlocksPublicState = {
@@ -49,17 +55,13 @@ function parseText(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function parseChatCommand(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
 function parseCell(value: unknown): BlockCell | null {
   if (!isRecord(value)) return null;
-  const tone = TONES.find((name) => name === value.tone);
-  const given = value.command ?? null;
-  const command = parseChatCommand(given);
-  if (typeof value.text !== "string" || !tone) return null;
-  if (given !== null && !command) return null;
+  const tone = parseTone(value.tone);
+  const command = parseOptionalCommand(value.command);
+  if (typeof value.text !== "string" || !tone || command === undefined) {
+    return null;
+  }
   return { text: value.text, tone, command };
 }
 
@@ -98,6 +100,7 @@ function parseBlock(value: unknown): Block | null {
   }
   if (value.type === "table") return parseTable(value);
   if (value.type === "grid") return parseGrid(value);
+  if (value.type === "picture") return parsePicture(value);
   if (value.type === "buttons") {
     const items = parseList(value.items, parseButton);
     return items && { type: "buttons", items };
@@ -113,6 +116,7 @@ function parseBlock(value: unknown): Block | null {
 function hasContent(block: Block): boolean {
   if (block.type === "text") return block.text !== "";
   if (block.type === "table") return block.columns.length > 0;
+  if (block.type === "picture") return block.shapes.length > 0 || block.grid;
   return block.type === "grid" || block.items.length > 0;
 }
 
@@ -248,6 +252,9 @@ function BlockView({
   if (block.type === "table") return <Table block={block} />;
   if (block.type === "grid") {
     return <Grid block={block} canAct={canAct} onCommand={onCommand} />;
+  }
+  if (block.type === "picture") {
+    return <Picture block={block} canAct={canAct} onCommand={onCommand} />;
   }
   if (block.type === "buttons") {
     return (

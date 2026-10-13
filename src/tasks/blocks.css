@@ -159,3 +159,108 @@ button.blocks-cell:disabled {
   font-size: 12px;
   line-height: 1.55;
 }
+
+.blocks-picture {
+  margin: 0;
+}
+
+.blocks-picture figcaption {
+  margin-bottom: 8px;
+  color: #5f686b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.blocks-picture svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid #d9dfe0;
+  border-radius: 8px;
+  background: #fdfdfa;
+}
+
+.blocks-picture__grid line {
+  stroke: #e7eaea;
+  stroke-width: 1;
+}
+
+.blocks-picture__grid .blocks-picture__axis {
+  stroke: #aab3b5;
+}
+
+/* Цвет фигуры задаёт оттенок, заливка у закрашенных фигур полупрозрачная. */
+.blocks-shape {
+  --shape-color: #2f3334;
+  fill: none;
+  stroke: var(--shape-color);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.blocks-shape--accent {
+  --shape-color: #006b80;
+}
+
+.blocks-shape--muted {
+  --shape-color: #9a90a0;
+}
+
+.blocks-shape--good {
+  --shape-color: #2f8f5b;
+}
+
+.blocks-shape--bad {
+  --shape-color: #b3484d;
+}
+
+.blocks-shape .blocks-shape--filled {
+  fill: var(--shape-color);
+  fill-opacity: 0.16;
+}
+
+.blocks-shape .blocks-shape--dashed {
+  stroke-dasharray: 7 6;
+}
+
+.blocks-shape .blocks-shape--dot {
+  fill: var(--shape-color);
+  stroke: #fdfdfa;
+  stroke-width: 1.5;
+}
+
+.blocks-shape .blocks-shape--text {
+  fill: var(--shape-color);
+  stroke: none;
+  font-family: var(--mono, monospace);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.blocks-shape .blocks-shape--centered {
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.blocks-shape--action {
+  cursor: pointer;
+  outline: none;
+}
+
+.blocks-shape--action[aria-disabled="true"] {
+  cursor: default;
+}
+
+.blocks-shape--action:not([aria-disabled="true"]):hover,
+.blocks-shape--action:focus-visible {
+  stroke-width: 3.5;
+}
+
+.blocks-shape--action:not([aria-disabled="true"]):hover .blocks-shape--dot,
+.blocks-shape--action:focus-visible .blocks-shape--dot {
+  stroke: var(--shape-color);
+  stroke-width: 6;
+  stroke-opacity: 0.25;
+}
