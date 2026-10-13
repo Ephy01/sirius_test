@@ -468,7 +468,6 @@ class TaskFamilyResponse(ApiModel):
     default_skin: str | None
     min_difficulty: int
     max_difficulty: int
-    level_titles: list[str]
     variants: list[TaskVariantResponse]
 
 

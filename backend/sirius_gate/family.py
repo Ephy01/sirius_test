@@ -70,9 +70,6 @@ class TaskFamily:
     debug_details: Callable[[State], list[str]] | None = None
     ai_context: Callable[[State], State] | None = None
     card: FamilyCard | None = None
-    # Levels run from MIN_DIFFICULTY to max_difficulty; level_titles names them when they have names.
-    max_difficulty: int = MAX_DIFFICULTY
-    level_titles: tuple[str, ...] = ()
 
 
 def required_text(payload: State, key: str, message: str) -> str:

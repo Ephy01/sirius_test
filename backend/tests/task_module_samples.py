@@ -25,9 +25,9 @@ FAMILY = TaskFamily(
 
 # The same kind of task written against the plugin interface of the hackathon brief.
 COUNT_UP = """
-from sirius_gate import EASY, HARD, MEDIUM, NotYet, Plugin, Rejected, TaskType, answers, blocks
+from sirius_gate import NotYet, Plugin, Rejected, TaskType, answers, blocks
 
-LIMITS = {EASY: 3, MEDIUM: 6, HARD: 9}
+LIMITS = {1: 3, 2: 5, 3: 6, 4: 8, 5: 9}
 
 
 def generate(level, rng):

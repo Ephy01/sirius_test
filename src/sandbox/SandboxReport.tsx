@@ -5,10 +5,6 @@ export function SandboxReport({ sandbox }: { sandbox: TaskSandboxState }) {
   const { catalog, run, busy, failure } = sandbox;
   const source = catalog?.items.find((item) => item.key === run?.family);
   const problems = catalog?.problems ?? [];
-  const levelTitle =
-    source && run
-      ? source.levelTitles[run.difficulty - source.minDifficulty]
-      : undefined;
 
   return (
     <>
@@ -22,11 +18,7 @@ export function SandboxReport({ sandbox }: { sandbox: TaskSandboxState }) {
           <span>версия {run.generatorVersion}</span>
           {source?.author && <span>автор {source.author}</span>}
           {run.subKind && <span>вариант {run.subKind}</span>}
-          <span>
-            {levelTitle
-              ? `уровень: ${levelTitle}`
-              : `сложность ${run.difficulty}`}
-          </span>
+          <span>сложность {run.difficulty}</span>
           <span>
             сид <b>{run.seed}</b>
           </span>

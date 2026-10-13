@@ -24,7 +24,7 @@ def _act(family, task, **action):
     return sandbox.interact(family, state=task['state'], **action)
 
 
-def test_plugin_carries_its_metadata_and_three_named_levels():
+def test_plugin_carries_its_metadata_and_has_the_five_levels_of_the_platform():
     entry = describe(_family(), module='counting')
 
     assert (entry['key'], entry['title'], entry['author'], entry['version']) == (
@@ -34,8 +34,7 @@ def test_plugin_carries_its_metadata_and_three_named_levels():
         'counting-1.2',
     )
     assert entry['description'] == 'Учебный плагин со счётчиком.'
-    assert (entry['min_difficulty'], entry['max_difficulty']) == (1, 3)
-    assert entry['level_titles'] == ['простой', 'средний', 'повышенной сложности']
+    assert (entry['min_difficulty'], entry['max_difficulty']) == (1, 5)
     assert entry['interactive'] is True
 
 
@@ -43,7 +42,7 @@ def test_only_variants_that_pass_validation_reach_a_participant():
     family = _family()
 
     targets = {
-        sandbox.generate(family, seed=seed, difficulty=3)['public_state']['prompt'] for seed in range(40)
+        sandbox.generate(family, seed=seed, difficulty=5)['public_state']['prompt'] for seed in range(40)
     }
 
     assert targets <= {f'Доведите счётчик до {target}.' for target in (2, 4, 6, 8)}
@@ -57,9 +56,9 @@ def test_validation_that_accepts_nothing_stops_the_plugin_from_loading():
     assert 'за 200 попыток generate не дала варианта, который принимает validate' in module.error
 
 
-def test_a_level_the_plugin_does_not_have_is_refused():
-    with pytest.raises(sandbox.LevelNotSupported, match='от 1 до 3'):
-        sandbox.generate(_family(), seed=1, difficulty=4)
+def test_a_level_outside_the_five_is_refused():
+    with pytest.raises(sandbox.LevelNotSupported, match='от 1 до 5'):
+        sandbox.generate(_family(), seed=1, difficulty=6)
 
 
 def test_moves_change_the_view_and_undo_and_reset_come_for_free():
@@ -135,15 +134,15 @@ def test_plugin_that_breaks_the_interface_is_explained_to_its_author(change, exp
     assert expected in module.error
 
 
-def test_plugin_passes_the_module_check_on_its_three_levels():
+def test_plugin_passes_the_module_check_on_every_level():
     levels = check_family(_family(), seeds=12)
 
     assert [
         (level.difficulty, level.generated, level.reference_accepted, level.problems) for level in levels
-    ] == [(1, 12, 12, []), (2, 12, 12, []), (3, 12, 12, [])]
+    ] == [(difficulty, 12, 12, []) for difficulty in range(1, 6)]
 
 
-def test_contest_never_asks_a_plugin_for_a_level_it_does_not_have(tmp_path):
+def test_plugin_task_is_issued_in_a_contest_at_the_configured_level(tmp_path):
     modules = tmp_path / 'modules'
     modules.mkdir()
     (modules / 'counting.py').write_text(COUNT_UP, encoding='utf-8')
@@ -188,4 +187,4 @@ def test_contest_never_asks_a_plugin_for_a_level_it_does_not_have(tmp_path):
 
     assert opened.status_code == 200, opened.text
     task = opened.json()['task']
-    assert (task['family'], task['difficulty']) == ('count_up', 3)
+    assert (task['family'], task['difficulty']) == ('count_up', 5)

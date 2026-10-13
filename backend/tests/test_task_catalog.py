@@ -83,7 +83,6 @@ def test_catalog_lists_module_families_and_load_problems(tmp_path):
         'default_skin': None,
         'min_difficulty': 1,
         'max_difficulty': 5,
-        'level_titles': [],
         'variants': [],
     }
     assert [problem['module'] for problem in catalog['problems']] == ['broken']

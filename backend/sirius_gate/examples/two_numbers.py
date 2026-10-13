@@ -1,8 +1,9 @@
 """Сумма двух чисел: самый короткий плагин."""
 
-from sirius_gate import EASY, HARD, MEDIUM, Plugin, TaskType, answers, blocks
+from sirius_gate import Plugin, TaskType, answers, blocks
 
-LIMITS = {EASY: 20, MEDIUM: 200, HARD: 2000}
+# Наибольшее слагаемое на каждом из пяти уровней сложности.
+LIMITS = {1: 20, 2: 50, 3: 200, 4: 500, 5: 2000}
 
 
 def generate(level, rng):

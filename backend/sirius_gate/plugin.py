@@ -22,8 +22,6 @@ from typing import Any
 from . import blocks
 from .family import API, FamilyCard, State, TaskFamily, Transition, required_text
 
-EASY, MEDIUM, HARD = 1, 2, 3
-LEVEL_TITLES = ('простой', 'средний', 'повышенной сложности')
 GENERATION_TRIES = 200
 NAME_PATTERN = re.compile(r'[a-z][a-z0-9_]{2,39}')
 VERSION_PATTERN = re.compile(r'[0-9A-Za-z][0-9A-Za-z._-]{0,19}')
@@ -43,8 +41,8 @@ class NotYet(Exception):
 class TaskType:
     """One type of task inside a plugin.
 
-    ``generate(level, rng)`` returns the variant: a dict with everything that defines
-    the task, the answer included. ``validate(variant)`` says whether the variant may
+    ``generate(level, rng)`` returns the variant for a level from 1 (the simplest) to 5:
+    a dict with everything that defines the task, the answer included. ``validate(variant)`` says whether the variant may
     be given to a participant. ``check(answer, variant)`` says whether the answer is
     right, or raises ``NotYet`` to keep the task open. ``view(variant)`` returns
     ``blocks.scene(...)``, which is all a participant
@@ -117,8 +115,6 @@ def _scene(task: TaskType, variant: State) -> State:
 
 
 def _generate(task: TaskType, seed: int, difficulty: int, context: State) -> tuple[State, State]:
-    if difficulty not in (EASY, MEDIUM, HARD):
-        raise ValueError(f'у плагина три уровня сложности: 1, 2 и 3. Запрошен уровень {difficulty}')
     rng = random.Random(seed)
     for _ in range(GENERATION_TRIES):
         variant = task.generate(difficulty, rng)
@@ -217,6 +213,4 @@ def _family(plugin: Plugin, task: TaskType) -> TaskFamily:
         card=FamilyCard(
             title=task.title, description=task.description or plugin.description, author=plugin.author
         ),
-        max_difficulty=HARD,
-        level_titles=LEVEL_TITLES,
     )

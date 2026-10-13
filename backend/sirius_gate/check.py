@@ -18,9 +18,10 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .family import MIN_DIFFICULTY, TaskFamily
+from .family import MAX_DIFFICULTY, MIN_DIFFICULTY, TaskFamily
 from .loading import load_directory
 
+DIFFICULTIES = range(MIN_DIFFICULTY, MAX_DIFFICULTY + 1)
 ACTION_OF_COMMAND = {'/op': 'apply_op', '/test': 'probe', '/hint': 'hint', '/undo': 'undo', '/reset': 'reset'}
 PAYLOAD_KEY = {'apply_op': 'op_id', 'probe': 'probe'}
 WRONG_ANSWERS = ('', 'не знаю')
@@ -127,28 +128,20 @@ def check_level(family: TaskFamily, difficulty: int, seeds: int, context: dict |
 
 def check_family(family: TaskFamily, seeds: int = 40) -> list[LevelReport]:
     context = {'sub_kinds': [family.sub_kinds[0]]} if family.scripted_only and family.sub_kinds else None
-    levels = range(MIN_DIFFICULTY, family.max_difficulty + 1)
-    return [check_level(family, difficulty, seeds, context) for difficulty in levels]
-
-
-def _level_name(family: TaskFamily, difficulty: int) -> str:
-    titles = family.level_titles
-    return titles[difficulty - MIN_DIFFICULTY] if titles else str(difficulty)
+    return [check_level(family, difficulty, seeds, context) for difficulty in DIFFICULTIES]
 
 
 def render(family: TaskFamily, levels: list[LevelReport], seeds: int) -> str:
     title = family.card.title if family.card else family.key
-    names = [_level_name(family, level.difficulty) for level in levels]
-    width = max(len('сложность'), *map(len, names))
     lines = [
         f'{family.key} ({title}), версия {family.version}',
-        f'  {"сложность":<{width}}  создано  разных  эталон принят  самый частый ответ  дольше всего',
+        '  сложность  создано  разных  эталон принят  самый частый ответ  дольше всего',
     ]
-    for name, level in zip(names, levels, strict=True):
+    for level in levels:
         reference = '—' if level.reference_accepted is None else f'{level.reference_accepted}/{seeds}'
         share = '—' if level.top_answer_share is None else f'{level.top_answer_share:.0%}'
         lines.append(
-            f'  {name:<{width}}  {level.generated:>3}/{seeds:<3}  {level.distinct:^6}  {reference:^13}'
+            f'  {level.difficulty:^9}  {level.generated:>3}/{seeds:<3}  {level.distinct:^6}  {reference:^13}'
             f'  {share:^18}  {level.slowest_seconds * 1000:>7.0f} мс'
         )
         lines.extend(f'      ошибка: {problem}' for problem in level.problems)
